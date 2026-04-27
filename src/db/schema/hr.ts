@@ -19,6 +19,7 @@ export const employees = pgTable("employees", {
   philhealthContribution: numeric("philhealth_contribution", { precision: 10, scale: 2 }).notNull().default("0"),
   pagibigContribution:    numeric("pagibig_contribution", { precision: 10, scale: 2 }).notNull().default("0"),
   hireDate:               date("hire_date").notNull(),
+  tinNumber:              varchar("tin_number", { length: 20 }),
   separationDate:         date("separation_date"),
   isActive:               boolean("is_active").notNull().default(true),
   createdAt:              timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
