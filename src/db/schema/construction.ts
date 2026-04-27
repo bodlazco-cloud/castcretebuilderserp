@@ -2,11 +2,11 @@ import {
   pgTable, uuid, varchar, numeric, integer, boolean,
   timestamp, date, text, jsonb,
 } from "drizzle-orm/pg-core";
-import { users, departments } from "./core";
+import { users } from "./core";
 import { projects } from "./projects";
 import { projectUnits, unitMilestones, unitActivities } from "./units";
 import { subcontractors } from "./subcontractors";
-import { workCategoryEnum, tradeTypeEnum, delayReasonEnum, milestoneDocTypeEnum, approvalStatusEnum } from "./enums";
+import { workCategoryEnum, tradeTypeEnum, delayReasonEnum, milestoneDocTypeEnum, approvalStatusEnum, deptCodeEnum } from "./enums";
 
 export const taskAssignments = pgTable("task_assignments", {
   id:                   uuid("id").primaryKey().defaultRandom(),
@@ -69,7 +69,7 @@ export const milestoneDocuments = pgTable("milestone_documents", {
   id:          uuid("id").primaryKey().defaultRandom(),
   warId:       uuid("war_id").notNull().references(() => workAccomplishedReports.id),
   docType:     milestoneDocTypeEnum("doc_type").notNull(),
-  sourceDept:  departments.code,               // stored as dept_code enum value
+  sourceDept:  deptCodeEnum("source_dept").notNull(),
   fileUrl:     text("file_url").notNull(),
   uploadedBy:  uuid("uploaded_by").notNull().references(() => users.id),
   uploadedAt:  timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
