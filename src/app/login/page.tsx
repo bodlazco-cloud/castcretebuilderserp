@@ -1,3 +1,9 @@
+"use client";
+
+import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_credentials:  "Incorrect email or password.",
   missing_fields:       "Please enter your email and password.",
@@ -5,13 +11,21 @@ const ERROR_MESSAGES: Record<string, string> = {
   unauthorized:         "You don't have permission to access that page.",
 };
 
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string; redirectTo?: string }>;
-}) {
-  const { error, redirectTo } = await searchParams;
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const error       = searchParams.get("error") ?? undefined;
+  const redirectTo  = searchParams.get("redirectTo") ?? undefined;
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? "An error occurred. Please try again.") : null;
+
+  // If an invite/recovery token lands on this page (hash-based flow),
+  // forward silently to /auth/confirm which handles it client-side.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (hash.includes("access_token=")) {
+      window.location.replace("/auth/confirm" + hash);
+    }
+  }, []);
 
   return (
     <main style={{
@@ -24,7 +38,6 @@ export default async function LoginPage({
         borderRadius: "10px", boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
         width: "100%", maxWidth: "400px",
       }}>
-        {/* Logo / title */}
         <div style={{ marginBottom: "2rem", textAlign: "center" }}>
           <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.6rem", fontWeight: 700, color: "#111" }}>
             Castcrete 360
@@ -34,7 +47,6 @@ export default async function LoginPage({
           </p>
         </div>
 
-        {/* Error banner */}
         {errorMessage && (
           <div style={{
             marginBottom: "1.25rem", padding: "0.75rem 1rem",
@@ -98,5 +110,13 @@ export default async function LoginPage({
         </form>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
