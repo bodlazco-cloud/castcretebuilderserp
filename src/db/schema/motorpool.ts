@@ -22,6 +22,7 @@ export const equipment = pgTable("equipment", {
   status:                       varchar("status", { length: 20 }).notNull().default("AVAILABLE"),
   isFlaggedForFlip:             boolean("is_flagged_for_flip").notNull().default(false),
   isLocked:                     boolean("is_locked").notNull().default(false),
+  imageUrl:                     text("image_url"),
   createdAt:                    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:                    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
