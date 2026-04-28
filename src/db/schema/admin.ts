@@ -85,3 +85,18 @@ export const milestoneDefinitions = pgTable("milestone_definitions", {
   isActive:        boolean("is_active").notNull().default(true),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const developerRateCards = pgTable("developer_rate_cards", {
+  id:              uuid("id").primaryKey().defaultRandom(),
+  projectId:       uuid("project_id").notNull().references(() => projects.id),
+  activityDefId:   uuid("activity_def_id").notNull().references(() => activityDefinitions.id),
+  grossRatePerUnit: numeric("gross_rate_per_unit", { precision: 15, scale: 2 }).notNull(),
+  retentionPct:    numeric("retention_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
+  dpRecoupmentPct: numeric("dp_recoupment_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
+  taxPct:          numeric("tax_pct", { precision: 5, scale: 4 }).notNull().default("0.00"),
+  version:         integer("version").notNull().default(1),
+  isActive:        boolean("is_active").notNull().default(true),
+  approvedBy:      uuid("approved_by").references(() => users.id),
+  approvedAt:      timestamp("approved_at", { withTimezone: true }),
+  createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -4,6 +4,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./core";
 import { projects } from "./projects";
+import { activityDefinitions } from "./admin";
 import { tradeTypeEnum, performanceGradeEnum } from "./enums";
 
 export const subcontractors = pgTable("subcontractors", {
@@ -61,4 +62,18 @@ export const subcontractorPerformanceRatings = pgTable("subcontractor_performanc
   grade:                    performanceGradeEnum("grade").notNull(),
   computedBy:               uuid("computed_by").references(() => users.id),
   computedAt:               timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const subcontractorRateCards = pgTable("subcontractor_rate_cards", {
+  id:            uuid("id").primaryKey().defaultRandom(),
+  subconId:      uuid("subcon_id").notNull().references(() => subcontractors.id),
+  projectId:     uuid("project_id").notNull().references(() => projects.id),
+  activityDefId: uuid("activity_def_id").notNull().references(() => activityDefinitions.id),
+  ratePerUnit:   numeric("rate_per_unit", { precision: 15, scale: 2 }).notNull(),
+  retentionPct:  numeric("retention_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
+  version:       integer("version").notNull().default(1),
+  isActive:      boolean("is_active").notNull().default(true),
+  approvedBy:    uuid("approved_by").references(() => users.id),
+  approvedAt:    timestamp("approved_at", { withTimezone: true }),
+  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

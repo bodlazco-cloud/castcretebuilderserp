@@ -3,7 +3,6 @@ import {
   timestamp, date, text,
 } from "drizzle-orm/pg-core";
 import { users } from "./core";
-import { workCategoryEnum } from "./enums";
 
 export const developers = pgTable("developers", {
   id:          uuid("id").primaryKey().defaultRandom(),
@@ -32,21 +31,6 @@ export const projects = pgTable("projects", {
   endDate:                  date("end_date"),
   createdAt:                timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:                timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const developerRateCards = pgTable("developer_rate_cards", {
-  id:                uuid("id").primaryKey().defaultRandom(),
-  projectId:         uuid("project_id").notNull().references(() => projects.id),
-  milestoneCategory: workCategoryEnum("milestone_category").notNull(),
-  grossRatePerUnit:  numeric("gross_rate_per_unit", { precision: 15, scale: 2 }).notNull(),
-  retentionPct:      numeric("retention_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
-  dpRecoupmentPct:   numeric("dp_recoupment_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
-  taxPct:            numeric("tax_pct", { precision: 5, scale: 4 }).notNull().default("0.00"),
-  version:           integer("version").notNull().default(1),
-  isActive:          boolean("is_active").notNull().default(true),
-  approvedBy:        uuid("approved_by").references(() => users.id),
-  approvedAt:        timestamp("approved_at", { withTimezone: true }),
-  createdAt:         timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const blocks = pgTable("blocks", {
