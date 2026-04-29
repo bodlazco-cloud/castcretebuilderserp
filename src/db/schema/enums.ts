@@ -52,3 +52,13 @@ export const milestoneDocTypeEnum = pgEnum("milestone_doc_type", [
   "WAR_SIGNED", "MILESTONE_PHOTOS", "MATERIAL_TRANSFER_SLIPS",
   "OSM_ACKNOWLEDGMENT", "SUBCON_BILLING_INVOICE", "QUALITY_CLEARANCE",
 ]);
+
+export const unitTypeEnum = pgEnum("unit_type", ["BEG", "REG", "END"]);
+
+export const changeOrderTypeEnum = pgEnum("change_order_type", ["ADD", "MODIFY", "REMOVE"]);
+
+export const payrollStatusEnum = pgEnum("payroll_status", ["DRAFT", "PROCESSING", "APPROVED", "RELEASED"]);
+
+export const bankTransactionTypeEnum = pgEnum("bank_transaction_type", ["DEBIT", "CREDIT"]);
+
+export const punchListStatusEnum = pgEnum("punch_list_status", ["OPEN", "IN_PROGRESS", "CLOSED"]);

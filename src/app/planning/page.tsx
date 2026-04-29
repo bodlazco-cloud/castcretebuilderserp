@@ -202,6 +202,11 @@ export default async function PlanningPage() {
               background: accent, color: "#fff", fontSize: "0.875rem",
               fontWeight: 600, textDecoration: "none",
             }}>+ Issue NTP</a>
+            <a href="/planning/bom" style={{
+              padding: "0.55rem 1.1rem", borderRadius: "6px",
+              background: "#fff", color: accent, fontSize: "0.875rem",
+              fontWeight: 600, textDecoration: "none", border: `1px solid ${accent}`,
+            }}>BOM Entry</a>
           </div>
         </header>
 

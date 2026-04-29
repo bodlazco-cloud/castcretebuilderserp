@@ -10,3 +10,8 @@ export * from "./batching";
 export * from "./motorpool";
 export * from "./hr";
 export * from "./finance";
+export * from "./changeorders";
+export * from "./manpower";
+export * from "./payroll";
+export * from "./banking";
+export * from "./quality";

@@ -4,7 +4,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./core";
 import { projects } from "./projects";
-import { workCategoryEnum } from "./enums";
+import { workCategoryEnum, unitTypeEnum } from "./enums";
 
 export const suppliers = pgTable("suppliers", {
   id:                  uuid("id").primaryKey().defaultRandom(),
@@ -46,6 +46,8 @@ export const materialPriceHistory = pgTable("material_price_history", {
 export const bomStandards = pgTable("bom_standards", {
   id:               uuid("id").primaryKey().defaultRandom(),
   activityDefId:    uuid("activity_def_id").notNull().references(() => activityDefinitions.id),
+  unitModel:        varchar("unit_model", { length: 50 }).notNull(),
+  unitType:         unitTypeEnum("unit_type").notNull(),
   materialId:       uuid("material_id").notNull().references(() => materials.id),
   quantityPerUnit:  numeric("quantity_per_unit", { precision: 15, scale: 4 }).notNull(),
   version:          integer("version").notNull().default(1),
