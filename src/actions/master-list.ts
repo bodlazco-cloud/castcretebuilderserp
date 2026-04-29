@@ -1,0 +1,226 @@
+"use server";
+
+import { db } from "@/db";
+import {
+  developers, projects, materials, suppliers,
+  subcontractors, activityDefinitions,
+} from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import { revalidatePath } from "next/cache";
+
+// ─── Developers ────────────────────────────────────────────────────────────
+
+const DeveloperSchema = z.object({
+  name: z.string().min(1).max(150),
+});
+
+export type MutationResult =
+  | { success: true; id: string }
+  | { success: false; error: string };
+
+export async function createDeveloper(
+  input: z.infer<typeof DeveloperSchema>,
+): Promise<MutationResult> {
+  const parsed = DeveloperSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const [row] = await db
+    .insert(developers)
+    .values({ name: parsed.data.name })
+    .returning({ id: developers.id });
+
+  revalidatePath("/master-list/developers");
+  return { success: true, id: row.id };
+}
+
+export async function toggleDeveloperActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(developers).set({ isActive }).where(eq(developers.id, id));
+  revalidatePath("/master-list/developers");
+  return { success: true };
+}
+
+// ─── Projects ──────────────────────────────────────────────────────────────
+
+const ProjectSchema = z.object({
+  name:                   z.string().min(1).max(200),
+  developerId:            z.string().uuid(),
+  contractValue:          z.number().positive(),
+  developerAdvance:       z.number().min(0),
+  targetUnitsPerMonth:    z.number().int().positive(),
+  minOperatingCashBuffer: z.number().min(0),
+  status:                 z.enum(["BIDDING", "ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"]),
+  startDate:              z.string().optional(),
+  endDate:                z.string().optional(),
+});
+
+export async function createProject(
+  input: z.infer<typeof ProjectSchema>,
+): Promise<MutationResult> {
+  const parsed = ProjectSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db
+    .insert(projects)
+    .values({
+      name:                   d.name,
+      developerId:            d.developerId,
+      contractValue:          String(d.contractValue),
+      developerAdvance:       String(d.developerAdvance),
+      targetUnitsPerMonth:    d.targetUnitsPerMonth,
+      minOperatingCashBuffer: String(d.minOperatingCashBuffer),
+      status:                 d.status,
+      startDate:              d.startDate || null,
+      endDate:                d.endDate || null,
+    })
+    .returning({ id: projects.id });
+
+  revalidatePath("/master-list/projects");
+  return { success: true, id: row.id };
+}
+
+// ─── Materials ─────────────────────────────────────────────────────────────
+
+const MaterialSchema = z.object({
+  code:                z.string().min(1).max(50),
+  name:                z.string().min(1).max(150),
+  unit:                z.string().min(1).max(30),
+  category:            z.string().min(1).max(50),
+  adminPrice:          z.number().min(0),
+  preferredSupplierId: z.string().uuid().optional(),
+});
+
+export async function createMaterial(
+  input: z.infer<typeof MaterialSchema>,
+): Promise<MutationResult> {
+  const parsed = MaterialSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db
+    .insert(materials)
+    .values({
+      code:                d.code,
+      name:                d.name,
+      unit:                d.unit,
+      category:            d.category,
+      adminPrice:          String(d.adminPrice),
+      preferredSupplierId: d.preferredSupplierId || null,
+    })
+    .returning({ id: materials.id });
+
+  revalidatePath("/master-list/materials");
+  return { success: true, id: row.id };
+}
+
+export async function toggleMaterialActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(materials).set({ isActive }).where(eq(materials.id, id));
+  revalidatePath("/master-list/materials");
+  return { success: true };
+}
+
+// ─── Suppliers ─────────────────────────────────────────────────────────────
+
+const SupplierSchema = z.object({
+  name: z.string().min(1).max(150),
+});
+
+export async function createSupplier(
+  input: z.infer<typeof SupplierSchema>,
+): Promise<MutationResult> {
+  const parsed = SupplierSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const [row] = await db
+    .insert(suppliers)
+    .values({ name: parsed.data.name })
+    .returning({ id: suppliers.id });
+
+  revalidatePath("/master-list/vendors");
+  return { success: true, id: row.id };
+}
+
+export async function toggleSupplierActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(suppliers).set({ isActive }).where(eq(suppliers.id, id));
+  revalidatePath("/master-list/vendors");
+  return { success: true };
+}
+
+// ─── Subcontractors ────────────────────────────────────────────────────────
+
+const SubconSchema = z.object({
+  code:                  z.string().min(1).max(50),
+  name:                  z.string().min(1).max(150),
+  tradeTypes:            z.array(z.enum(["STRUCTURAL", "ARCHITECTURAL", "BOTH"])).min(1),
+  defaultMaxActiveUnits: z.number().int().positive(),
+  manpowerBenchmark:     z.number().min(0),
+});
+
+export async function createSubcontractor(
+  input: z.infer<typeof SubconSchema>,
+): Promise<MutationResult> {
+  const parsed = SubconSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db
+    .insert(subcontractors)
+    .values({
+      code:                  d.code,
+      name:                  d.name,
+      tradeTypes:            d.tradeTypes,
+      defaultMaxActiveUnits: d.defaultMaxActiveUnits,
+      manpowerBenchmark:     String(d.manpowerBenchmark),
+    })
+    .returning({ id: subcontractors.id });
+
+  revalidatePath("/master-list/subcontractors");
+  return { success: true, id: row.id };
+}
+
+export async function toggleSubconActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(subcontractors).set({ isActive }).where(eq(subcontractors.id, id));
+  revalidatePath("/master-list/subcontractors");
+  return { success: true };
+}
+
+// ─── Activity Definitions (SOW) ────────────────────────────────────────────
+
+const ActivityDefSchema = z.object({
+  projectId:            z.string().uuid(),
+  category:             z.enum(["STRUCTURAL", "ARCHITECTURAL", "TURNOVER"]),
+  scopeCode:            z.string().min(1).max(100),
+  scopeName:            z.string().min(1).max(150),
+  activityCode:         z.string().min(1).max(100),
+  activityName:         z.string().min(1).max(150),
+  standardDurationDays: z.number().int().positive(),
+  weightInScopePct:     z.number().min(0).max(100),
+  sequenceOrder:        z.number().int().min(1),
+});
+
+export async function createActivityDefinition(
+  input: z.infer<typeof ActivityDefSchema>,
+): Promise<MutationResult> {
+  const parsed = ActivityDefSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db
+    .insert(activityDefinitions)
+    .values({
+      projectId:            d.projectId,
+      category:             d.category,
+      scopeCode:            d.scopeCode,
+      scopeName:            d.scopeName,
+      activityCode:         d.activityCode,
+      activityName:         d.activityName,
+      standardDurationDays: d.standardDurationDays,
+      weightInScopePct:     String(d.weightInScopePct),
+      sequenceOrder:        d.sequenceOrder,
+    })
+    .returning({ id: activityDefinitions.id });
+
+  revalidatePath("/master-list/sow");
+  return { success: true, id: row.id };
+}

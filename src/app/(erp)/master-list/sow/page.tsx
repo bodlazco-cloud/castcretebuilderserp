@@ -1,15 +1,89 @@
-export default function MasterSowPage() {
+export const dynamic = "force-dynamic";
+import { db } from "@/db";
+import { activityDefinitions, projects } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { getAuthUser } from "@/lib/supabase-server";
+
+export default async function SowPage() {
+  await getAuthUser();
+
+  const rows = await db
+    .select({
+      id:           activityDefinitions.id,
+      activityCode: activityDefinitions.activityCode,
+      scopeName:    activityDefinitions.scopeName,
+      category:     activityDefinitions.category,
+      sequenceOrder: activityDefinitions.sequenceOrder,
+      standardDurationDays: activityDefinitions.standardDurationDays,
+      isActive:     activityDefinitions.isActive,
+      projName:     projects.name,
+      projId:       projects.id,
+    })
+    .from(activityDefinitions)
+    .leftJoin(projects, eq(activityDefinitions.projectId, projects.id))
+    .orderBy(projects.name, activityDefinitions.sequenceOrder);
+
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "960px" }}>
+      <div style={{ maxWidth: "1100px" }}>
         <div style={{ marginBottom: "1.5rem" }}>
           <a href="/master-list" style={{ fontSize: "0.8rem", color: "#6366f1", textDecoration: "none" }}>← Master List</a>
         </div>
-        <h1 style={{ margin: "0 0 0.4rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Scope of Work</h1>
-        <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>Activity definitions and scope items per project.</p>
-        <div style={{ marginTop: "2rem", padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>
-          Module under construction
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.5rem" }}>
+          <div>
+            <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Scope of Work</h1>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>Activity definitions and scope items per project.</p>
+          </div>
+          <a href="/master-list/sow/new" style={{
+            padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#6366f1",
+            color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
+          }}>+ Add Scope Item</a>
         </div>
+
+        {rows.length === 0 ? (
+          <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>
+            No scope items yet. Click &ldquo;+ Add Scope Item&rdquo; to get started.
+          </div>
+        ) : (
+          <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "900px" }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb" }}>
+                    {["#", "Activity Code", "Scope Name", "Project", "Category", "Std. Days", "Status", ""].map((h, i) => (
+                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "0.65rem 1rem", color: "#9ca3af", fontSize: "0.8rem" }}>{r.sequenceOrder}</td>
+                      <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.82rem", color: "#374151" }}>{r.activityCode}</td>
+                      <td style={{ padding: "0.65rem 1rem", fontWeight: 500, color: "#111827" }}>{r.scopeName}</td>
+                      <td style={{ padding: "0.65rem 1rem" }}>
+                        {r.projId
+                          ? <a href={`/master-list/projects/${r.projId}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.82rem" }}>{r.projName}</a>
+                          : <span style={{ color: "#9ca3af" }}>—</span>}
+                      </td>
+                      <td style={{ padding: "0.65rem 1rem", color: "#6b7280", fontSize: "0.82rem" }}>{r.category}</td>
+                      <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>{r.standardDurationDays}d</td>
+                      <td style={{ padding: "0.65rem 1rem" }}>
+                        <span style={{
+                          display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600,
+                          background: r.isActive ? "#dcfce7" : "#f3f4f6", color: r.isActive ? "#166534" : "#6b7280",
+                        }}>{r.isActive ? "Active" : "Inactive"}</span>
+                      </td>
+                      <td style={{ padding: "0.65rem 1rem", textAlign: "right" }}>
+                        <a href={`/master-list/sow/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

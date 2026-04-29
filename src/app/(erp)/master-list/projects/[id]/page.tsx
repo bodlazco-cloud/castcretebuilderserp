@@ -1,0 +1,186 @@
+export const dynamic = "force-dynamic";
+import { db } from "@/db";
+import { projects, developers, activityDefinitions, blocks } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { getAuthUser } from "@/lib/supabase-server";
+import { notFound } from "next/navigation";
+
+const FIELD: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "0.2rem" };
+const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" };
+const VALUE: React.CSSProperties = { fontSize: "0.95rem", color: "#111827", fontWeight: 500 };
+
+const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
+  ACTIVE:    { bg: "#dcfce7", color: "#166534" },
+  BIDDING:   { bg: "#eff6ff", color: "#1e40af" },
+  ON_HOLD:   { bg: "#fef9c3", color: "#713f12" },
+  COMPLETED: { bg: "#f0fdf4", color: "#166534" },
+  CANCELLED: { bg: "#fef2f2", color: "#b91c1c" },
+};
+
+function php(v: string | null) {
+  if (!v) return "—";
+  return "PHP " + Number(v).toLocaleString("en-PH", { minimumFractionDigits: 2 });
+}
+
+export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await getAuthUser();
+  const { id } = await params;
+
+  const [project] = await db
+    .select({
+      id:                     projects.id,
+      name:                   projects.name,
+      status:                 projects.status,
+      contractValue:          projects.contractValue,
+      developerAdvance:       projects.developerAdvance,
+      advanceRecovered:       projects.advanceRecovered,
+      targetUnitsPerMonth:    projects.targetUnitsPerMonth,
+      minOperatingCashBuffer: projects.minOperatingCashBuffer,
+      startDate:              projects.startDate,
+      endDate:                projects.endDate,
+      createdAt:              projects.createdAt,
+      devName:                developers.name,
+      devId:                  developers.id,
+    })
+    .from(projects)
+    .leftJoin(developers, eq(projects.developerId, developers.id))
+    .where(eq(projects.id, id));
+
+  if (!project) notFound();
+
+  const [scopeRows, blockRows] = await Promise.all([
+    db
+      .select({ id: activityDefinitions.id, activityCode: activityDefinitions.activityCode, scopeName: activityDefinitions.scopeName, category: activityDefinitions.category, sequenceOrder: activityDefinitions.sequenceOrder, isActive: activityDefinitions.isActive })
+      .from(activityDefinitions)
+      .where(eq(activityDefinitions.projectId, id))
+      .orderBy(activityDefinitions.sequenceOrder),
+    db
+      .select({ id: blocks.id, blockName: blocks.blockName, totalLots: blocks.totalLots })
+      .from(blocks)
+      .where(eq(blocks.projectId, id))
+      .orderBy(blocks.blockName),
+  ]);
+
+  const sc = STATUS_STYLE[project.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
+
+  return (
+    <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ maxWidth: "960px" }}>
+        <div style={{ marginBottom: "1.5rem" }}>
+          <a href="/master-list/projects" style={{ fontSize: "0.8rem", color: "#6366f1", textDecoration: "none" }}>← Projects / Sites</a>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ margin: "0 0 0.35rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>{project.name}</h1>
+            <span style={{ display: "inline-block", padding: "0.2rem 0.65rem", borderRadius: "999px", fontSize: "0.75rem", fontWeight: 600, background: sc.bg, color: sc.color }}>
+              {project.status}
+            </span>
+          </div>
+          <a href={`/master-list/sow/new?projectId=${id}`} style={{
+            padding: "0.5rem 1rem", borderRadius: "6px", background: "#6366f1",
+            color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
+          }}>+ Add Scope of Work</a>
+        </div>
+
+        {/* Key metrics */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
+          {[
+            { label: "Contract Value", value: php(project.contractValue) },
+            { label: "Developer Advance", value: php(project.developerAdvance) },
+            { label: "Advance Recovered", value: php(project.advanceRecovered) },
+            { label: "Target Units / Month", value: String(project.targetUnitsPerMonth) },
+            { label: "Min. Cash Buffer", value: php(project.minOperatingCashBuffer) },
+          ].map((kpi) => (
+            <div key={kpi.label} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1rem 1.25rem" }}>
+              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "#6b7280", marginBottom: "0.25rem" }}>{kpi.label}</div>
+              <div style={{ fontSize: "1rem", fontWeight: 700, color: "#111827" }}>{kpi.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Details */}
+        <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
+          <h2 style={{ margin: "0 0 1rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Project Details</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1.25rem" }}>
+            <div style={FIELD}><div style={LABEL}>Developer</div>
+              {project.devId
+                ? <a href={`/master-list/developers/${project.devId}`} style={{ ...VALUE, color: "#6366f1", textDecoration: "none" }}>{project.devName}</a>
+                : <div style={VALUE}>—</div>}
+            </div>
+            <div style={FIELD}><div style={LABEL}>Start Date</div><div style={VALUE}>{project.startDate ?? "—"}</div></div>
+            <div style={FIELD}><div style={LABEL}>End Date</div><div style={VALUE}>{project.endDate ?? "—"}</div></div>
+            <div style={FIELD}><div style={LABEL}>Project ID</div><div style={{ ...VALUE, fontFamily: "monospace", fontSize: "0.78rem" }}>{project.id}</div></div>
+            <div style={FIELD}><div style={LABEL}>Created</div><div style={VALUE}>{new Date(project.createdAt).toLocaleDateString("en-PH", { dateStyle: "long" })}</div></div>
+          </div>
+        </div>
+
+        {/* Scope of Work */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h2 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 700, color: "#374151" }}>Scope of Work ({scopeRows.length})</h2>
+          {scopeRows.length === 0 ? (
+            <div style={{ padding: "1.5rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af", fontSize: "0.875rem" }}>
+              No scope of work defined. <a href={`/master-list/sow/new?projectId=${id}`} style={{ color: "#6366f1" }}>Add one →</a>
+            </div>
+          ) : (
+            <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb" }}>
+                    {["#", "Activity Code", "Scope Name", "Category", "Status", ""].map((h, i) => (
+                      <th key={i} style={{ padding: "0.6rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {scopeRows.map((s) => (
+                    <tr key={s.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "0.6rem 0.9rem", color: "#9ca3af", fontSize: "0.8rem" }}>{s.sequenceOrder}</td>
+                      <td style={{ padding: "0.6rem 0.9rem", fontFamily: "monospace", fontSize: "0.82rem", color: "#374151" }}>{s.activityCode}</td>
+                      <td style={{ padding: "0.6rem 0.9rem", fontWeight: 500, color: "#111827" }}>{s.scopeName}</td>
+                      <td style={{ padding: "0.6rem 0.9rem", color: "#6b7280", fontSize: "0.82rem" }}>{s.category}</td>
+                      <td style={{ padding: "0.6rem 0.9rem" }}>
+                        <span style={{ display: "inline-block", padding: "0.15rem 0.5rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: s.isActive ? "#dcfce7" : "#f3f4f6", color: s.isActive ? "#166534" : "#6b7280" }}>
+                          {s.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td style={{ padding: "0.6rem 0.9rem", textAlign: "right" }}>
+                        <a href={`/master-list/sow/${s.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Blocks */}
+        {blockRows.length > 0 && (
+          <div>
+            <h2 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 700, color: "#374151" }}>Blocks ({blockRows.length})</h2>
+            <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb" }}>
+                    {["Block Name", "Total Lots"].map((h, i) => (
+                      <th key={i} style={{ padding: "0.6rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {blockRows.map((b) => (
+                    <tr key={b.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "0.6rem 0.9rem", fontWeight: 500, color: "#111827" }}>{b.blockName}</td>
+                      <td style={{ padding: "0.6rem 0.9rem", color: "#374151" }}>{b.totalLots}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}

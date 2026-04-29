@@ -24,6 +24,7 @@ const NAV: NavSection[] = [
     title: "Master List",
     items: [
       { label: "Overview",          href: "/master-list" },
+      { label: "Projects / Sites",  href: "/master-list/projects" },
       { label: "Scope of Work",     href: "/master-list/sow" },
       { label: "Materials Master",  href: "/master-list/materials" },
       { label: "Vendors",           href: "/master-list/vendors" },
