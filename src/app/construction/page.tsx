@@ -207,16 +207,31 @@ export default async function ConstructionPage() {
           </a>
         </div>
 
-        <header style={{ marginBottom: "2rem" }}>
-          <h1 style={{
-            margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700,
-            borderLeft: `4px solid ${ACCENT}`, paddingLeft: "0.75rem",
-          }}>
-            Construction (Sites)
-          </h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem", paddingLeft: "1.25rem" }}>
-            NTPs · Daily Progress · WAR
-          </p>
+        <header style={{ marginBottom: "1.5rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <h1 style={{
+              margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700,
+              borderLeft: `4px solid ${ACCENT}`, paddingLeft: "0.75rem",
+            }}>
+              Construction (Sites)
+            </h1>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem", paddingLeft: "1.25rem" }}>
+              NTPs · Daily Progress · WAR
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <a href="/construction/log-progress" style={{
+              padding: "0.55rem 1.1rem", borderRadius: "6px",
+              background: ACCENT, color: "#fff", fontSize: "0.875rem",
+              fontWeight: 600, textDecoration: "none",
+            }}>+ Log Progress</a>
+            <a href="/construction/submit-war" style={{
+              padding: "0.55rem 1.1rem", borderRadius: "6px",
+              background: "#fff", color: ACCENT, fontSize: "0.875rem",
+              fontWeight: 600, textDecoration: "none",
+              border: `1px solid ${ACCENT}`,
+            }}>Submit WAR</a>
+          </div>
         </header>
 
         <div style={{

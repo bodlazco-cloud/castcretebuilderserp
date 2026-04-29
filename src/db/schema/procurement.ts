@@ -121,6 +121,22 @@ export const materialTransfers = pgTable("material_transfers", {
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const poPriceChangeRequests = pgTable("po_price_change_requests", {
+  id:             uuid("id").primaryKey().defaultRandom(),
+  poId:           uuid("po_id").notNull().references(() => purchaseOrders.id),
+  poItemId:       uuid("po_item_id").references(() => purchaseOrderItems.id),
+  originalPrice:  numeric("original_price", { precision: 15, scale: 2 }).notNull(),
+  requestedPrice: numeric("requested_price", { precision: 15, scale: 2 }).notNull(),
+  reason:         text("reason").notNull(),
+  status:         varchar("status", { length: 20 }).notNull().default("PENDING"),
+  requestedBy:    uuid("requested_by").notNull().references(() => users.id),
+  approvedBy:     uuid("approved_by").references(() => users.id),
+  approvedAt:     timestamp("approved_at", { withTimezone: true }),
+  rejectedAt:     timestamp("rejected_at", { withTimezone: true }),
+  rejectionReason: text("rejection_reason"),
+  createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const osmDeductionBuckets = pgTable("osm_deduction_buckets", {
   id:             uuid("id").primaryKey().defaultRandom(),
   projectId:      uuid("project_id").notNull().references(() => projects.id),

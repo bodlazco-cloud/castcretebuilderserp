@@ -4,7 +4,7 @@ import { db } from "@/db";
 import {
   projects, taskAssignments, subcontractors,
   subcontractorCapacityMatrix, workAccomplishedReports,
-  milestoneDocuments, unitMilestones,
+  milestoneDocuments, unitMilestones, dailyProgressEntries,
 } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -204,4 +204,97 @@ export async function verifyDocumentChecklist(
 
   revalidatePath(`/projects/${war.projectId}/billing`);
   return { success: true, missingDocs: [] };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOG DAILY PROGRESS ENTRY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const LogProgressSchema = z.object({
+  projectId:        z.string().uuid(),
+  unitId:           z.string().uuid(),
+  taskAssignmentId: z.string().uuid(),
+  unitActivityId:   z.string().uuid(),
+  entryDate:        z.string().date(),
+  subconId:         z.string().uuid(),
+  actualManpower:   z.number().int().min(0),
+  delayType:        z.enum(["WEATHER","MATERIAL_DELAY","MANPOWER_SHORTAGE","EQUIPMENT_BREAKDOWN","DESIGN_CHANGE","OTHER"]).optional(),
+  issuesDetails:    z.string().optional(),
+  enteredBy:        z.string().uuid(),
+});
+
+export type LogProgressResult =
+  | { success: true; entryId: string }
+  | { success: false; error: string };
+
+export async function logDailyProgress(
+  input: z.infer<typeof LogProgressSchema>,
+): Promise<LogProgressResult> {
+  const parsed = LogProgressSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  const docGapFlagged = !!d.delayType || !!d.issuesDetails;
+
+  const [entry] = await db
+    .insert(dailyProgressEntries)
+    .values({
+      projectId:       d.projectId,
+      unitId:          d.unitId,
+      taskAssignmentId: d.taskAssignmentId,
+      unitActivityId:  d.unitActivityId,
+      entryDate:       d.entryDate,
+      status:          "STARTED",
+      subconId:        d.subconId,
+      actualManpower:  d.actualManpower,
+      delayType:       (d.delayType as any) ?? null,
+      issuesDetails:   d.issuesDetails ?? null,
+      docGapFlagged,
+      enteredBy:       d.enteredBy,
+    })
+    .returning({ id: dailyProgressEntries.id });
+
+  revalidatePath("/construction");
+  return { success: true, entryId: entry.id };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUBMIT WORK ACCOMPLISHED REPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const SubmitWarSchema = z.object({
+  projectId:        z.string().uuid(),
+  unitId:           z.string().uuid(),
+  unitMilestoneId:  z.string().uuid(),
+  taskAssignmentId: z.string().uuid(),
+  grossAccomplishment: z.number().positive(),
+  submittedBy:      z.string().uuid(),
+});
+
+export type SubmitWarResult =
+  | { success: true; warId: string }
+  | { success: false; error: string };
+
+export async function submitWorkAccomplishedReport(
+  input: z.infer<typeof SubmitWarSchema>,
+): Promise<SubmitWarResult> {
+  const parsed = SubmitWarSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  const [war] = await db
+    .insert(workAccomplishedReports)
+    .values({
+      projectId:           d.projectId,
+      unitId:              d.unitId,
+      unitMilestoneId:     d.unitMilestoneId,
+      taskAssignmentId:    d.taskAssignmentId,
+      grossAccomplishment: String(d.grossAccomplishment),
+      status:              "PENDING_REVIEW",
+      submittedBy:         d.submittedBy,
+    })
+    .returning({ id: workAccomplishedReports.id });
+
+  revalidatePath("/construction");
+  return { success: true, warId: war.id };
 }

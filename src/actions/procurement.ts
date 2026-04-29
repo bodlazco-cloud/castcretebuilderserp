@@ -5,7 +5,7 @@ import {
   bomStandards, materials, inventoryStock,
   purchaseRequisitions, purchaseRequisitionItems,
   purchaseOrders, purchaseOrderItems,
-  suppliers,
+  poPriceChangeRequests, suppliers,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -225,4 +225,112 @@ export async function createPoFromApprovedPr(
 
   revalidatePath(`/projects/${pr.projectId}/procurement`);
   return { success: true, poId: po.id };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PO PRICE CHANGE REQUEST
+// Procurement requests a one-time price deviation; manager approves/rejects.
+// On approval the PO item unit_price is updated to the requested price.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const RequestPriceChangeSchema = z.object({
+  poId:           z.string().uuid(),
+  poItemId:       z.string().uuid().optional(),
+  originalPrice:  z.number().positive(),
+  requestedPrice: z.number().positive(),
+  reason:         z.string().min(10),
+  requestedBy:    z.string().uuid(),
+});
+
+export type RequestPriceChangeResult =
+  | { success: true; requestId: string }
+  | { success: false; error: string };
+
+export async function requestPriceChange(
+  input: z.infer<typeof RequestPriceChangeSchema>,
+): Promise<RequestPriceChangeResult> {
+  const parsed = RequestPriceChangeSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  const [po] = await db
+    .select({ status: purchaseOrders.status })
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.id, d.poId))
+    .limit(1);
+
+  if (!po) return { success: false, error: "PO not found." };
+  if (!["DRAFT", "AUDIT_REVIEW"].includes(po.status)) {
+    return { success: false, error: "Price changes can only be requested on DRAFT or AUDIT_REVIEW POs." };
+  }
+
+  const [req] = await db
+    .insert(poPriceChangeRequests)
+    .values({
+      poId:           d.poId,
+      poItemId:       d.poItemId ?? null,
+      originalPrice:  String(d.originalPrice),
+      requestedPrice: String(d.requestedPrice),
+      reason:         d.reason,
+      requestedBy:    d.requestedBy,
+    })
+    .returning({ id: poPriceChangeRequests.id });
+
+  revalidatePath("/procurement");
+  return { success: true, requestId: req.id };
+}
+
+const ApprovePriceChangeSchema = z.object({
+  requestId:  z.string().uuid(),
+  approvedBy: z.string().uuid(),
+  approve:    z.boolean(),
+  rejectionReason: z.string().optional(),
+});
+
+export type ApprovePriceChangeResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function approvePriceChange(
+  input: z.infer<typeof ApprovePriceChangeSchema>,
+): Promise<ApprovePriceChangeResult> {
+  const parsed = ApprovePriceChangeSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  const [req] = await db
+    .select()
+    .from(poPriceChangeRequests)
+    .where(eq(poPriceChangeRequests.id, d.requestId))
+    .limit(1);
+
+  if (!req) return { success: false, error: "Request not found." };
+  if (req.status !== "PENDING") return { success: false, error: "Request is no longer pending." };
+
+  if (d.approve) {
+    await db
+      .update(poPriceChangeRequests)
+      .set({ status: "APPROVED", approvedBy: d.approvedBy, approvedAt: new Date() })
+      .where(eq(poPriceChangeRequests.id, d.requestId));
+
+    // Apply the new price to the PO item if a specific item was targeted
+    if (req.poItemId) {
+      await db
+        .update(purchaseOrderItems)
+        .set({ unitPrice: req.requestedPrice })
+        .where(eq(purchaseOrderItems.id, req.poItemId));
+    }
+  } else {
+    await db
+      .update(poPriceChangeRequests)
+      .set({
+        status: "REJECTED",
+        rejectedAt: new Date(),
+        rejectionReason: d.rejectionReason ?? null,
+      })
+      .where(eq(poPriceChangeRequests.id, d.requestId));
+  }
+
+  revalidatePath("/procurement");
+  return { success: true };
 }

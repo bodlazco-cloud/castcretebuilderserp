@@ -111,13 +111,26 @@ export default async function MotorpoolPage() {
           </a>
         </div>
 
-        <header style={{ marginBottom: "2rem" }}>
-          <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, borderLeft: `4px solid ${ACCENT}`, paddingLeft: "0.75rem" }}>
-            Motorpool
-          </h1>
-          <p style={{ margin: "0 0 0 1rem", color: "#6b7280", fontSize: "0.9rem" }}>
-            Equipment · Rentals · Fix-or-Flip
-          </p>
+        <header style={{ marginBottom: "1.5rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, borderLeft: `4px solid ${ACCENT}`, paddingLeft: "0.75rem" }}>
+              Motorpool
+            </h1>
+            <p style={{ margin: "0 0 0 1rem", color: "#6b7280", fontSize: "0.9rem" }}>
+              Equipment · Rentals · Fix-or-Flip
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+            <a href="/motorpool/add-equipment" style={{
+              padding: "0.55rem 1rem", borderRadius: "6px",
+              background: ACCENT, color: "#fff", fontSize: "0.82rem", fontWeight: 600, textDecoration: "none",
+            }}>+ Add Equipment</a>
+            <a href="/motorpool/log-fuel" style={{
+              padding: "0.55rem 1rem", borderRadius: "6px",
+              background: "#fff", color: ACCENT, fontSize: "0.82rem", fontWeight: 600,
+              textDecoration: "none", border: `1px solid ${ACCENT}`,
+            }}>Log Fuel</a>
+          </div>
         </header>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>

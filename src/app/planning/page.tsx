@@ -186,13 +186,22 @@ export default async function PlanningPage() {
           </a>
         </div>
 
-        <header style={{ marginBottom: "2rem" }}>
-          <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>
-            Planning & Engineering
-          </h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-            BOM Standards · Resource Forecast · Schedule
-          </p>
+        <header style={{ marginBottom: "1.5rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>
+              Planning & Engineering
+            </h1>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
+              BOM Standards · Resource Forecast · Schedule
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <a href="/planning/issue-ntp" style={{
+              padding: "0.55rem 1.1rem", borderRadius: "6px",
+              background: accent, color: "#fff", fontSize: "0.875rem",
+              fontWeight: 600, textDecoration: "none",
+            }}>+ Issue NTP</a>
+          </div>
         </header>
 
         <div style={{

@@ -322,3 +322,108 @@ export async function runFixOrFlipAssessment(
 
   return { success: true, recommendation, efficiencyRatio, reasons };
 }
+
+// ─── Add Equipment ────────────────────────────────────────────────────────────
+const AddEquipmentSchema = z.object({
+  code:                      z.string().min(1).max(50),
+  name:                      z.string().min(1).max(150),
+  type:                      z.string().min(1).max(50),
+  make:                      z.string().max(100).optional(),
+  model:                     z.string().max(100).optional(),
+  year:                      z.number().int().min(1950).max(2100).optional(),
+  purchaseValue:             z.number().positive().optional(),
+  dailyRentalRate:           z.number().positive(),
+  fuelStandardLitersPerHour: z.number().positive(),
+});
+
+export type AddEquipmentResult =
+  | { success: true; equipmentId: string }
+  | { success: false; error: string };
+
+export async function addEquipment(
+  input: z.infer<typeof AddEquipmentSchema>,
+): Promise<AddEquipmentResult> {
+  const parsed = AddEquipmentSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  const existing = await db
+    .select({ id: equipment.id })
+    .from(equipment)
+    .where(eq(equipment.code, d.code))
+    .limit(1);
+  if (existing.length > 0) return { success: false, error: "Equipment code already exists." };
+
+  const [eq_] = await db
+    .insert(equipment)
+    .values({
+      code:                      d.code,
+      name:                      d.name,
+      type:                      d.type,
+      make:                      d.make ?? null,
+      model:                     d.model ?? null,
+      year:                      d.year ?? null,
+      purchaseValue:             d.purchaseValue != null ? String(d.purchaseValue) : null,
+      dailyRentalRate:           String(d.dailyRentalRate),
+      fuelStandardLitersPerHour: String(d.fuelStandardLitersPerHour),
+    })
+    .returning({ id: equipment.id });
+
+  revalidatePath("/motorpool");
+  return { success: true, equipmentId: eq_.id };
+}
+
+// ─── Create Equipment Assignment ──────────────────────────────────────────────
+const AssignEquipmentSchema = z.object({
+  equipmentId:  z.string().uuid(),
+  projectId:    z.string().uuid(),
+  unitId:       z.string().uuid().optional(),
+  costCenterId: z.string().uuid(),
+  operatorId:   z.string().uuid(),
+  assignedDate: z.string().date(),
+  dailyRate:    z.number().positive(),
+});
+
+export type AssignEquipmentResult =
+  | { success: true; assignmentId: string }
+  | { success: false; error: string };
+
+export async function createEquipmentAssignment(
+  input: z.infer<typeof AssignEquipmentSchema>,
+): Promise<AssignEquipmentResult> {
+  const parsed = AssignEquipmentSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  const [equip] = await db
+    .select({ status: equipment.status, isLocked: equipment.isLocked })
+    .from(equipment)
+    .where(eq(equipment.id, d.equipmentId))
+    .limit(1);
+
+  if (!equip) return { success: false, error: "Equipment not found." };
+  if (equip.isLocked) return { success: false, error: "Equipment is locked due to a failed checklist. Resolve maintenance first." };
+  if (equip.status !== "AVAILABLE") return { success: false, error: `Equipment is ${equip.status}, not AVAILABLE.` };
+
+  const [assignment] = await db
+    .insert(equipmentAssignments)
+    .values({
+      equipmentId:  d.equipmentId,
+      projectId:    d.projectId,
+      unitId:       d.unitId ?? null,
+      costCenterId: d.costCenterId,
+      operatorId:   d.operatorId,
+      assignedDate: d.assignedDate,
+      dailyRate:    String(d.dailyRate),
+      status:       "ACTIVE",
+    })
+    .returning({ id: equipmentAssignments.id });
+
+  await db
+    .update(equipment)
+    .set({ status: "DEPLOYED", updatedAt: new Date() })
+    .where(eq(equipment.id, d.equipmentId));
+
+  revalidatePath("/motorpool");
+  return { success: true, assignmentId: assignment.id };
+}
