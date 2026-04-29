@@ -26,13 +26,11 @@ import { revalidatePath } from "next/cache";
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const AutoGeneratePrSchema = z.object({
-  projectId:      z.string().uuid(),
-  unitId:         z.string().uuid(),
-  unitModel:      z.string().min(1),
-  activityCode:   z.string().min(1),
-  category:       z.enum(["STRUCTURAL", "ARCHITECTURAL", "TURNOVER"]),
+  projectId:        z.string().uuid(),
+  unitId:           z.string().uuid(),
+  activityDefId:    z.string().uuid(),
   taskAssignmentId: z.string().uuid().optional(),
-  requestedBy:    z.string().uuid(),
+  requestedBy:      z.string().uuid(),
 });
 
 export type AutoGeneratePrResult =
@@ -41,7 +39,7 @@ export type AutoGeneratePrResult =
 
 /**
  * Auto-generates a Purchase Requisition from the Master BOM for a given
- * unit model + activity, netting out existing stock on hand.
+ * activity definition, netting out existing stock on hand.
  */
 export async function autoGeneratePurchaseRequisition(
   input: z.infer<typeof AutoGeneratePrSchema>,
@@ -49,10 +47,9 @@ export async function autoGeneratePurchaseRequisition(
   const parsed = AutoGeneratePrSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Invalid input." };
 
-  const { projectId, unitId, unitModel, activityCode, category, taskAssignmentId, requestedBy } =
-    parsed.data;
+  const { projectId, unitId, activityDefId, taskAssignmentId, requestedBy } = parsed.data;
 
-  // ── 1. Fetch BOM standard for this unit model + activity ──────────────────
+  // ── 1. Fetch BOM standard for this activity ───────────────────────────────
   const bomItems = await db
     .select({
       materialId:      bomStandards.materialId,
@@ -64,17 +61,14 @@ export async function autoGeneratePurchaseRequisition(
     .innerJoin(materials, eq(materials.id, bomStandards.materialId))
     .where(
       and(
-        eq(bomStandards.projectId, projectId),
-        eq(bomStandards.unitModel, unitModel),
-        eq(bomStandards.activityCode, activityCode),
-        eq(bomStandards.category, category as any),
+        eq(bomStandards.activityDefId, activityDefId),
         eq(bomStandards.isActive, true),
         eq(materials.isActive, true),
       ),
     );
 
   if (bomItems.length === 0) {
-    return { success: false, error: `No active BOM found for model '${unitModel}', activity '${activityCode}'.` };
+    return { success: false, error: `No active BOM found for the selected activity.` };
   }
 
   // ── 2. Fetch current stock for each material ──────────────────────────────
