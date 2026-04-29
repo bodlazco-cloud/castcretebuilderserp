@@ -203,13 +203,22 @@ export default async function FinancePage() {
           </a>
         </div>
 
-        <header style={{ marginBottom: "2rem" }}>
-          <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>
-            Finance & Accounting
-          </h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-            Invoices · Payables · Cash Flow
-          </p>
+        <header style={{ marginBottom: "1.5rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>
+              Finance & Accounting
+            </h1>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
+              Invoices · Payables · Cash Flow
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+            <a href="/procurement/price-change" style={{
+              padding: "0.55rem 1rem", borderRadius: "6px",
+              background: "#fff", color: "#ff5a1f", fontSize: "0.82rem", fontWeight: 600,
+              textDecoration: "none", border: "1px solid #ff5a1f",
+            }}>Approve Price Changes</a>
+          </div>
         </header>
 
         <div style={{

@@ -125,6 +125,11 @@ export default async function MotorpoolPage() {
               padding: "0.55rem 1rem", borderRadius: "6px",
               background: ACCENT, color: "#fff", fontSize: "0.82rem", fontWeight: 600, textDecoration: "none",
             }}>+ Add Equipment</a>
+            <a href="/motorpool/assign" style={{
+              padding: "0.55rem 1rem", borderRadius: "6px",
+              background: "#fff", color: ACCENT, fontSize: "0.82rem", fontWeight: 600,
+              textDecoration: "none", border: `1px solid ${ACCENT}`,
+            }}>Assign Equipment</a>
             <a href="/motorpool/log-fuel" style={{
               padding: "0.55rem 1rem", borderRadius: "6px",
               background: "#fff", color: ACCENT, fontSize: "0.82rem", fontWeight: 600,

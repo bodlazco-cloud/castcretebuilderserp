@@ -1,14 +1,14 @@
 import { getAuthUser } from "@/lib/supabase-server";
 
 const DEPARTMENTS = [
-  { label: "Planning & Engineering",  href: "/planning",     color: "#1a56db", desc: "BOM · Resource Forecast · Schedule" },
-  { label: "Audit & Quality",          href: "/audit",        color: "#7e3af2", desc: "PO Compliance · Triple Match · Inspections" },
-  { label: "Construction (Sites)",     href: "/construction", color: "#057a55", desc: "NTPs · Daily Progress · WAR" },
-  { label: "Procurement & Stock",      href: "/procurement",  color: "#e3a008", desc: "PRs · POs · Inventory · Transfers" },
-  { label: "Batching Plant",           href: "/batching",     color: "#e02424", desc: "Mix Design · Yield · Internal Sales" },
-  { label: "Motorpool",                href: "/motorpool",    color: "#0694a2", desc: "Equipment · Rentals · Fix-or-Flip" },
-  { label: "Finance & Accounting",     href: "/finance",      color: "#ff5a1f", desc: "Invoices · Payables · Cash Flow" },
-  { label: "HR & Payroll",             href: "/hr",           color: "#6b7280", desc: "Employees · DTR · Payroll" },
+  { label: "Planning & Engineering",  href: "/planning",     color: "#1a56db", desc: "BOM · Resource Forecast · Schedule",     codes: ["PLANNING","AUDIT","ADMIN","BOD"] },
+  { label: "Audit & Quality",          href: "/audit",        color: "#7e3af2", desc: "PO Compliance · Triple Match · Inspections", codes: ["AUDIT","ADMIN","BOD"] },
+  { label: "Construction (Sites)",     href: "/construction", color: "#057a55", desc: "NTPs · Daily Progress · WAR",             codes: ["CONSTRUCTION","PLANNING","AUDIT","ADMIN","BOD"] },
+  { label: "Procurement & Stock",      href: "/procurement",  color: "#e3a008", desc: "PRs · POs · Inventory · Transfers",      codes: ["PROCUREMENT","PLANNING","AUDIT","FINANCE","ADMIN","BOD"] },
+  { label: "Batching Plant",           href: "/batching",     color: "#e02424", desc: "Mix Design · Yield · Internal Sales",    codes: ["BATCHING","AUDIT","PLANNING","ADMIN","BOD"] },
+  { label: "Motorpool",                href: "/motorpool",    color: "#0694a2", desc: "Equipment · Rentals · Fix-or-Flip",      codes: ["MOTORPOOL","AUDIT","ADMIN","BOD"] },
+  { label: "Finance & Accounting",     href: "/finance",      color: "#ff5a1f", desc: "Invoices · Payables · Cash Flow",        codes: ["FINANCE","AUDIT","ADMIN","BOD"] },
+  { label: "HR & Payroll",             href: "/hr",           color: "#6b7280", desc: "Employees · DTR · Payroll",              codes: ["HR","ADMIN","BOD"] },
 ];
 
 export default async function DashboardPage({
@@ -83,10 +83,10 @@ export default async function DashboardPage({
 
         <header style={{ marginBottom: "2rem" }}>
           <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700 }}>
-            BOD Dashboard
+            {deptCode ? `${deptCode} Dashboard` : "Dashboard"}
           </h1>
           <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-            Select a department to view its KPI overview
+            Select a module to view its KPI overview
           </p>
         </header>
 
@@ -95,7 +95,7 @@ export default async function DashboardPage({
           gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
           gap: "1rem",
         }}>
-          {DEPARTMENTS.map((dept) => (
+          {DEPARTMENTS.filter((dept) => !deptCode || dept.codes.includes(deptCode)).map((dept) => (
             <a
               key={dept.href}
               href={dept.href}
