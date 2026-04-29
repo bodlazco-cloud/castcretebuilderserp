@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
     "*.spock.replit.dev",
     "*.replit.dev",
   ],
+  async redirects() {
+    return [
+      { source: "/dashboard", destination: "/main-dashboard", permanent: true },
+    ];
+  },
   experimental: {
     serverActions: {
       allowedOrigins: [
@@ -12,6 +17,7 @@ const nextConfig: NextConfig = {
         "*.spock.replit.dev",
         "*.replit.dev",
         "castcretebuilderserp-cbi-lesley.replit.app",
+        "castcretebuilderserp.replit.app",
       ],
     },
   },
