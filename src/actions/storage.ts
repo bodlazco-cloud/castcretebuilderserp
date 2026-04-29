@@ -1,10 +1,8 @@
 "use server";
 
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { z } from "zod";
 
-// ─── Bucket names ─────────────────────────────────────────────────────────────
 export const BUCKETS = {
   SITE_PHOTOS:   "site-photos",
   DOCUMENTS:     "documents",
@@ -14,8 +12,6 @@ export const BUCKETS = {
 
 type BucketName = (typeof BUCKETS)[keyof typeof BUCKETS];
 
-// ─── Permission matrix ────────────────────────────────────────────────────────
-// Maps which departments may upload to which buckets.
 const BUCKET_PERMISSIONS: Record<BucketName, string[]> = {
   [BUCKETS.SITE_PHOTOS]: ["CONSTRUCTION", "AUDIT"],
   [BUCKETS.DOCUMENTS]:   ["CONSTRUCTION", "PROCUREMENT", "FINANCE", "AUDIT", "HR"],
@@ -24,24 +20,15 @@ const BUCKET_PERMISSIONS: Record<BucketName, string[]> = {
 };
 
 const UploadSchema = z.object({
-  bucket:    z.enum([BUCKETS.SITE_PHOTOS, BUCKETS.DOCUMENTS, BUCKETS.NTP, BUCKETS.PROFORMA]),
-  folder:    z.string().min(1),   // e.g. "projects/{projectId}/units/{unitId}"
-  fileName:  z.string().min(1),
+  bucket:   z.enum([BUCKETS.SITE_PHOTOS, BUCKETS.DOCUMENTS, BUCKETS.NTP, BUCKETS.PROFORMA]),
+  folder:   z.string().min(1),
+  fileName: z.string().min(1),
 });
 
 export type UploadResult =
   | { success: true; path: string; publicUrl: string }
   | { success: false; error: string };
 
-/**
- * Upload a file to Supabase Storage and return the stored path.
- * The path is saved in the relevant Drizzle table column (e.g. milestone_documents.file_url).
- *
- * Security:
- *  - Supabase Auth session is verified server-side.
- *  - Department-level bucket permission is enforced before upload.
- *  - File type is restricted to images and PDFs.
- */
 export async function uploadFile(
   formData: FormData,
   meta: z.infer<typeof UploadSchema>,
@@ -53,32 +40,19 @@ export async function uploadFile(
 
   const { bucket, folder, fileName } = parsed.data;
 
-  // ── Auth: get the calling user's session ────────────────────────────────────
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll(); },
-        setAll: () => {},
-      },
-    },
-  );
+  const supabase = await createSupabaseServerClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return { success: false, error: "Unauthenticated." };
   }
 
-  // ── Permission: check department bucket access ───────────────────────────────
   const userDept: string = user.user_metadata?.dept_code ?? "";
   const allowedDepts = BUCKET_PERMISSIONS[bucket];
   if (!allowedDepts.includes(userDept)) {
     return { success: false, error: `Department '${userDept}' cannot upload to '${bucket}'.` };
   }
 
-  // ── File validation ──────────────────────────────────────────────────────────
   const file = formData.get("file");
   if (!(file instanceof File)) {
     return { success: false, error: "No file provided." };
@@ -89,17 +63,14 @@ export async function uploadFile(
     return { success: false, error: "Only JPEG, PNG, WEBP, and PDF files are allowed." };
   }
 
-  const MAX_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
-  if (file.size > MAX_SIZE_BYTES) {
+  if (file.size > 20 * 1024 * 1024) {
     return { success: false, error: "File exceeds the 20 MB size limit." };
   }
 
-  // ── Build a collision-resistant path ─────────────────────────────────────────
   const ext = file.name.split(".").pop() ?? "bin";
   const safeName = `${Date.now()}_${fileName.replace(/[^a-z0-9_\-\.]/gi, "_")}.${ext}`;
   const storagePath = `${folder}/${safeName}`;
 
-  // ── Upload ───────────────────────────────────────────────────────────────────
   const { error: uploadError } = await supabase.storage
     .from(bucket)
     .upload(storagePath, file, { upsert: false, contentType: file.type });
