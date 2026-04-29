@@ -144,8 +144,14 @@ const NAV: NavSection[] = [
   {
     title: "Administration",
     items: [
-      { label: "Overview",        href: "/admin" },
-      { label: "User Management", href: "/admin/users" },
+      { label: "Overview",              href: "/admin" },
+      { label: "User Management",       href: "/admin/users" },
+      { label: "Materials & Pricing",   href: "/admin/materials" },
+      { label: "Suppliers",             href: "/admin/suppliers" },
+      { label: "Activity Definitions",  href: "/admin/activity-defs" },
+      { label: "Milestone Definitions", href: "/admin/milestone-defs" },
+      { label: "BOM Standards",         href: "/admin/bom-standards" },
+      { label: "Developer Rate Cards",  href: "/admin/rate-cards" },
     ],
   },
 ];
