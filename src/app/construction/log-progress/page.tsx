@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { getAuthUser } from "@/lib/supabase-server";
 import { db } from "@/db";
 import * as schema from "@/db/schema";

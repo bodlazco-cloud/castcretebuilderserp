@@ -1,3 +1,4 @@
+export const dynamic = "force-dynamic";
 import { getAuthUser } from "@/lib/supabase-server";
 
 const DEPARTMENTS = [
