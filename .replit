@@ -5,7 +5,8 @@ entrypoint = "src/app/page.tsx"
 channel = "stable-24_05"
 
 [deployment]
-run = ["sh", "-c", "npm run build && npm run start"]
+build = ["sh", "-c", "npm run build"]
+run = ["sh", "-c", "npm run start"]
 deploymentTarget = "cloudrun"
 
 [[ports]]
