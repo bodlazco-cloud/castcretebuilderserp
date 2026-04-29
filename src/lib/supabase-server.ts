@@ -14,7 +14,8 @@ export async function createSupabaseServerClient() {
     {
       cookies: {
         getAll()          { return cookieStore.getAll(); },
-        setAll(toSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setAll(toSet: { name: string; value: string; options?: any }[]) {
           toSet.forEach(({ name, value, options }) =>
             cookieStore.set(name, value, options),
           );
