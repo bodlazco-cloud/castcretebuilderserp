@@ -45,11 +45,7 @@ export const materialPriceHistory = pgTable("material_price_history", {
 
 export const bomStandards = pgTable("bom_standards", {
   id:               uuid("id").primaryKey().defaultRandom(),
-  projectId:        uuid("project_id").notNull().references(() => projects.id),
-  unitModel:        varchar("unit_model", { length: 50 }).notNull(),
-  category:         workCategoryEnum("category").notNull(),
-  scopeCode:        varchar("scope_code", { length: 100 }).notNull(),
-  activityCode:     varchar("activity_code", { length: 100 }).notNull(),
+  activityDefId:    uuid("activity_def_id").notNull().references(() => activityDefinitions.id),
   materialId:       uuid("material_id").notNull().references(() => materials.id),
   quantityPerUnit:  numeric("quantity_per_unit", { precision: 15, scale: 4 }).notNull(),
   version:          integer("version").notNull().default(1),
