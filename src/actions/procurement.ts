@@ -6,10 +6,12 @@ import {
   purchaseRequisitions, purchaseRequisitionItems,
   purchaseOrders, purchaseOrderItems,
   poPriceChangeRequests, suppliers,
+  materialReceivingReports, mrrItems, inventoryLedger,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { getAuthUser } from "@/lib/supabase-server";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE II — Auto-populate PO from Master BOM
@@ -327,4 +329,180 @@ export async function approvePriceChange(
 
   revalidatePath("/procurement");
   return { success: true };
+}
+
+// ─── PR Approval / Rejection ──────────────────────────────────────────────────
+
+export type SimpleResult = { success: boolean; error?: string };
+
+export async function approvePr(id: string): Promise<SimpleResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+  await db
+    .update(purchaseRequisitions)
+    .set({ status: "APPROVED", approvedBy: user.id, approvedAt: new Date() })
+    .where(eq(purchaseRequisitions.id, id));
+  revalidatePath(`/procurement/pr/${id}`);
+  revalidatePath("/procurement/pr");
+  return { success: true };
+}
+
+export async function rejectPr(id: string, reason: string): Promise<SimpleResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+  await db
+    .update(purchaseRequisitions)
+    .set({ status: "REJECTED", approvedBy: user.id, approvedAt: new Date(), rejectionReason: reason })
+    .where(eq(purchaseRequisitions.id, id));
+  revalidatePath(`/procurement/pr/${id}`);
+  revalidatePath("/procurement/pr");
+  return { success: true };
+}
+
+export async function submitPr(id: string): Promise<SimpleResult> {
+  await db
+    .update(purchaseRequisitions)
+    .set({ status: "PENDING_REVIEW" })
+    .where(eq(purchaseRequisitions.id, id));
+  revalidatePath(`/procurement/pr/${id}`);
+  revalidatePath("/procurement/pr");
+  return { success: true };
+}
+
+// ─── PO Status Transitions ────────────────────────────────────────────────────
+
+export async function advancePoToAudit(poId: string): Promise<SimpleResult> {
+  await db
+    .update(purchaseOrders)
+    .set({ status: "AUDIT_REVIEW" })
+    .where(eq(purchaseOrders.id, poId));
+  revalidatePath(`/procurement/po/${poId}`);
+  revalidatePath("/procurement/po");
+  return { success: true };
+}
+
+export async function bodApprovePo(poId: string): Promise<SimpleResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+  await db
+    .update(purchaseOrders)
+    .set({ status: "AWAITING_DELIVERY", bodApprovedBy: user.id, bodApprovedAt: new Date() })
+    .where(eq(purchaseOrders.id, poId));
+  revalidatePath(`/procurement/po/${poId}`);
+  revalidatePath("/procurement/po");
+  return { success: true };
+}
+
+export async function markPoDelivered(poId: string): Promise<SimpleResult> {
+  await db
+    .update(purchaseOrders)
+    .set({ status: "DELIVERED", deliveredAt: new Date() })
+    .where(eq(purchaseOrders.id, poId));
+  revalidatePath(`/procurement/po/${poId}`);
+  revalidatePath("/procurement/po");
+  return { success: true };
+}
+
+// ─── Material Receiving Report ────────────────────────────────────────────────
+
+const CreateMrrSchema = z.object({
+  poId:         z.string().uuid().optional(),
+  projectId:    z.string().uuid(),
+  supplierId:   z.string().uuid().optional(),
+  sourceType:   z.enum(["SUPPLIER", "DEVELOPER_OSM"]),
+  receivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  notes:        z.string().max(1000).optional(),
+  items: z.array(z.object({
+    materialId:       z.string().uuid(),
+    quantityReceived: z.number().positive(),
+    unitPrice:        z.number().min(0),
+    shadowPrice:      z.number().min(0).default(0),
+  })).min(1),
+});
+
+export type CreateMrrResult = { success: true; mrrId: string } | { success: false; error: string };
+
+export async function createMrr(input: z.infer<typeof CreateMrrSchema>): Promise<CreateMrrResult> {
+  const parsed = CreateMrrSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { poId, projectId, supplierId, sourceType, receivedDate, notes, items } = parsed.data;
+
+  const [mrr] = await db
+    .insert(materialReceivingReports)
+    .values({
+      poId:         poId ?? null,
+      projectId,
+      supplierId:   supplierId ?? null,
+      sourceType,
+      receivedDate,
+      receivedBy:   user.id,
+      notes:        notes ?? null,
+      status:       "PENDING",
+    })
+    .returning({ id: materialReceivingReports.id });
+
+  await db.insert(mrrItems).values(
+    items.map((item) => ({
+      mrrId:            mrr.id,
+      materialId:       item.materialId,
+      quantityReceived: String(item.quantityReceived),
+      unitPrice:        String(item.unitPrice),
+      shadowPrice:      String(item.shadowPrice),
+    })),
+  );
+
+  // Post to inventory ledger (one batch per MRR item)
+  await db.insert(inventoryLedger).values(
+    items.map((item) => ({
+      materialId:        item.materialId,
+      projectId,
+      mrrId:             mrr.id,
+      sourceType,
+      quantityReceived:  String(item.quantityReceived),
+      quantityRemaining: String(item.quantityReceived),
+      unitPrice:         String(item.unitPrice),
+      shadowPrice:       String(item.shadowPrice),
+    })),
+  );
+
+  // Update inventoryStock (upsert-like: update if exists, insert if not)
+  for (const item of items) {
+    const [existing] = await db
+      .select({ id: inventoryStock.id })
+      .from(inventoryStock)
+      .where(and(eq(inventoryStock.materialId, item.materialId), eq(inventoryStock.projectId, projectId)));
+
+    if (existing) {
+      await db
+        .update(inventoryStock)
+        .set({
+          quantityOnHand: sql`${inventoryStock.quantityOnHand} + ${String(item.quantityReceived)}`,
+          lastUpdated: new Date(),
+        })
+        .where(eq(inventoryStock.id, existing.id));
+    } else {
+      await db.insert(inventoryStock).values({
+        materialId:       item.materialId,
+        projectId,
+        quantityOnHand:   String(item.quantityReceived),
+        quantityReserved: "0",
+      });
+    }
+  }
+
+  // Mark the linked PO as delivered if all items received
+  if (poId) {
+    await db
+      .update(purchaseOrders)
+      .set({ status: "DELIVERED", deliveredAt: new Date() })
+      .where(eq(purchaseOrders.id, poId));
+  }
+
+  revalidatePath("/procurement/receipts-and-transfers");
+  revalidatePath("/procurement/inventory");
+  return { success: true, mrrId: mrr.id };
 }
