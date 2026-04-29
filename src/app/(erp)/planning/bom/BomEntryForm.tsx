@@ -85,8 +85,12 @@ export function BomEntryForm({ projects, sowItems, materials, vendors }: {
         items,
       });
       if (result.success) {
-        setSuccess(`Saved ${result.inserted} BOM line(s). Previous entries for this scope were versioned out.`);
+        setSuccess(`Saved ${result.inserted} BOM line(s). Previous entries for this scope were versioned out. `);
         setLines([{ materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" }]);
+        setSelectedProject("");
+        setSelectedSow("");
+        setUnitModel("");
+        setUnitType("");
       } else {
         setError(result.error);
       }
@@ -225,7 +229,7 @@ export function BomEntryForm({ projects, sowItems, materials, vendors }: {
       </div>
 
       <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
-        <a href="/planning" style={{
+        <a href="/planning/bom" style={{
           padding: "0.65rem 1.25rem", borderRadius: "6px", border: "1px solid #d1d5db",
           color: "#374151", fontSize: "0.9rem", textDecoration: "none", display: "inline-flex", alignItems: "center",
         }}>Cancel</a>
