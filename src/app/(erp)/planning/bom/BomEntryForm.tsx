@@ -3,9 +3,10 @@
 import { useState, useTransition } from "react";
 import { saveBomEntries } from "@/actions/planning";
 
-type Project    = { id: string; name: string };
-type Activity   = { id: string; projectId: string; scopeName: string; activityName: string; activityCode: string };
-type Material   = { id: string; code: string; name: string; unit: string };
+type Project  = { id: string; name: string };
+type SowItem  = { id: string; projectId: string; scopeName: string; activityCode: string };
+type Material = { id: string; code: string; name: string; unit: string };
+type Vendor   = { id: string; name: string };
 
 const ACCENT = "#1a56db";
 const inputStyle: React.CSSProperties = {
@@ -16,60 +17,76 @@ const labelStyle: React.CSSProperties = {
   display: "block", fontSize: "0.82rem", fontWeight: 600, color: "#374151", marginBottom: "0.35rem",
 };
 
-const UNIT_MODELS = ["Type A", "Type B", "Type C", "Type D", "Type E", "Type F", "Other"];
-const UNIT_TYPES  = [
+const UNIT_TYPES = [
   { value: "BEG", label: "BEG — Beginning Unit" },
   { value: "REG", label: "REG — Regular Unit" },
   { value: "END", label: "END — End Unit" },
 ];
 
-export function BomEntryForm({ projects, activities, materials }: {
-  projects:   Project[];
-  activities: Activity[];
-  materials:  Material[];
+type LineItem = { materialId: string; qty: string; unitPrice: string; preferredSupplierId: string };
+
+export function BomEntryForm({ projects, sowItems, materials, vendors }: {
+  projects:  Project[];
+  sowItems:  SowItem[];
+  materials: Material[];
+  vendors:   Vendor[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [error,   setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [selectedProject,  setSelectedProject]  = useState("");
-  const [selectedActivity, setSelectedActivity] = useState("");
-  const [unitModel,        setUnitModel]         = useState("");
-  const [unitType,         setUnitType]          = useState("");
-  const [lines, setLines] = useState([{ materialId: "", qty: "" }]);
+  const [selectedProject, setSelectedProject] = useState("");
+  const [selectedSow,     setSelectedSow]     = useState("");
+  const [unitModel,       setUnitModel]        = useState("");
+  const [unitType,        setUnitType]         = useState("");
+  const [lines, setLines] = useState<LineItem[]>([
+    { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" },
+  ]);
 
-  const filteredActivities = activities.filter((a) => a.projectId === selectedProject);
+  const filteredSow = sowItems.filter((s) => s.projectId === selectedProject);
 
-  function addLine()    { setLines((l) => [...l, { materialId: "", qty: "" }]); }
+  function addLine() {
+    setLines((l) => [...l, { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" }]);
+  }
   function removeLine(i: number) { setLines((l) => l.filter((_, idx) => idx !== i)); }
-  function setLine(i: number, field: "materialId" | "qty", val: string) {
+  function setLine(i: number, field: keyof LineItem, val: string) {
     setLines((l) => l.map((line, idx) => idx === i ? { ...line, [field]: val } : line));
+  }
+  function lineTotal(line: LineItem) {
+    const q = parseFloat(line.qty);
+    const p = parseFloat(line.unitPrice);
+    if (!isNaN(q) && !isNaN(p)) return (q * p).toLocaleString("en-PH", { minimumFractionDigits: 2 });
+    return "—";
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
+    setError(null); setSuccess(null);
 
     const items = lines
       .filter((l) => l.materialId && l.qty)
-      .map((l) => ({ materialId: l.materialId, quantityPerUnit: Number(l.qty) }));
+      .map((l) => ({
+        materialId: l.materialId,
+        quantityPerUnit: Number(l.qty),
+        unitPrice: l.unitPrice ? Number(l.unitPrice) : undefined,
+        preferredSupplierId: l.preferredSupplierId || undefined,
+      }));
 
-    if (!selectedActivity || !unitModel || !unitType || items.length === 0) {
+    if (!selectedSow || !unitModel || !unitType || items.length === 0) {
       setError("Please fill in all required fields and at least one material line.");
       return;
     }
 
     startTransition(async () => {
       const result = await saveBomEntries({
-        activityDefId: selectedActivity,
+        activityDefId: selectedSow,
         unitModel,
         unitType: unitType as "BEG" | "REG" | "END",
         items,
       });
       if (result.success) {
         setSuccess(`Saved ${result.inserted} BOM line(s). Previous entries for this scope were versioned out.`);
-        setLines([{ materialId: "", qty: "" }]);
+        setLines([{ materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" }]);
       } else {
         setError(result.error);
       }
@@ -89,38 +106,40 @@ export function BomEntryForm({ projects, activities, materials }: {
         </div>
       )}
 
-      {/* Scope selectors */}
+      {/* Project + Scope */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Project / Site *</span>
           <select required style={inputStyle} value={selectedProject}
-            onChange={(e) => { setSelectedProject(e.target.value); setSelectedActivity(""); }}>
+            onChange={(e) => { setSelectedProject(e.target.value); setSelectedSow(""); }}>
             <option value="">Select project…</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </label>
         <label>
-          <span style={labelStyle}>Scope of Work / Activity *</span>
-          <select required style={inputStyle} value={selectedActivity}
-            onChange={(e) => setSelectedActivity(e.target.value)}
+          <span style={labelStyle}>Scope of Work *</span>
+          <select required style={inputStyle} value={selectedSow}
+            onChange={(e) => setSelectedSow(e.target.value)}
             disabled={!selectedProject}>
-            <option value="">Select activity…</option>
-            {filteredActivities.map((a) => (
-              <option key={a.id} value={a.id}>
-                [{a.activityCode}] {a.scopeName} → {a.activityName}
-              </option>
+            <option value="">Select scope…</option>
+            {filteredSow.map((s) => (
+              <option key={s.id} value={s.id}>[{s.activityCode}] {s.scopeName}</option>
             ))}
           </select>
         </label>
       </div>
 
+      {/* Unit Model (free-text, project-specific) + Unit Type */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Unit Model *</span>
-          <select required style={inputStyle} value={unitModel} onChange={(e) => setUnitModel(e.target.value)}>
-            <option value="">Select model…</option>
-            {UNIT_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
+          <input
+            type="text" required placeholder="e.g. Type A, 2BR-Corner, Studio…"
+            style={inputStyle} value={unitModel}
+            onChange={(e) => setUnitModel(e.target.value)} />
+          <span style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.2rem", display: "block" }}>
+            Enter the unit model as defined for this project
+          </span>
         </label>
         <label>
           <span style={labelStyle}>Unit Type *</span>
@@ -131,7 +150,7 @@ export function BomEntryForm({ projects, activities, materials }: {
         </label>
       </div>
 
-      {/* Material lines */}
+      {/* Materials table */}
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
           <span style={{ ...labelStyle, marginBottom: 0 }}>Materials *</span>
@@ -142,43 +161,66 @@ export function BomEntryForm({ projects, activities, materials }: {
         </div>
 
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "6px", overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-            <thead>
-              <tr style={{ background: "#f9fafb" }}>
-                <th style={{ padding: "0.6rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>Material</th>
-                <th style={{ padding: "0.6rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb", width: "140px" }}>Qty / Unit</th>
-                <th style={{ padding: "0.6rem 1rem", borderBottom: "1px solid #e5e7eb", width: "48px" }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line, i) => (
-                <tr key={i} style={{ borderBottom: i < lines.length - 1 ? "1px solid #f3f4f6" : "none" }}>
-                  <td style={{ padding: "0.5rem 1rem" }}>
-                    <select value={line.materialId} onChange={(e) => setLine(i, "materialId", e.target.value)}
-                      style={{ ...inputStyle, margin: 0 }}>
-                      <option value="">Select material…</option>
-                      {materials.map((m) => (
-                        <option key={m.id} value={m.id}>{m.code} — {m.name} ({m.unit})</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td style={{ padding: "0.5rem 1rem" }}>
-                    <input type="number" min="0.0001" step="0.0001" value={line.qty}
-                      onChange={(e) => setLine(i, "qty", e.target.value)}
-                      placeholder="0.0000"
-                      style={{ ...inputStyle, margin: 0 }} />
-                  </td>
-                  <td style={{ padding: "0.5rem", textAlign: "center" }}>
-                    {lines.length > 1 && (
-                      <button type="button" onClick={() => removeLine(i)} style={{
-                        background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: "1rem", lineHeight: 1,
-                      }}>✕</button>
-                    )}
-                  </td>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "720px" }}>
+              <thead>
+                <tr style={{ background: "#f9fafb" }}>
+                  {["Material", "Qty / Unit", "Unit Price (PHP)", "Total", "Preferred Supplier", ""].map((h, i) => (
+                    <th key={i} style={{
+                      padding: "0.6rem 0.75rem", textAlign: "left", fontWeight: 600,
+                      color: "#374151", borderBottom: "1px solid #e5e7eb",
+                      width: i === 5 ? "40px" : i === 3 ? "100px" : undefined,
+                    }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {lines.map((line, i) => (
+                  <tr key={i} style={{ borderBottom: i < lines.length - 1 ? "1px solid #f3f4f6" : "none" }}>
+                    <td style={{ padding: "0.5rem 0.75rem" }}>
+                      <select value={line.materialId} onChange={(e) => setLine(i, "materialId", e.target.value)}
+                        style={{ ...inputStyle, margin: 0 }}>
+                        <option value="">Select material…</option>
+                        {materials.map((m) => (
+                          <option key={m.id} value={m.id}>{m.code} — {m.name} ({m.unit})</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ padding: "0.5rem 0.75rem" }}>
+                      <input type="number" min="0.0001" step="0.0001" value={line.qty}
+                        onChange={(e) => setLine(i, "qty", e.target.value)}
+                        placeholder="0.0000" style={{ ...inputStyle, margin: 0 }} />
+                    </td>
+                    <td style={{ padding: "0.5rem 0.75rem" }}>
+                      <input type="number" min="0" step="0.01" value={line.unitPrice}
+                        onChange={(e) => setLine(i, "unitPrice", e.target.value)}
+                        placeholder="0.00" style={{ ...inputStyle, margin: 0 }} />
+                    </td>
+                    <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
+                      {lineTotal(line)}
+                    </td>
+                    <td style={{ padding: "0.5rem 0.75rem" }}>
+                      <select value={line.preferredSupplierId}
+                        onChange={(e) => setLine(i, "preferredSupplierId", e.target.value)}
+                        style={{ ...inputStyle, margin: 0 }}>
+                        <option value="">No preference</option>
+                        {vendors.map((v) => (
+                          <option key={v.id} value={v.id}>{v.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ padding: "0.5rem", textAlign: "center" }}>
+                      {lines.length > 1 && (
+                        <button type="button" onClick={() => removeLine(i)} style={{
+                          background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: "1rem",
+                        }}>✕</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

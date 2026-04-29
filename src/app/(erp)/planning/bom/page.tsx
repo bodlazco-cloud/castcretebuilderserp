@@ -8,7 +8,7 @@ import { BomEntryForm } from "./BomEntryForm";
 export default async function BomEntryPage() {
   await getAuthUser();
 
-  const [projectRows, activityRows, materialRows] = await Promise.all([
+  const [projectRows, sowRows, materialRows, vendorRows] = await Promise.all([
     db.select({ id: schema.projects.id, name: schema.projects.name })
       .from(schema.projects)
       .orderBy(schema.projects.name),
@@ -16,7 +16,6 @@ export default async function BomEntryPage() {
         id:           schema.activityDefinitions.id,
         projectId:    schema.activityDefinitions.projectId,
         scopeName:    schema.activityDefinitions.scopeName,
-        activityName: schema.activityDefinitions.activityName,
         activityCode: schema.activityDefinitions.activityCode,
       })
       .from(schema.activityDefinitions)
@@ -26,6 +25,10 @@ export default async function BomEntryPage() {
       .from(schema.materials)
       .where(eq(schema.materials.isActive, true))
       .orderBy(schema.materials.code),
+    db.select({ id: schema.suppliers.id, name: schema.suppliers.name })
+      .from(schema.suppliers)
+      .where(eq(schema.suppliers.isActive, true))
+      .orderBy(schema.suppliers.name),
   ]);
 
   const ACCENT = "#1a56db";
@@ -56,7 +59,7 @@ export default async function BomEntryPage() {
             Bill of Materials Entry
           </h1>
           <p style={{ margin: "0 0 0 1.25rem", color: "#6b7280", fontSize: "0.9rem" }}>
-            Define material quantities per activity, unit model, and unit type. Existing entries for the same scope are versioned out automatically.
+            Define material quantities per scope of work, unit model, and unit type. Existing entries for the same scope are versioned out automatically.
           </p>
         </header>
 
@@ -66,8 +69,9 @@ export default async function BomEntryPage() {
         }}>
           <BomEntryForm
             projects={projectRows}
-            activities={activityRows}
+            sowItems={sowRows}
             materials={materialRows}
+            vendors={vendorRows}
           />
         </div>
       </div>
