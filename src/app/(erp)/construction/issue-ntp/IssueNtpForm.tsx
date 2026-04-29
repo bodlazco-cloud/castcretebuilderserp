@@ -51,7 +51,7 @@ export function IssueNtpForm({
         issuedBy:   userId,
       });
       if (result.success) {
-        router.push("/construction");
+        router.push(`/construction/ntp/${result.taskAssignmentId}`);
       } else {
         setError(result.error);
       }

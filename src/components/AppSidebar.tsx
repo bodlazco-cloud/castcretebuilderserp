@@ -52,6 +52,7 @@ const NAV: NavSection[] = [
       { label: "Issue NTP",            href: "/construction/issue-ntp" },
       { label: "Daily Progress",       href: "/construction/daily-progress" },
       { label: "Log Progress",         href: "/construction/log-progress" },
+      { label: "WAR Register",         href: "/construction/war" },
       { label: "Submit WAR",           href: "/construction/submit-war" },
       { label: "Reports",              isDivider: true },
       { label: "Site Profitability",   href: "/construction/reports/site-profitability-report" },

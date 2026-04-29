@@ -3,7 +3,7 @@
 import { db } from "@/db";
 import {
   developers, projects, materials, suppliers,
-  subcontractors, activityDefinitions,
+  subcontractors, activityDefinitions, blocks, projectUnits,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -222,5 +222,65 @@ export async function createActivityDefinition(
     .returning({ id: activityDefinitions.id });
 
   revalidatePath("/master-list/sow");
+  return { success: true, id: row.id };
+}
+
+// ─── Project BOD Approval ──────────────────────────────────────────────────
+
+export async function approveProject(id: string): Promise<{ success: boolean; error?: string }> {
+  const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, id));
+  if (!project) return { success: false, error: "Project not found." };
+
+  await db.update(projects).set({
+    status: "ACTIVE",
+    bodApprovedAt: new Date(),
+  }).where(eq(projects.id, id));
+
+  revalidatePath(`/master-list/projects/${id}`);
+  return { success: true };
+}
+
+// ─── Blocks ────────────────────────────────────────────────────────────────
+
+const BlockSchema = z.object({
+  projectId: z.string().uuid(),
+  blockName: z.string().min(1).max(50),
+  totalLots: z.number().int().positive(),
+});
+
+export async function createBlock(input: z.infer<typeof BlockSchema>): Promise<MutationResult> {
+  const parsed = BlockSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const [row] = await db
+    .insert(blocks)
+    .values({ projectId: parsed.data.projectId, blockName: parsed.data.blockName, totalLots: parsed.data.totalLots })
+    .returning({ id: blocks.id });
+
+  revalidatePath(`/master-list/projects/${parsed.data.projectId}`);
+  return { success: true, id: row.id };
+}
+
+// ─── Project Units ─────────────────────────────────────────────────────────
+
+const ProjectUnitSchema = z.object({
+  projectId: z.string().uuid(),
+  blockId:   z.string().uuid(),
+  lotNumber: z.string().min(1).max(20),
+  unitCode:  z.string().min(1).max(50),
+  unitModel: z.string().min(1).max(50),
+});
+
+export async function createProjectUnit(input: z.infer<typeof ProjectUnitSchema>): Promise<MutationResult> {
+  const parsed = ProjectUnitSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db
+    .insert(projectUnits)
+    .values({ projectId: d.projectId, blockId: d.blockId, lotNumber: d.lotNumber, unitCode: d.unitCode, unitModel: d.unitModel })
+    .returning({ id: projectUnits.id });
+
+  revalidatePath(`/master-list/projects/${d.projectId}`);
   return { success: true, id: row.id };
 }
