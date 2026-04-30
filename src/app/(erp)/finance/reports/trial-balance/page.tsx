@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { financialLedger, costCenters } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
+import ExportButtons from "@/components/ExportButtons";
 
 const ACCENT = "#ff5a1f";
 
@@ -46,7 +47,10 @@ export default async function TrialBalancePage() {
         </div>
 
         <div style={{ marginBottom: "1.5rem" }}>
-          <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Trial Balance</h1>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "0.5rem" }}>
+            <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Trial Balance</h1>
+            <ExportButtons excelHref="/api/export/trial-balance" filename="trial-balance" />
+          </div>
           <p style={{ margin: "0 0 0.5rem", color: "#6b7280", fontSize: "0.9rem" }}>
             Debit (outflow) and credit (inflow) totals per cost center from the financial ledger.
           </p>

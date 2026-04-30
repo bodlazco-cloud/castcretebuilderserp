@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { financialLedger, projects, costCenters, departments } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
+import ExportButtons from "@/components/ExportButtons";
 
 const ACCENT = "#ff5a1f";
 
@@ -55,7 +56,10 @@ export default async function LedgerPage() {
         </div>
 
         <div style={{ marginBottom: "1.5rem" }}>
-          <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>General Ledger</h1>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "0.25rem" }}>
+            <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>General Ledger</h1>
+            <ExportButtons excelHref="/api/export/ledger" filename="general-ledger" />
+          </div>
           <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
             {entries.length} entries (most recent 200)
           </p>

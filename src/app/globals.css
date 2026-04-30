@@ -41,3 +41,37 @@ body {
   color: hsl(var(--foreground));
   font-family: system-ui, sans-serif;
 }
+
+@media print {
+  /* Hide sidebar, nav chrome, and action buttons */
+  aside,
+  nav,
+  .no-print,
+  [data-no-print] {
+    display: none !important;
+  }
+
+  /* Full-width content area when sidebar is hidden */
+  body > div {
+    display: block !important;
+  }
+
+  main {
+    padding: 1rem !important;
+    background: #fff !important;
+    min-height: unset !important;
+  }
+
+  /* Clean page breaks */
+  table { page-break-inside: auto; }
+  tr    { page-break-inside: avoid; page-break-after: auto; }
+  thead { display: table-header-group; }
+
+  /* Remove box shadows for print */
+  * { box-shadow: none !important; }
+
+  @page {
+    margin: 1.5cm;
+    size: A4;
+  }
+}

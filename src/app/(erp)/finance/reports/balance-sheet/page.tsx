@@ -5,6 +5,7 @@ import {
 } from "@/db/schema";
 import { eq, sql, notInArray, inArray } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
+import ExportButtons from "@/components/ExportButtons";
 
 const ACCENT = "#ff5a1f";
 
@@ -84,9 +85,12 @@ export default async function BalanceSheetPage() {
           <a href="/finance" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>← Finance & Accounting</a>
         </div>
 
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Balance Sheet</h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>As of {asOf}</p>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.5rem" }}>
+          <div>
+            <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Balance Sheet</h1>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>As of {asOf}</p>
+          </div>
+          <ExportButtons excelHref="/api/export/balance-sheet" filename="balance-sheet" />
         </div>
 
         <div style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.07)", borderRadius: "8px", overflow: "hidden" }}>
