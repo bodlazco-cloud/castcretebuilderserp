@@ -9,9 +9,10 @@ import { subcontractors, subcontractorCapacityMatrix } from "./schema/subcontrac
 import { projectUnits, unitMilestones } from "./schema/units";
 import { employees } from "./schema/hr";
 import { equipment } from "./schema/motorpool";
+import { bankAccounts, bankTransactions, requestsForPayment } from "./schema/banking";
 
 const client = postgres(process.env.DATABASE_URL!, { prepare: false });
-const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards, subcontractors, subcontractorCapacityMatrix, projectUnits, unitMilestones, employees, equipment } });
+const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards, subcontractors, subcontractorCapacityMatrix, projectUnits, unitMilestones, employees, equipment, bankAccounts, bankTransactions, requestsForPayment } });
 
 async function main() {
   // Idempotency check — skip if seed data already present
@@ -1114,6 +1115,223 @@ async function main() {
 
   console.log(`Inserted ${eqRows.length} equipment records.`);
   console.log("Chunk 8 seed complete.");
+
+  // userMap key: email → UUID (built here for first use in chunk 9)
+  const userMap = Object.fromEntries(userRows.map((u) => [u.email, u.id]));
+  const financeUserId = userMap["finance@castcrete.ph"]!;
+  const adminUserId   = userMap["admin@castcrete.ph"]!;
+
+  // ── Bank Accounts (3 rows) ───────────────────────────────────────────────
+  const baRows = await db
+    .insert(bankAccounts)
+    .values([
+      {
+        bankName:       "BDO Unibank",
+        accountName:    "Castcrete Builders — Main Operating",
+        accountNumber:  "004680-123456-7",
+        accountType:    "CHECKING",
+        currency:       "PHP",
+        openingBalance: "15000000.00",
+        currentBalance: "15000000.00",
+      },
+      {
+        bankName:       "Bank of the Philippine Islands",
+        accountName:    "Castcrete Builders — Payroll",
+        accountNumber:  "3219-8765-43",
+        accountType:    "SAVINGS",
+        currency:       "PHP",
+        openingBalance: "3500000.00",
+        currentBalance: "3500000.00",
+      },
+      {
+        bankName:       "RCBC",
+        accountName:    "Castcrete Builders — CapEx Reserve",
+        accountNumber:  "9-500-12345-6",
+        accountType:    "SAVINGS",
+        currency:       "PHP",
+        openingBalance: "8000000.00",
+        currentBalance: "8000000.00",
+      },
+    ])
+    .returning({ id: bankAccounts.id, accountNumber: bankAccounts.accountNumber });
+
+  const baMap = Object.fromEntries(baRows.map((b) => [b.accountNumber, b.id]));
+  const bdoId  = baMap["004680-123456-7"]!;
+  const bpiId  = baMap["3219-8765-43"]!;
+  const rcbcId = baMap["9-500-12345-6"]!;
+  console.log(`Inserted ${baRows.length} bank accounts.`);
+
+  // ── Bank Transactions (10 rows) ──────────────────────────────────────────
+  // Mix of CREDIT (inflows) and DEBIT (outflows) across all three accounts.
+  // requiresDualAuth=true on any single transaction above ₱5 M per policy.
+  const btRows = await db
+    .insert(bankTransactions)
+    .values([
+      {
+        bankAccountId:    bdoId,
+        transactionDate:  "2024-01-20",
+        transactionType:  "CREDIT" as const,
+        amount:           "25000000.00",
+        description:      "Developer advance receipt — Primavera Phase 1 mobilisation",
+        referenceNumber:  "PLC-ADV-2024-001",
+        costCenterId:     ccMap["CC-PROJECT-DEFAULT"]!,
+        requiresDualAuth: true,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+      {
+        bankAccountId:    bdoId,
+        transactionDate:  "2024-01-25",
+        transactionType:  "DEBIT" as const,
+        amount:           "8500000.00",
+        description:      "Internal transfer to RCBC CapEx reserve account",
+        referenceNumber:  "INT-XFER-2024-001",
+        costCenterId:     ccMap["HQ-FINANCE"]!,
+        requiresDualAuth: true,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+      {
+        bankAccountId:    rcbcId,
+        transactionDate:  "2024-01-25",
+        transactionType:  "CREDIT" as const,
+        amount:           "8500000.00",
+        description:      "Internal transfer from BDO operating account",
+        referenceNumber:  "INT-XFER-2024-001",
+        costCenterId:     ccMap["HQ-FINANCE"]!,
+        requiresDualAuth: true,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+      {
+        bankAccountId:    bdoId,
+        transactionDate:  "2024-02-05",
+        transactionType:  "DEBIT" as const,
+        amount:           "2350000.00",
+        description:      "Supplier payment — cement and aggregates February batch (Holcim / Republic)",
+        referenceNumber:  "PO-PAY-2024-002",
+        costCenterId:     ccMap["CC-PROJECT-DEFAULT"]!,
+        requiresDualAuth: false,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+      {
+        bankAccountId:    bdoId,
+        transactionDate:  "2024-02-15",
+        transactionType:  "DEBIT" as const,
+        amount:           "1875000.00",
+        description:      "Subcontractor progress billing — RSC-001 February structural works",
+        referenceNumber:  "SUBCON-PAY-2024-001",
+        costCenterId:     ccMap["CC-PROJECT-DEFAULT"]!,
+        requiresDualAuth: false,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+      {
+        bankAccountId:    bpiId,
+        transactionDate:  "2024-02-29",
+        transactionType:  "DEBIT" as const,
+        amount:           "1240000.00",
+        description:      "Payroll release — February 2024 semi-monthly payroll",
+        referenceNumber:  "PAY-2024-02B",
+        costCenterId:     ccMap["HQ-ADMIN"]!,
+        requiresDualAuth: false,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+      {
+        bankAccountId:    bdoId,
+        transactionDate:  "2024-07-05",
+        transactionType:  "CREDIT" as const,
+        amount:           "12750000.00",
+        description:      "Developer advance receipt — Verdana Townhomes Cluster A mobilisation",
+        referenceNumber:  "VHR-ADV-2024-001",
+        costCenterId:     ccMap["CC-PROJECT-DEFAULT"]!,
+        requiresDualAuth: true,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+      {
+        bankAccountId:    bdoId,
+        transactionDate:  "2024-07-15",
+        transactionType:  "DEBIT" as const,
+        amount:           "3120000.00",
+        description:      "Supplier payment — rebar and formwork materials July batch (Pag-asa Steel / GrandBuilders)",
+        referenceNumber:  "PO-PAY-2024-015",
+        costCenterId:     ccMap["CC-PROJECT-DEFAULT"]!,
+        requiresDualAuth: false,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+      {
+        bankAccountId:    bpiId,
+        transactionDate:  "2024-07-31",
+        transactionType:  "DEBIT" as const,
+        amount:           "1340000.00",
+        description:      "Payroll release — July 2024 semi-monthly payroll",
+        referenceNumber:  "PAY-2024-07B",
+        costCenterId:     ccMap["HQ-ADMIN"]!,
+        requiresDualAuth: false,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+      {
+        bankAccountId:    bdoId,
+        transactionDate:  "2024-09-30",
+        transactionType:  "DEBIT" as const,
+        amount:           "980000.00",
+        description:      "Equipment maintenance parts and fuel costs — Q3 motor pool",
+        referenceNumber:  "MPL-EXP-2024-Q3",
+        costCenterId:     ccMap["CC-FLEET"]!,
+        requiresDualAuth: false,
+        status:           "POSTED",
+        enteredBy:        financeUserId,
+      },
+    ])
+    .returning({ id: bankTransactions.id });
+
+  console.log(`Inserted ${btRows.length} bank transactions.`);
+
+  // ── Requests for Payment (3 rows) ────────────────────────────────────────
+  // sourceDocumentUrl is NOT NULL; placeholder paths stand in for uploaded PDFs.
+  const rfpRows = await db
+    .insert(requestsForPayment)
+    .values([
+      {
+        bankAccountId:    bdoId,
+        amount:           "1850000.00",
+        payeeName:        "Holcim Philippines, Inc.",
+        purpose:          "Cement delivery — October 2024 batch order, 6 500 bags OPC Type I for Primavera Phase 1 and Verdana Cluster A",
+        sourceDocumentUrl: "/documents/rfp/holcim-oct-2024-invoice.pdf",
+        costCenterId:     ccMap["CC-PROJECT-DEFAULT"]!,
+        status:           "PENDING",
+        submittedBy:      financeUserId,
+      },
+      {
+        bankAccountId:    bdoId,
+        amount:           "2450000.00",
+        payeeName:        "Reyes Structural Construction",
+        purpose:          "Subcontractor progress billing — structural works completion Primavera Block A units PRM-A-001 to PRM-A-006, October 2024",
+        sourceDocumentUrl: "/documents/rfp/rsc-001-billing-oct-2024.pdf",
+        costCenterId:     ccMap["CC-PROJECT-DEFAULT"]!,
+        status:           "PENDING",
+        submittedBy:      financeUserId,
+      },
+      {
+        bankAccountId:    bdoId,
+        amount:           "380000.00",
+        payeeName:        "Petron Corporation",
+        purpose:          "Fleet fuel supply — October 2024 diesel for transit mixer, excavator, dump truck, and mobile crane",
+        sourceDocumentUrl: "/documents/rfp/petron-fuel-oct-2024.pdf",
+        costCenterId:     ccMap["CC-FLEET"]!,
+        status:           "PENDING",
+        submittedBy:      adminUserId,
+      },
+    ])
+    .returning({ id: requestsForPayment.id });
+
+  console.log(`Inserted ${rfpRows.length} requests for payment.`);
+  console.log("Chunk 9 seed complete — all chunks done.");
   await client.end();
 }
 
