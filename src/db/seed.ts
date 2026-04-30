@@ -3,9 +3,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq, sql } from "drizzle-orm";
 import { departments, costCenters, users } from "./schema/core";
+import { developers, projects, blocks } from "./schema/projects";
 
 const client = postgres(process.env.DATABASE_URL!, { prepare: false });
-const db = drizzle(client, { schema: { departments, costCenters, users } });
+const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks } });
 
 async function main() {
   // Idempotency check — skip if seed data already present
@@ -147,6 +148,83 @@ async function main() {
 
   console.log(`Inserted ${userRows.length} users.`);
   console.log("Chunk 1 seed complete.");
+
+  // ── Developers (2 rows) ──────────────────────────────────────────────────
+  const devRows = await db
+    .insert(developers)
+    .values([
+      { name: "Primavera Land Corporation", isActive: true },
+      { name: "Verdana Homes Realty, Inc.",  isActive: true },
+    ])
+    .returning({ id: developers.id, name: developers.name });
+
+  const devMap = Object.fromEntries(devRows.map((d) => [d.name, d.id]));
+  console.log(`Inserted ${devRows.length} developers.`);
+
+  // ── Projects (2 rows, ACTIVE) ────────────────────────────────────────────
+  // Contract values are realistic PHP mid-rise residential project figures.
+  const projectRows = await db
+    .insert(projects)
+    .values([
+      {
+        name:                   "Primavera Residences Phase 1",
+        developerId:            devMap["Primavera Land Corporation"]!,
+        contractValue:          "425000000.00",   // PHP 425 M
+        developerAdvance:       "63750000.00",    // 15 % mobilisation advance
+        advanceRecovered:       "12750000.00",    // partial recovery
+        targetUnitsPerMonth:    120,
+        minOperatingCashBuffer: "5000000.00",
+        status:                 "ACTIVE",
+        startDate:              "2024-01-15",
+        endDate:                "2026-06-30",
+      },
+      {
+        name:                   "Verdana Townhomes Cluster A",
+        developerId:            devMap["Verdana Homes Realty, Inc."]!,
+        contractValue:          "218500000.00",   // PHP 218.5 M
+        developerAdvance:       "32775000.00",    // 15 % mobilisation advance
+        advanceRecovered:       "0.00",
+        targetUnitsPerMonth:    80,
+        minOperatingCashBuffer: "3000000.00",
+        status:                 "ACTIVE",
+        startDate:              "2024-07-01",
+        endDate:                "2026-12-31",
+      },
+    ])
+    .returning({ id: projects.id, name: projects.name });
+
+  const projMap = Object.fromEntries(projectRows.map((p) => [p.name, p.id]));
+  console.log(`Inserted ${projectRows.length} projects.`);
+
+  // ── Blocks (2 per project = 4 rows) ─────────────────────────────────────
+  const blockRows = await db
+    .insert(blocks)
+    .values([
+      {
+        projectId: projMap["Primavera Residences Phase 1"]!,
+        blockName:  "Block A",
+        totalLots:  48,
+      },
+      {
+        projectId: projMap["Primavera Residences Phase 1"]!,
+        blockName:  "Block B",
+        totalLots:  52,
+      },
+      {
+        projectId: projMap["Verdana Townhomes Cluster A"]!,
+        blockName:  "Block 1",
+        totalLots:  40,
+      },
+      {
+        projectId: projMap["Verdana Townhomes Cluster A"]!,
+        blockName:  "Block 2",
+        totalLots:  36,
+      },
+    ])
+    .returning({ id: blocks.id, blockName: blocks.blockName });
+
+  console.log(`Inserted ${blockRows.length} blocks.`);
+  console.log("Chunk 2 seed complete.");
   await client.end();
 }
 
