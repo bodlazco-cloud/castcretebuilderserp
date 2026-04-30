@@ -12,6 +12,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
+import { notifyPrApproved, notifyPrRejected, notifyPoBodyApproved } from "@/lib/notifications";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE II — Auto-populate PO from Master BOM
@@ -344,6 +345,7 @@ export async function approvePr(id: string): Promise<SimpleResult> {
     .where(eq(purchaseRequisitions.id, id));
   revalidatePath(`/procurement/pr/${id}`);
   revalidatePath("/procurement/pr");
+  void notifyPrApproved(id);
   return { success: true };
 }
 
@@ -356,6 +358,7 @@ export async function rejectPr(id: string, reason: string): Promise<SimpleResult
     .where(eq(purchaseRequisitions.id, id));
   revalidatePath(`/procurement/pr/${id}`);
   revalidatePath("/procurement/pr");
+  void notifyPrRejected(id);
   return { success: true };
 }
 
@@ -390,6 +393,7 @@ export async function bodApprovePo(poId: string): Promise<SimpleResult> {
     .where(eq(purchaseOrders.id, poId));
   revalidatePath(`/procurement/po/${poId}`);
   revalidatePath("/procurement/po");
+  void notifyPoBodyApproved(poId);
   return { success: true };
 }
 

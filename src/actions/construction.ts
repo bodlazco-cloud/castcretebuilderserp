@@ -9,6 +9,7 @@ import {
 import { eq, and, count, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { notifyWarSubmitted } from "@/lib/notifications";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE I — BOD Strategic Gate
@@ -296,5 +297,6 @@ export async function submitWorkAccomplishedReport(
     .returning({ id: workAccomplishedReports.id });
 
   revalidatePath("/construction");
+  void notifyWarSubmitted(war.id);
   return { success: true, warId: war.id };
 }

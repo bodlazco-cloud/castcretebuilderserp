@@ -7,6 +7,11 @@ import {
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
+import {
+  notifyInvoiceSubmitted, notifyInvoiceCollected,
+  notifyPayableApproved, notifyPayableRejected,
+  notifyRfpFirstApproved, notifyRfpFinalApproved, notifyRfpRejected,
+} from "@/lib/notifications";
 
 type SimpleResult = { success: boolean; error?: string };
 
@@ -61,6 +66,7 @@ export async function submitInvoice(id: string): Promise<SimpleResult> {
     .set({ status: "SUBMITTED", submittedAt: new Date() })
     .where(eq(invoices.id, id));
 
+  void notifyInvoiceSubmitted(id);
   return { success: true };
 }
 
@@ -81,6 +87,7 @@ export async function recordCollection(
     .set({ status: "COLLECTED", collectedAt: new Date(), collectionAmount: amount })
     .where(eq(invoices.id, id));
 
+  void notifyInvoiceCollected(id);
   return { success: true };
 }
 
@@ -113,6 +120,7 @@ export async function approvePayable(id: string): Promise<SimpleResult> {
     .set({ status: "APPROVED", bodApprovedBy: user.id, bodApprovedAt: new Date() })
     .where(eq(payables.id, id));
 
+  void notifyPayableApproved(id);
   return { success: true };
 }
 
@@ -130,6 +138,7 @@ export async function rejectPayable(id: string, reason: string): Promise<SimpleR
     .set({ status: "REJECTED", rejectionReason: reason })
     .where(eq(payables.id, id));
 
+  void notifyPayableRejected(id);
   return { success: true };
 }
 
@@ -193,6 +202,7 @@ export async function firstApproveRfp(id: string): Promise<SimpleResult> {
     .set({ status: "FIRST_APPROVED", firstApprovalBy: user.id, firstApprovalAt: new Date() })
     .where(eq(requestsForPayment.id, id));
 
+  void notifyRfpFirstApproved(id);
   return { success: true };
 }
 
@@ -213,6 +223,7 @@ export async function finalApproveRfp(id: string): Promise<SimpleResult> {
     .set({ status: "APPROVED", finalApprovalBy: user.id, finalApprovalAt: new Date() })
     .where(eq(requestsForPayment.id, id));
 
+  void notifyRfpFinalApproved(id);
   return { success: true };
 }
 
@@ -225,6 +236,7 @@ export async function rejectRfp(id: string, reason: string): Promise<SimpleResul
     .set({ status: "REJECTED", rejectionReason: reason })
     .where(eq(requestsForPayment.id, id));
 
+  void notifyRfpRejected(id);
   return { success: true };
 }
 
