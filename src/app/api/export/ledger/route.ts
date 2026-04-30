@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { db } from "@/db";
 import { financialLedger, projects, costCenters, departments } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
@@ -36,43 +36,40 @@ export async function GET() {
   }).reverse();
 
   const fmt = (n: number) => Number(n.toFixed(2));
-
-  const sheetRows: (string | number)[][] = [
-    ["Castcrete Builders — General Ledger"],
-    [`Exported ${new Date().toLocaleDateString("en-PH", { dateStyle: "long" })} — up to 5,000 entries`],
-    [],
-    ["Date", "Type", "Ref Type", "Debit", "Credit", "Running Balance", "Project", "Cost Center", "Dept", "Description"],
-    ...withBalance.map((e) => {
-      const amt = Number(e.amount);
-      return [
-        e.transactionDate,
-        e.transactionType,
-        e.referenceType ?? "",
-        e.transactionType === "OUTFLOW" ? fmt(amt) : "",
-        e.transactionType === "INFLOW"  ? fmt(amt) : "",
-        fmt(e.runningBalance),
-        e.projName ?? "",
-        e.costCenterCode ?? "",
-        e.deptCode ?? "",
-        e.description ?? "",
-      ];
-    }),
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet(sheetRows);
-  ws["!cols"] = [
-    { wch: 12 }, { wch: 18 }, { wch: 20 },
-    { wch: 16 }, { wch: 16 }, { wch: 18 },
-    { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 40 },
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Ledger");
-
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
   const date = new Date().toISOString().slice(0, 10);
 
-  return new NextResponse(buf, {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Ledger");
+  ws.columns = [
+    { width: 12 }, { width: 18 }, { width: 20 },
+    { width: 16 }, { width: 16 }, { width: 18 },
+    { width: 30 }, { width: 14 }, { width: 12 }, { width: 40 },
+  ];
+
+  ws.addRow(["Castcrete Builders — General Ledger"]);
+  ws.addRow([`Exported ${new Date().toLocaleDateString("en-PH", { dateStyle: "long" })} — up to 5,000 entries`]);
+  ws.addRow([]);
+  ws.addRow(["Date", "Type", "Ref Type", "Debit", "Credit", "Running Balance", "Project", "Cost Center", "Dept", "Description"]);
+
+  withBalance.forEach((e) => {
+    const amt = Number(e.amount);
+    ws.addRow([
+      e.transactionDate,
+      e.transactionType,
+      e.referenceType ?? "",
+      e.transactionType === "OUTFLOW" ? fmt(amt) : "",
+      e.transactionType === "INFLOW"  ? fmt(amt) : "",
+      fmt(e.runningBalance),
+      e.projName ?? "",
+      e.costCenterCode ?? "",
+      e.deptCode ?? "",
+      e.description ?? "",
+    ]);
+  });
+
+  const buf = await wb.xlsx.writeBuffer();
+
+  return new NextResponse(Buffer.from(buf), {
     headers: {
       "Content-Type":        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="general-ledger-${date}.xlsx"`,

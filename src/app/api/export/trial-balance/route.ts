@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { db } from "@/db";
 import { financialLedger, costCenters } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
@@ -37,25 +37,21 @@ export async function GET() {
   const fmt = (n: number) => Number(n.toFixed(2));
   const date = new Date().toISOString().slice(0, 10);
 
-  const sheetRows: (string | number)[][] = [
-    ["Castcrete Builders — Trial Balance"],
-    [`As of ${date}  |  ${isBalanced ? "BALANCED" : "IMBALANCED"}`],
-    [],
-    ["Cost Center", "Name", "Debit (Outflow)", "Credit (Inflow)", "Balance"],
-    ...ccRows.map((r) => [r.code, r.name, fmt(r.debit), fmt(r.credit), fmt(r.credit - r.debit)]),
-    [],
-    ["TOTALS", "", fmt(totalDebit), fmt(totalCredit), fmt(totalCredit - totalDebit)],
-  ];
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Trial Balance");
+  ws.columns = [{ width: 15 }, { width: 35 }, { width: 18 }, { width: 18 }, { width: 18 }];
 
-  const ws = XLSX.utils.aoa_to_sheet(sheetRows);
-  ws["!cols"] = [{ wch: 15 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+  ws.addRow(["Castcrete Builders — Trial Balance"]);
+  ws.addRow([`As of ${date}  |  ${isBalanced ? "BALANCED" : "IMBALANCED"}`]);
+  ws.addRow([]);
+  ws.addRow(["Cost Center", "Name", "Debit (Outflow)", "Credit (Inflow)", "Balance"]);
+  ccRows.forEach((r) => ws.addRow([r.code, r.name, fmt(r.debit), fmt(r.credit), fmt(r.credit - r.debit)]));
+  ws.addRow([]);
+  ws.addRow(["TOTALS", "", fmt(totalDebit), fmt(totalCredit), fmt(totalCredit - totalDebit)]);
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Trial Balance");
+  const buf = await wb.xlsx.writeBuffer();
 
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-
-  return new NextResponse(buf, {
+  return new NextResponse(Buffer.from(buf), {
     headers: {
       "Content-Type":        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="trial-balance-${date}.xlsx"`,
