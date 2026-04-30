@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       allowedOrigins: [
-        "localhost:5000",
+        "localhost:5001",
         "*.spock.replit.dev",
         "*.replit.dev",
         "castcretebuilderserp-cbi-lesley.replit.app",
