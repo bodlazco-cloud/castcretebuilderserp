@@ -4,10 +4,10 @@ import postgres from "postgres";
 import { eq, sql } from "drizzle-orm";
 import { departments, costCenters, users } from "./schema/core";
 import { developers, projects, blocks } from "./schema/projects";
-import { suppliers, materials, activityDefinitions, milestoneDefinitions } from "./schema/admin";
+import { suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards } from "./schema/admin";
 
 const client = postgres(process.env.DATABASE_URL!, { prepare: false });
-const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions } });
+const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards } });
 
 async function main() {
   // Idempotency check — skip if seed data already present
@@ -485,8 +485,10 @@ async function main() {
       ...activityTemplate(projMap["Primavera Residences Phase 1"]!),
       ...activityTemplate(projMap["Verdana Townhomes Cluster A"]!),
     ])
-    .returning({ id: activityDefinitions.id, activityCode: activityDefinitions.activityCode });
+    .returning({ id: activityDefinitions.id, activityCode: activityDefinitions.activityCode, projectId: activityDefinitions.projectId });
 
+  // actMap key: "<projectId>::<activityCode>" → activityDef UUID
+  const actMap = Object.fromEntries(actRows.map((a) => [`${a.projectId}::${a.activityCode}`, a.id]));
   console.log(`Inserted ${actRows.length} activity definitions.`);
 
   // ── Milestone Definitions (4 per project = 8 rows, weights sum to 100 %) ─
@@ -536,6 +538,117 @@ async function main() {
 
   console.log(`Inserted ${msRows.length} milestone definitions.`);
   console.log("Chunk 4 seed complete.");
+
+  // materialMap key: material code → UUID
+  const materialMap = Object.fromEntries(materialRows.map((m) => [m.code, m.id]));
+
+  // ── Developer Rate Cards (1 per project × activity = 16 rows) ────────────
+  // grossRatePerUnit is the PHP amount Castcrete earns from the developer per
+  // completed housing unit for that activity.
+  // Primavera (PHP 425 M, higher spec) carries ~20 % premium over Verdana.
+  const rateTemplate = (projectId: string, rates: Record<string, string>) =>
+    Object.entries(rates).map(([activityCode, grossRatePerUnit]) => ({
+      projectId,
+      activityDefId:    actMap[`${projectId}::${activityCode}`]!,
+      grossRatePerUnit,
+      retentionPct:     "0.1000",
+      dpRecoupmentPct:  "0.1000",
+      taxPct:           "0.0000",
+    }));
+
+  const primaveraRates: Record<string, string> = {
+    "ACT-STR-001": "12000.00",   // Excavation & Grading
+    "ACT-STR-002": "35000.00",   // Footing Reinforcement & Pouring
+    "ACT-STR-003": "28000.00",   // Column & Beam Reinforcement
+    "ACT-STR-004": "24000.00",   // Formwork & Concrete Pouring
+    "ACT-STR-005": "30000.00",   // Slab Reinforcement & Pouring
+    "ACT-ARC-001": "18000.00",   // CHB Wall Installation
+    "ACT-ARC-002": "14500.00",   // Plastering & Skim Coat
+    "ACT-TRN-001":  "6500.00",   // Final Inspection & Punch List
+  };
+
+  const verdanaRates: Record<string, string> = {
+    "ACT-STR-001":  "9500.00",
+    "ACT-STR-002": "28000.00",
+    "ACT-STR-003": "22000.00",
+    "ACT-STR-004": "19000.00",
+    "ACT-STR-005": "24000.00",
+    "ACT-ARC-001": "14500.00",
+    "ACT-ARC-002": "11500.00",
+    "ACT-TRN-001":  "5200.00",
+  };
+
+  const rcRows = await db
+    .insert(developerRateCards)
+    .values([
+      ...rateTemplate(projMap["Primavera Residences Phase 1"]!, primaveraRates),
+      ...rateTemplate(projMap["Verdana Townhomes Cluster A"]!,   verdanaRates),
+    ])
+    .returning({ id: developerRateCards.id });
+
+  console.log(`Inserted ${rcRows.length} developer rate cards.`);
+
+  // ── BOM Standards (key materials for structural activities) ──────────────
+  // Quantities are per housing unit, REG type, model "2BR-44SQM".
+  // Covers the three most material-intensive structural activities for both
+  // projects (same construction method → same BOM quantities).
+  type BomRow = {
+    activityDefId:   string;
+    unitModel:       string;
+    unitType:        "BEG" | "REG" | "END";
+    materialId:      string;
+    quantityPerUnit: string;
+  };
+
+  const bomForActivity = (activityCode: string, projectId: string, rows: Omit<BomRow, "activityDefId">[]): BomRow[] =>
+    rows.map((r) => ({ activityDefId: actMap[`${projectId}::${activityCode}`]!, ...r }));
+
+  const buildBoms = (projectId: string): BomRow[] => [
+    // ACT-STR-002 — Footing Reinforcement & Concrete Pouring
+    ...bomForActivity("ACT-STR-002", projectId, [
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["CEM-OPC-40K"]!,    quantityPerUnit: "25.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["AGG-GRAVEL-34"]!,  quantityPerUnit: "3.5000"  },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["AGG-SAND-CRS"]!,   quantityPerUnit: "2.5000"  },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["REBAR-16MM"]!,     quantityPerUnit: "18.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["REBAR-20MM"]!,     quantityPerUnit: "12.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["WIRE-TIENG-16"]!,  quantityPerUnit: "6.0000"  },
+    ]),
+    // ACT-STR-003 — Column & Beam Reinforcement
+    ...bomForActivity("ACT-STR-003", projectId, [
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["REBAR-12MM"]!,     quantityPerUnit: "24.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["REBAR-16MM"]!,     quantityPerUnit: "16.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["WIRE-TIENG-16"]!,  quantityPerUnit: "8.0000"  },
+    ]),
+    // ACT-STR-004 — Formwork Installation & Concrete Pouring
+    ...bomForActivity("ACT-STR-004", projectId, [
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["FW-PLYWD-34"]!,    quantityPerUnit: "12.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["FW-LUMBER-2X3"]!,  quantityPerUnit: "80.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["CEM-OPC-40K"]!,    quantityPerUnit: "20.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["AGG-GRAVEL-34"]!,  quantityPerUnit: "2.8000"  },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["AGG-SAND-CRS"]!,   quantityPerUnit: "2.0000"  },
+    ]),
+    // ACT-STR-005 — Slab Reinforcement & Concrete Pouring
+    ...bomForActivity("ACT-STR-005", projectId, [
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["REBAR-10MM"]!,     quantityPerUnit: "30.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["REBAR-12MM"]!,     quantityPerUnit: "16.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["CEM-OPC-40K"]!,    quantityPerUnit: "18.0000" },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["AGG-GRAVEL-12"]!,  quantityPerUnit: "2.5000"  },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["AGG-SAND-CRS"]!,   quantityPerUnit: "1.8000"  },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["ADM-PLASTICIZER"]!,quantityPerUnit: "4.5000"  },
+      { unitModel: "2BR-44SQM", unitType: "REG", materialId: materialMap["CUR-COMPOUND"]!,   quantityPerUnit: "3.0000"  },
+    ]),
+  ];
+
+  const bomRows = await db
+    .insert(bomStandards)
+    .values([
+      ...buildBoms(projMap["Primavera Residences Phase 1"]!),
+      ...buildBoms(projMap["Verdana Townhomes Cluster A"]!),
+    ])
+    .returning({ id: bomStandards.id });
+
+  console.log(`Inserted ${bomRows.length} BOM standards.`);
+  console.log("Chunk 5 seed complete.");
   await client.end();
 }
 
