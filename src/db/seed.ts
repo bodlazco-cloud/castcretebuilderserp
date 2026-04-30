@@ -4,10 +4,10 @@ import postgres from "postgres";
 import { eq, sql } from "drizzle-orm";
 import { departments, costCenters, users } from "./schema/core";
 import { developers, projects, blocks } from "./schema/projects";
-import { suppliers, materials } from "./schema/admin";
+import { suppliers, materials, activityDefinitions, milestoneDefinitions } from "./schema/admin";
 
 const client = postgres(process.env.DATABASE_URL!, { prepare: false });
-const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials } });
+const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions } });
 
 async function main() {
   // Idempotency check — skip if seed data already present
@@ -378,6 +378,164 @@ async function main() {
 
   console.log(`Inserted ${materialRows.length} materials.`);
   console.log("Chunk 3 seed complete.");
+
+  // ── Activity Definitions (8 per project = 16 rows) ───────────────────────
+  // Same activity structure for both residential projects.
+  // weightInScopePct sums to 100 within each scope group.
+  const activityTemplate = (projectId: string) => [
+    // STRUCTURAL — Foundation Works (scope weight split: 40 / 60)
+    {
+      projectId,
+      category:             "STRUCTURAL" as const,
+      scopeCode:            "SCO-STR-001",
+      scopeName:            "Foundation Works",
+      activityCode:         "ACT-STR-001",
+      activityName:         "Excavation & Grading",
+      standardDurationDays: 15,
+      weightInScopePct:     "40.00",
+      sequenceOrder:        1,
+    },
+    {
+      projectId,
+      category:             "STRUCTURAL" as const,
+      scopeCode:            "SCO-STR-001",
+      scopeName:            "Foundation Works",
+      activityCode:         "ACT-STR-002",
+      activityName:         "Footing Reinforcement & Concrete Pouring",
+      standardDurationDays: 10,
+      weightInScopePct:     "60.00",
+      sequenceOrder:        2,
+    },
+    // STRUCTURAL — Column & Beam Works (55 / 45)
+    {
+      projectId,
+      category:             "STRUCTURAL" as const,
+      scopeCode:            "SCO-STR-002",
+      scopeName:            "Column & Beam Works",
+      activityCode:         "ACT-STR-003",
+      activityName:         "Column & Beam Reinforcement",
+      standardDurationDays: 8,
+      weightInScopePct:     "55.00",
+      sequenceOrder:        3,
+    },
+    {
+      projectId,
+      category:             "STRUCTURAL" as const,
+      scopeCode:            "SCO-STR-002",
+      scopeName:            "Column & Beam Works",
+      activityCode:         "ACT-STR-004",
+      activityName:         "Formwork Installation & Concrete Pouring",
+      standardDurationDays: 6,
+      weightInScopePct:     "45.00",
+      sequenceOrder:        4,
+    },
+    // STRUCTURAL — Slab Works (100)
+    {
+      projectId,
+      category:             "STRUCTURAL" as const,
+      scopeCode:            "SCO-STR-003",
+      scopeName:            "Slab Works",
+      activityCode:         "ACT-STR-005",
+      activityName:         "Slab Reinforcement & Concrete Pouring",
+      standardDurationDays: 7,
+      weightInScopePct:     "100.00",
+      sequenceOrder:        5,
+    },
+    // ARCHITECTURAL — Masonry Works (100)
+    {
+      projectId,
+      category:             "ARCHITECTURAL" as const,
+      scopeCode:            "SCO-ARC-001",
+      scopeName:            "Masonry Works",
+      activityCode:         "ACT-ARC-001",
+      activityName:         "CHB Wall Installation",
+      standardDurationDays: 10,
+      weightInScopePct:     "100.00",
+      sequenceOrder:        6,
+    },
+    // ARCHITECTURAL — Finishes (100)
+    {
+      projectId,
+      category:             "ARCHITECTURAL" as const,
+      scopeCode:            "SCO-ARC-002",
+      scopeName:            "Finishes",
+      activityCode:         "ACT-ARC-002",
+      activityName:         "Plastering & Skim Coat Application",
+      standardDurationDays: 8,
+      weightInScopePct:     "100.00",
+      sequenceOrder:        7,
+    },
+    // TURNOVER — Punch List (100)
+    {
+      projectId,
+      category:             "TURNOVER" as const,
+      scopeCode:            "SCO-TRN-001",
+      scopeName:            "Turnover Works",
+      activityCode:         "ACT-TRN-001",
+      activityName:         "Final Inspection & Punch List Clearance",
+      standardDurationDays: 5,
+      weightInScopePct:     "100.00",
+      sequenceOrder:        8,
+    },
+  ];
+
+  const actRows = await db
+    .insert(activityDefinitions)
+    .values([
+      ...activityTemplate(projMap["Primavera Residences Phase 1"]!),
+      ...activityTemplate(projMap["Verdana Townhomes Cluster A"]!),
+    ])
+    .returning({ id: activityDefinitions.id, activityCode: activityDefinitions.activityCode });
+
+  console.log(`Inserted ${actRows.length} activity definitions.`);
+
+  // ── Milestone Definitions (4 per project = 8 rows, weights sum to 100 %) ─
+  // triggersBilling = true on all four so each completion unlocks an invoice.
+  const milestoneTemplate = (projectId: string) => [
+    {
+      projectId,
+      name:            "Foundation Complete",
+      category:        "STRUCTURAL" as const,
+      sequenceOrder:   1,
+      triggersBilling: true,
+      weightPct:       "25.00",
+    },
+    {
+      projectId,
+      name:            "Structure Topped Out",
+      category:        "STRUCTURAL" as const,
+      sequenceOrder:   2,
+      triggersBilling: true,
+      weightPct:       "35.00",
+    },
+    {
+      projectId,
+      name:            "Architectural Works Complete",
+      category:        "ARCHITECTURAL" as const,
+      sequenceOrder:   3,
+      triggersBilling: true,
+      weightPct:       "25.00",
+    },
+    {
+      projectId,
+      name:            "Unit Turnover Accepted",
+      category:        "TURNOVER" as const,
+      sequenceOrder:   4,
+      triggersBilling: true,
+      weightPct:       "15.00",
+    },
+  ];
+
+  const msRows = await db
+    .insert(milestoneDefinitions)
+    .values([
+      ...milestoneTemplate(projMap["Primavera Residences Phase 1"]!),
+      ...milestoneTemplate(projMap["Verdana Townhomes Cluster A"]!),
+    ])
+    .returning({ id: milestoneDefinitions.id, name: milestoneDefinitions.name });
+
+  console.log(`Inserted ${msRows.length} milestone definitions.`);
+  console.log("Chunk 4 seed complete.");
   await client.end();
 }
 
