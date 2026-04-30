@@ -42,6 +42,62 @@ body {
   font-family: system-ui, sans-serif;
 }
 
+/* ─── Responsive layout ──────────────────────────────────────────────────── */
+
+/* Sidebar drawer on mobile */
+.app-sidebar {
+  transition: transform 0.25s ease;
+}
+
+/* Mobile topbar: hidden on desktop, shown on mobile */
+.mobile-topbar {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 52px;
+  background: #18181b;
+  border-bottom: 1px solid #27272a;
+  align-items: center;
+  padding: 0 1rem;
+  z-index: 98;
+  gap: 0.75rem;
+}
+
+/* Content area offset for mobile topbar */
+.erp-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Mobile-only / desktop-only utility classes */
+.mobile-only { display: none !important; }
+.desktop-only { display: flex !important; }
+
+@media (max-width: 767px) {
+  .app-sidebar {
+    position: fixed !important;
+    left: 0; top: 0;
+    height: 100vh;
+    z-index: 100;
+    transform: translateX(-100%);
+  }
+  .app-sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+  .mobile-topbar {
+    display: flex;
+  }
+  .erp-content {
+    padding-top: 52px;
+  }
+  .mobile-only  { display: flex !important; }
+  .desktop-only { display: none  !important; }
+  /* Reduce page padding on small screens */
+  main {
+    padding: 1rem !important;
+  }
+}
+
 @media print {
   /* Hide sidebar, nav chrome, and action buttons */
   aside,

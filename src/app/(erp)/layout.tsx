@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import AppSidebar from "@/components/AppSidebar";
+import ErpShell from "@/components/ErpShell";
 import { getAuthUser } from "@/lib/supabase-server";
 
 export default async function ErpLayout({ children }: { children: ReactNode }) {
@@ -15,11 +15,8 @@ export default async function ErpLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-      <AppSidebar displayName={displayName} deptCode={deptCode} />
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        {children}
-      </div>
-    </div>
+    <ErpShell displayName={displayName} deptCode={deptCode}>
+      {children}
+    </ErpShell>
   );
 }
