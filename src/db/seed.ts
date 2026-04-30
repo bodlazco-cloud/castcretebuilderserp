@@ -6,9 +6,10 @@ import { departments, costCenters, users } from "./schema/core";
 import { developers, projects, blocks } from "./schema/projects";
 import { suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards } from "./schema/admin";
 import { subcontractors, subcontractorCapacityMatrix } from "./schema/subcontractors";
+import { projectUnits, unitMilestones } from "./schema/units";
 
 const client = postgres(process.env.DATABASE_URL!, { prepare: false });
-const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards, subcontractors, subcontractorCapacityMatrix } });
+const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards, subcontractors, subcontractorCapacityMatrix, projectUnits, unitMilestones } });
 
 async function main() {
   // Idempotency check — skip if seed data already present
@@ -223,7 +224,10 @@ async function main() {
         totalLots:  36,
       },
     ])
-    .returning({ id: blocks.id, blockName: blocks.blockName });
+    .returning({ id: blocks.id, blockName: blocks.blockName, projectId: blocks.projectId });
+
+  // blockMap key: "<projectId>::<blockName>" → blockId
+  const blockMap = Object.fromEntries(blockRows.map((b) => [`${b.projectId}::${b.blockName}`, b.id]));
 
   console.log(`Inserted ${blockRows.length} blocks.`);
   console.log("Chunk 2 seed complete.");
@@ -535,7 +539,10 @@ async function main() {
       ...milestoneTemplate(projMap["Primavera Residences Phase 1"]!),
       ...milestoneTemplate(projMap["Verdana Townhomes Cluster A"]!),
     ])
-    .returning({ id: milestoneDefinitions.id, name: milestoneDefinitions.name });
+    .returning({ id: milestoneDefinitions.id, name: milestoneDefinitions.name, projectId: milestoneDefinitions.projectId });
+
+  // msMap key: "<projectId>::<milestoneName>" → milestoneDefId
+  const msMap = Object.fromEntries(msRows.map((m) => [`${m.projectId}::${m.name}`, m.id]));
 
   console.log(`Inserted ${msRows.length} milestone definitions.`);
   console.log("Chunk 4 seed complete.");
@@ -767,6 +774,76 @@ async function main() {
 
   console.log(`Inserted ${capRows.length} capacity matrix rows.`);
   console.log("Chunk 6 seed complete.");
+
+  // ── Project Units (6 per block × 4 blocks = 24 rows) ────────────────────
+  // Lot sequence: position 1 = BEG type, 2-5 = REG, 6 = END (matches BOM unitType).
+  // unitCode is globally unique: <PROJECT_PREFIX>-<BLOCK_ABBR>-<LOT_SEQ>.
+  type UnitSeed = {
+    projectId: string;
+    blockId:   string;
+    lotNumber: string;
+    unitCode:  string;
+    unitModel: string;
+  };
+
+  const unitsForBlock = (
+    projectId: string,
+    blockKey:  string,        // e.g. "Block A"
+    prefix:    string,        // e.g. "PRM-A"
+  ): UnitSeed[] =>
+    Array.from({ length: 6 }, (_, i) => {
+      const seq = String(i + 1).padStart(3, "0");
+      return {
+        projectId,
+        blockId:   blockMap[`${projectId}::${blockKey}`]!,
+        lotNumber: `LOT-${seq}`,
+        unitCode:  `${prefix}-${seq}`,
+        unitModel: "2BR-44SQM",
+      };
+    });
+
+  const primId = projMap["Primavera Residences Phase 1"]!;
+  const verdId = projMap["Verdana Townhomes Cluster A"]!;
+
+  const unitValues: UnitSeed[] = [
+    ...unitsForBlock(primId, "Block A", "PRM-A"),
+    ...unitsForBlock(primId, "Block B", "PRM-B"),
+    ...unitsForBlock(verdId, "Block 1", "VRD-1"),
+    ...unitsForBlock(verdId, "Block 2", "VRD-2"),
+  ];
+
+  const unitRows = await db
+    .insert(projectUnits)
+    .values(unitValues)
+    .returning({ id: projectUnits.id, projectId: projectUnits.projectId });
+
+  console.log(`Inserted ${unitRows.length} project units.`);
+
+  // ── Unit Milestones (24 units × 4 milestones = 96 rows) ─────────────────
+  // Every unit starts with all four milestones in PENDING status.
+  // milestoneDefId is resolved from msMap keyed by projectId + milestone name.
+  const milestoneNames = [
+    "Foundation Complete",
+    "Structure Topped Out",
+    "Architectural Works Complete",
+    "Unit Turnover Accepted",
+  ];
+
+  const umValues = unitRows.flatMap(({ id: unitId, projectId }) =>
+    milestoneNames.map((name) => ({
+      unitId,
+      milestoneDefId: msMap[`${projectId}::${name}`]!,
+      status: "PENDING",
+    })),
+  );
+
+  const umRows = await db
+    .insert(unitMilestones)
+    .values(umValues)
+    .returning({ id: unitMilestones.id });
+
+  console.log(`Inserted ${umRows.length} unit milestones.`);
+  console.log("Chunk 7 seed complete.");
   await client.end();
 }
 
