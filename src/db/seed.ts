@@ -5,9 +5,10 @@ import { eq, sql } from "drizzle-orm";
 import { departments, costCenters, users } from "./schema/core";
 import { developers, projects, blocks } from "./schema/projects";
 import { suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards } from "./schema/admin";
+import { subcontractors, subcontractorCapacityMatrix } from "./schema/subcontractors";
 
 const client = postgres(process.env.DATABASE_URL!, { prepare: false });
-const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards } });
+const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards, subcontractors, subcontractorCapacityMatrix } });
 
 async function main() {
   // Idempotency check — skip if seed data already present
@@ -649,6 +650,123 @@ async function main() {
 
   console.log(`Inserted ${bomRows.length} BOM standards.`);
   console.log("Chunk 5 seed complete.");
+
+  // ── Subcontractors (3 firms) ─────────────────────────────────────────────
+  const subconRows = await db
+    .insert(subcontractors)
+    .values([
+      {
+        code:                 "RSC-001",
+        name:                 "Reyes Structural Construction",
+        tradeTypes:           ["STRUCTURAL"],
+        defaultMaxActiveUnits: 40,
+        manpowerBenchmark:    "8.50",
+        performanceGrade:     "A",
+        performanceScore:     "96.50",
+      },
+      {
+        code:                 "AAB-001",
+        name:                 "Aguilar Architectural Builders",
+        tradeTypes:           ["ARCHITECTURAL"],
+        defaultMaxActiveUnits: 35,
+        manpowerBenchmark:    "6.00",
+        performanceGrade:     "A",
+        performanceScore:     "94.00",
+      },
+      {
+        code:                 "PGC-001",
+        name:                 "Philippine General Contractors, Inc.",
+        tradeTypes:           ["BOTH"],
+        defaultMaxActiveUnits: 55,
+        manpowerBenchmark:    "12.00",
+        performanceGrade:     "B",
+        performanceScore:     "82.00",
+      },
+    ])
+    .returning({ id: subcontractors.id, code: subcontractors.code });
+
+  const subconMap = Object.fromEntries(subconRows.map((s) => [s.code, s.id]));
+  console.log(`Inserted ${subconRows.length} subcontractors.`);
+
+  // ── Subcontractor Capacity Matrix (per subcon × project) ─────────────────
+  // RSC-001 and AAB-001 each get one row per project (single work type).
+  // PGC-001 is split into STRUCTURAL and ARCHITECTURAL rows per project
+  // since it covers both trades, giving 8 rows total.
+  const capRows = await db
+    .insert(subcontractorCapacityMatrix)
+    .values([
+      // RSC-001 — Structural only
+      {
+        subconId:       subconMap["RSC-001"]!,
+        projectId:      projMap["Primavera Residences Phase 1"]!,
+        unitModel:      "2BR-44SQM",
+        workType:       "STRUCTURAL" as const,
+        ratedCapacity:  40,
+        capacityWeight: "1.00",
+      },
+      {
+        subconId:       subconMap["RSC-001"]!,
+        projectId:      projMap["Verdana Townhomes Cluster A"]!,
+        unitModel:      "2BR-44SQM",
+        workType:       "STRUCTURAL" as const,
+        ratedCapacity:  30,
+        capacityWeight: "1.00",
+      },
+      // AAB-001 — Architectural only
+      {
+        subconId:       subconMap["AAB-001"]!,
+        projectId:      projMap["Primavera Residences Phase 1"]!,
+        unitModel:      "2BR-44SQM",
+        workType:       "ARCHITECTURAL" as const,
+        ratedCapacity:  35,
+        capacityWeight: "1.00",
+      },
+      {
+        subconId:       subconMap["AAB-001"]!,
+        projectId:      projMap["Verdana Townhomes Cluster A"]!,
+        unitModel:      "2BR-44SQM",
+        workType:       "ARCHITECTURAL" as const,
+        ratedCapacity:  25,
+        capacityWeight: "1.00",
+      },
+      // PGC-001 — Both trades, split into separate rows per trade per project
+      {
+        subconId:       subconMap["PGC-001"]!,
+        projectId:      projMap["Primavera Residences Phase 1"]!,
+        unitModel:      "2BR-44SQM",
+        workType:       "STRUCTURAL" as const,
+        ratedCapacity:  30,
+        capacityWeight: "0.90",
+      },
+      {
+        subconId:       subconMap["PGC-001"]!,
+        projectId:      projMap["Primavera Residences Phase 1"]!,
+        unitModel:      "2BR-44SQM",
+        workType:       "ARCHITECTURAL" as const,
+        ratedCapacity:  25,
+        capacityWeight: "0.90",
+      },
+      {
+        subconId:       subconMap["PGC-001"]!,
+        projectId:      projMap["Verdana Townhomes Cluster A"]!,
+        unitModel:      "2BR-44SQM",
+        workType:       "STRUCTURAL" as const,
+        ratedCapacity:  25,
+        capacityWeight: "0.90",
+      },
+      {
+        subconId:       subconMap["PGC-001"]!,
+        projectId:      projMap["Verdana Townhomes Cluster A"]!,
+        unitModel:      "2BR-44SQM",
+        workType:       "ARCHITECTURAL" as const,
+        ratedCapacity:  20,
+        capacityWeight: "0.90",
+      },
+    ])
+    .returning({ id: subcontractorCapacityMatrix.id });
+
+  console.log(`Inserted ${capRows.length} capacity matrix rows.`);
+  console.log("Chunk 6 seed complete.");
   await client.end();
 }
 
