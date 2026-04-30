@@ -4,9 +4,10 @@ import postgres from "postgres";
 import { eq, sql } from "drizzle-orm";
 import { departments, costCenters, users } from "./schema/core";
 import { developers, projects, blocks } from "./schema/projects";
+import { suppliers, materials } from "./schema/admin";
 
 const client = postgres(process.env.DATABASE_URL!, { prepare: false });
-const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks } });
+const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials } });
 
 async function main() {
   // Idempotency check — skip if seed data already present
@@ -225,6 +226,158 @@ async function main() {
 
   console.log(`Inserted ${blockRows.length} blocks.`);
   console.log("Chunk 2 seed complete.");
+
+  // ── Suppliers (5 rows) ───────────────────────────────────────────────────
+  const supplierRows = await db
+    .insert(suppliers)
+    .values([
+      { name: "Holcim Philippines, Inc.",          isActive: true },
+      { name: "Republic Cement Services, Inc.",    isActive: true },
+      { name: "Pag-asa Steel Works, Inc.",         isActive: true },
+      { name: "Alsons Development & Investment",   isActive: true },
+      { name: "GrandBuilders Hardware & Supply",   isActive: true },
+    ])
+    .returning({ id: suppliers.id, name: suppliers.name });
+
+  const supplierMap = Object.fromEntries(supplierRows.map((s) => [s.name, s.id]));
+  console.log(`Inserted ${supplierRows.length} suppliers.`);
+
+  // ── Materials (15 rows, Philippine market prices as of 2025) ────────────
+  const materialRows = await db
+    .insert(materials)
+    .values([
+      // ── CEMENT ──────────────────────────────────────────────────────────
+      {
+        code:               "CEM-OPC-40K",
+        name:               "Portland Cement Type I (40 kg bag)",
+        unit:               "bag",
+        category:           "CEMENT",
+        adminPrice:         "285.00",
+        preferredSupplierId: supplierMap["Holcim Philippines, Inc."],
+      },
+      {
+        code:               "CEM-OPC-BULK",
+        name:               "Portland Cement Type I (bulk, per MT)",
+        unit:               "MT",
+        category:           "CEMENT",
+        adminPrice:         "6800.00",
+        preferredSupplierId: supplierMap["Republic Cement Services, Inc."],
+      },
+      // ── AGGREGATE ───────────────────────────────────────────────────────
+      {
+        code:               "AGG-SAND-CRS",
+        name:               "Coarse Sand (per cu.m.)",
+        unit:               "cu.m.",
+        category:           "AGGREGATE",
+        adminPrice:         "1200.00",
+        preferredSupplierId: supplierMap["GrandBuilders Hardware & Supply"],
+      },
+      {
+        code:               "AGG-GRAVEL-34",
+        name:               "3/4\" Crushed Gravel (per cu.m.)",
+        unit:               "cu.m.",
+        category:           "AGGREGATE",
+        adminPrice:         "1450.00",
+        preferredSupplierId: supplierMap["GrandBuilders Hardware & Supply"],
+      },
+      {
+        code:               "AGG-GRAVEL-12",
+        name:               "1/2\" Crushed Gravel (per cu.m.)",
+        unit:               "cu.m.",
+        category:           "AGGREGATE",
+        adminPrice:         "1550.00",
+        preferredSupplierId: supplierMap["GrandBuilders Hardware & Supply"],
+      },
+      // ── REBAR ────────────────────────────────────────────────────────────
+      {
+        code:               "REBAR-10MM",
+        name:               "Deformed Bar 10 mm × 6 m",
+        unit:               "pc",
+        category:           "REBAR",
+        adminPrice:         "320.00",
+        preferredSupplierId: supplierMap["Pag-asa Steel Works, Inc."],
+      },
+      {
+        code:               "REBAR-12MM",
+        name:               "Deformed Bar 12 mm × 6 m",
+        unit:               "pc",
+        category:           "REBAR",
+        adminPrice:         "465.00",
+        preferredSupplierId: supplierMap["Pag-asa Steel Works, Inc."],
+      },
+      {
+        code:               "REBAR-16MM",
+        name:               "Deformed Bar 16 mm × 6 m",
+        unit:               "pc",
+        category:           "REBAR",
+        adminPrice:         "820.00",
+        preferredSupplierId: supplierMap["Pag-asa Steel Works, Inc."],
+      },
+      {
+        code:               "REBAR-20MM",
+        name:               "Deformed Bar 20 mm × 6 m",
+        unit:               "pc",
+        category:           "REBAR",
+        adminPrice:         "1280.00",
+        preferredSupplierId: supplierMap["Pag-asa Steel Works, Inc."],
+      },
+      // ── FORMWORK ─────────────────────────────────────────────────────────
+      {
+        code:               "FW-PLYWD-34",
+        name:               "Marine Plywood 3/4\" (4×8 ft)",
+        unit:               "sht",
+        category:           "FORMWORK",
+        adminPrice:         "1350.00",
+        preferredSupplierId: supplierMap["GrandBuilders Hardware & Supply"],
+      },
+      {
+        code:               "FW-PLYWD-12",
+        name:               "Marine Plywood 1/2\" (4×8 ft)",
+        unit:               "sht",
+        category:           "FORMWORK",
+        adminPrice:         "980.00",
+        preferredSupplierId: supplierMap["GrandBuilders Hardware & Supply"],
+      },
+      {
+        code:               "FW-LUMBER-2X3",
+        name:               "Coco Lumber 2\"×3\"×10'",
+        unit:               "bd.ft.",
+        category:           "FORMWORK",
+        adminPrice:         "38.00",
+        preferredSupplierId: supplierMap["Alsons Development & Investment"],
+      },
+      // ── CONCRETE ADMIXTURE ───────────────────────────────────────────────
+      {
+        code:               "ADM-PLASTICIZER",
+        name:               "Concrete Plasticizer / Water Reducer (per L)",
+        unit:               "L",
+        category:           "ADMIXTURE",
+        adminPrice:         "120.00",
+        preferredSupplierId: supplierMap["Holcim Philippines, Inc."],
+      },
+      // ── WIRE ─────────────────────────────────────────────────────────────
+      {
+        code:               "WIRE-TIENG-16",
+        name:               "G.I. Tie Wire #16 (per kg)",
+        unit:               "kg",
+        category:           "WIRE",
+        adminPrice:         "85.00",
+        preferredSupplierId: supplierMap["GrandBuilders Hardware & Supply"],
+      },
+      // ── CURING ───────────────────────────────────────────────────────────
+      {
+        code:               "CUR-COMPOUND",
+        name:               "Concrete Curing Compound (per L)",
+        unit:               "L",
+        category:           "CURING",
+        adminPrice:         "210.00",
+        preferredSupplierId: supplierMap["Holcim Philippines, Inc."],
+      },
+    ])
+    .returning({ id: materials.id, code: materials.code });
+
+  console.log(`Inserted ${materialRows.length} materials.`);
+  console.log("Chunk 3 seed complete.");
   await client.end();
 }
 
