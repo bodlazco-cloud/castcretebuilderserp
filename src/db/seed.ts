@@ -7,9 +7,11 @@ import { developers, projects, blocks } from "./schema/projects";
 import { suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards } from "./schema/admin";
 import { subcontractors, subcontractorCapacityMatrix } from "./schema/subcontractors";
 import { projectUnits, unitMilestones } from "./schema/units";
+import { employees } from "./schema/hr";
+import { equipment } from "./schema/motorpool";
 
 const client = postgres(process.env.DATABASE_URL!, { prepare: false });
-const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards, subcontractors, subcontractorCapacityMatrix, projectUnits, unitMilestones } });
+const db = drizzle(client, { schema: { departments, costCenters, users, developers, projects, blocks, suppliers, materials, activityDefinitions, milestoneDefinitions, developerRateCards, bomStandards, subcontractors, subcontractorCapacityMatrix, projectUnits, unitMilestones, employees, equipment } });
 
 async function main() {
   // Idempotency check — skip if seed data already present
@@ -844,6 +846,274 @@ async function main() {
 
   console.log(`Inserted ${umRows.length} unit milestones.`);
   console.log("Chunk 7 seed complete.");
+
+  // ccMap key: cost-center code → UUID (built here for first use in chunk 8)
+  const ccMap = Object.fromEntries(ccRows.map((c) => [c.code, c.id]));
+
+  // ── Employees (12 rows) ──────────────────────────────────────────────────
+  // Contributions are monthly employee-share amounts under 2025 Philippine
+  // statutory rates: SSS 4.5 % of MSC, PhilHealth 2.5 % of basic salary
+  // (capped ₱90 k/mo), Pag-IBIG 2 % (capped ₱200/mo).
+  // dailyRate × 26 working days ≈ monthly salary used for computation.
+  const empRows = await db
+    .insert(employees)
+    .values([
+      // ── Construction ────────────────────────────────────────────────────
+      {
+        employeeCode:           "EMP-CON-001",
+        fullName:               "Carlos Dela Cruz",
+        deptId:                 deptMap["CONSTRUCTION"]!,
+        costCenterId:           ccMap["CC-PROJECT-DEFAULT"]!,
+        position:               "Site Engineer",
+        employmentType:         "REGULAR",
+        dailyRate:              "1200.00",
+        sssContribution:        "1350.00",   // MSC 30 000
+        philhealthContribution: "780.00",    // 31 200 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2022-03-01",
+        tinNumber:              "123-456-789-000",
+      },
+      {
+        employeeCode:           "EMP-CON-002",
+        fullName:               "Rodrigo Bautista",
+        deptId:                 deptMap["CONSTRUCTION"]!,
+        costCenterId:           ccMap["CC-PROJECT-DEFAULT"]!,
+        position:               "Site Engineer",
+        employmentType:         "REGULAR",
+        dailyRate:              "1000.00",
+        sssContribution:        "1125.00",   // MSC 25 000
+        philhealthContribution: "650.00",    // 26 000 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2023-01-16",
+        tinNumber:              "234-567-890-001",
+      },
+      {
+        employeeCode:           "EMP-CON-003",
+        fullName:               "Danilo Reyes",
+        deptId:                 deptMap["CONSTRUCTION"]!,
+        costCenterId:           ccMap["CC-PROJECT-DEFAULT"]!,
+        position:               "Site Foreman",
+        employmentType:         "REGULAR",
+        dailyRate:              "750.00",
+        sssContribution:        "877.50",    // MSC 19 500
+        philhealthContribution: "487.50",    // 19 500 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2021-06-01",
+        tinNumber:              "345-678-901-002",
+      },
+      {
+        employeeCode:           "EMP-CON-004",
+        fullName:               "Jerome Santos",
+        deptId:                 deptMap["CONSTRUCTION"]!,
+        costCenterId:           ccMap["CC-PROJECT-DEFAULT"]!,
+        position:               "Safety Officer",
+        employmentType:         "REGULAR",
+        dailyRate:              "900.00",
+        sssContribution:        "1035.00",   // MSC 23 000
+        philhealthContribution: "585.00",    // 23 400 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2022-09-12",
+        tinNumber:              "456-789-012-003",
+      },
+      // ── Procurement ─────────────────────────────────────────────────────
+      {
+        employeeCode:           "EMP-PRO-001",
+        fullName:               "Ana Lim",
+        deptId:                 deptMap["PROCUREMENT"]!,
+        costCenterId:           ccMap["HQ-ADMIN"]!,
+        position:               "Procurement Officer",
+        employmentType:         "REGULAR",
+        dailyRate:              "850.00",
+        sssContribution:        "990.00",    // MSC 22 000
+        philhealthContribution: "552.50",    // 22 100 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2022-04-04",
+        tinNumber:              "567-890-123-004",
+      },
+      {
+        employeeCode:           "EMP-PRO-002",
+        fullName:               "Noel Gacutan",
+        deptId:                 deptMap["PROCUREMENT"]!,
+        costCenterId:           ccMap["HQ-ADMIN"]!,
+        position:               "Warehouseman",
+        employmentType:         "REGULAR",
+        dailyRate:              "600.00",
+        sssContribution:        "720.00",    // MSC 16 000
+        philhealthContribution: "390.00",    // 15 600 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2023-07-01",
+        tinNumber:              "678-901-234-005",
+      },
+      // ── Motor Pool ───────────────────────────────────────────────────────
+      {
+        employeeCode:           "EMP-MPL-001",
+        fullName:               "Eduardo Cruz",
+        deptId:                 deptMap["MOTORPOOL"]!,
+        costCenterId:           ccMap["CC-FLEET"]!,
+        position:               "Equipment Operator",
+        employmentType:         "REGULAR",
+        dailyRate:              "800.00",
+        sssContribution:        "922.50",    // MSC 20 500
+        philhealthContribution: "520.00",    // 20 800 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2021-11-15",
+        tinNumber:              "789-012-345-006",
+      },
+      {
+        employeeCode:           "EMP-MPL-002",
+        fullName:               "Ruben Villanueva",
+        deptId:                 deptMap["MOTORPOOL"]!,
+        costCenterId:           ccMap["CC-FLEET"]!,
+        position:               "Driver",
+        employmentType:         "REGULAR",
+        dailyRate:              "650.00",
+        sssContribution:        "765.00",    // MSC 17 000
+        philhealthContribution: "422.50",    // 16 900 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2022-02-01",
+        tinNumber:              "890-123-456-007",
+      },
+      // ── Finance ──────────────────────────────────────────────────────────
+      {
+        employeeCode:           "EMP-FIN-001",
+        fullName:               "Patricia Ocampo",
+        deptId:                 deptMap["FINANCE"]!,
+        costCenterId:           ccMap["HQ-FINANCE"]!,
+        position:               "Accountant",
+        employmentType:         "REGULAR",
+        dailyRate:              "1100.00",
+        sssContribution:        "1282.50",   // MSC 28 500
+        philhealthContribution: "715.00",    // 28 600 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2021-08-16",
+        tinNumber:              "901-234-567-008",
+      },
+      // ── HR ───────────────────────────────────────────────────────────────
+      {
+        employeeCode:           "EMP-HRS-001",
+        fullName:               "Rosario Mendoza",
+        deptId:                 deptMap["HR"]!,
+        costCenterId:           ccMap["HQ-ADMIN"]!,
+        position:               "HR Specialist",
+        employmentType:         "REGULAR",
+        dailyRate:              "900.00",
+        sssContribution:        "1035.00",
+        philhealthContribution: "585.00",
+        pagibigContribution:    "200.00",
+        hireDate:               "2020-05-04",
+        tinNumber:              "012-345-678-009",
+      },
+      // ── Audit ────────────────────────────────────────────────────────────
+      {
+        employeeCode:           "EMP-AUD-001",
+        fullName:               "Jose Reyes",
+        deptId:                 deptMap["AUDIT"]!,
+        costCenterId:           ccMap["HQ-ADMIN"]!,
+        position:               "QC Inspector",
+        employmentType:         "REGULAR",
+        dailyRate:              "950.00",
+        sssContribution:        "1102.50",   // MSC 24 500
+        philhealthContribution: "617.50",    // 24 700 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2022-11-01",
+        tinNumber:              "111-222-333-010",
+      },
+      // ── Batching ─────────────────────────────────────────────────────────
+      {
+        employeeCode:           "EMP-BAT-001",
+        fullName:               "Ramon Flores",
+        deptId:                 deptMap["BATCHING"]!,
+        costCenterId:           ccMap["CC-BATCHING"]!,
+        position:               "Batching Plant Operator",
+        employmentType:         "REGULAR",
+        dailyRate:              "700.00",
+        sssContribution:        "810.00",    // MSC 18 000
+        philhealthContribution: "455.00",    // 18 200 × 2.5 %
+        pagibigContribution:    "200.00",
+        hireDate:               "2023-03-06",
+        tinNumber:              "222-333-444-011",
+      },
+    ])
+    .returning({ id: employees.id, employeeCode: employees.employeeCode });
+
+  console.log(`Inserted ${empRows.length} employees.`);
+
+  // ── Equipment (5 pieces) ─────────────────────────────────────────────────
+  // dailyRentalRate is the internal charge-back rate used in finance ledger.
+  // fuelStandardLitersPerHour is the manufacturer benchmark for variance tracking.
+  const eqRows = await db
+    .insert(equipment)
+    .values([
+      {
+        code:                       "EQ-TM-001",
+        name:                       "Transit Mixer No. 1",
+        type:                       "CONCRETE_MIXER",
+        make:                       "Hino",
+        model:                      "700 Series FM",
+        year:                       2022,
+        purchaseValue:              "8500000.00",
+        dailyRentalRate:            "8500.00",
+        fuelStandardLitersPerHour:  "12.5000",
+        totalEngineHours:           "2340.00",
+        status:                     "AVAILABLE",
+      },
+      {
+        code:                       "EQ-EX-001",
+        name:                       "Hydraulic Excavator No. 1",
+        type:                       "EXCAVATOR",
+        make:                       "Komatsu",
+        model:                      "PC200-8M0",
+        year:                       2021,
+        purchaseValue:              "6200000.00",
+        dailyRentalRate:            "6200.00",
+        fuelStandardLitersPerHour:  "15.0000",
+        totalEngineHours:           "3850.00",
+        status:                     "AVAILABLE",
+      },
+      {
+        code:                       "EQ-CP-001",
+        name:                       "Concrete Pump No. 1",
+        type:                       "CONCRETE_PUMP",
+        make:                       "Putzmeister",
+        model:                      "BSA 1409 D",
+        year:                       2022,
+        purchaseValue:              "4500000.00",
+        dailyRentalRate:            "4500.00",
+        fuelStandardLitersPerHour:  "8.0000",
+        totalEngineHours:           "1620.00",
+        status:                     "AVAILABLE",
+      },
+      {
+        code:                       "EQ-DT-001",
+        name:                       "Dump Truck No. 1",
+        type:                       "DUMP_TRUCK",
+        make:                       "Isuzu",
+        model:                      "Giga FVZ 34P",
+        year:                       2023,
+        purchaseValue:              "3200000.00",
+        dailyRentalRate:            "3200.00",
+        fuelStandardLitersPerHour:  "10.0000",
+        totalEngineHours:           "980.00",
+        status:                     "AVAILABLE",
+      },
+      {
+        code:                       "EQ-CR-001",
+        name:                       "Mobile Crane No. 1",
+        type:                       "CRANE",
+        make:                       "Tadano",
+        model:                      "GR-500EX-2",
+        year:                       2020,
+        purchaseValue:              "12000000.00",
+        dailyRentalRate:            "12000.00",
+        fuelStandardLitersPerHour:  "18.0000",
+        totalEngineHours:           "5210.00",
+        status:                     "AVAILABLE",
+      },
+    ])
+    .returning({ id: equipment.id, code: equipment.code });
+
+  console.log(`Inserted ${eqRows.length} equipment records.`);
+  console.log("Chunk 8 seed complete.");
   await client.end();
 }
 
