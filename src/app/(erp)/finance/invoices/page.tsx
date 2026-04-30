@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { invoices, projects, workAccomplishedReports, unitMilestones, milestoneDefinitions, projectUnits } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
+import FilterBar from "@/components/FilterBar";
 
 const ACCENT = "#ff5a1f";
 
@@ -13,45 +14,63 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   REJECTED:  { bg: "#fef2f2", color: "#e02424" },
 };
 
-export default async function InvoicesPage() {
+type SearchParams = Promise<{ status?: string; projectId?: string }>;
+
+export default async function InvoicesPage({ searchParams }: { searchParams: SearchParams }) {
   await getAuthUser();
 
-  const rows = await db
-    .select({
-      id:                  invoices.id,
-      status:              invoices.status,
-      grossAccomplishment: invoices.grossAccomplishment,
-      lessDpRecovery:      invoices.lessDpRecovery,
-      lessOsmDeduction:    invoices.lessOsmDeduction,
-      lessRetention:       invoices.lessRetention,
-      netAmountDue:        invoices.netAmountDue,
-      generatedAt:         invoices.generatedAt,
-      submittedAt:         invoices.submittedAt,
-      collectedAt:         invoices.collectedAt,
-      collectionAmount:    invoices.collectionAmount,
-      projName:            projects.name,
-      projId:              projects.id,
-      unitCode:            projectUnits.unitCode,
-      milestoneName:       milestoneDefinitions.name,
-    })
-    .from(invoices)
-    .leftJoin(projects,               eq(invoices.projectId,             projects.id))
-    .leftJoin(workAccomplishedReports, eq(invoices.warId,                workAccomplishedReports.id))
-    .leftJoin(unitMilestones,          eq(invoices.unitMilestoneId,       unitMilestones.id))
-    .leftJoin(milestoneDefinitions,    eq(unitMilestones.milestoneDefId,  milestoneDefinitions.id))
-    .leftJoin(projectUnits,            eq(workAccomplishedReports.unitId, projectUnits.id))
-    .orderBy(desc(invoices.generatedAt));
+  const { status, projectId } = await searchParams;
+
+  const conditions = and(
+    status    ? eq(invoices.status,    status)    : undefined,
+    projectId ? eq(invoices.projectId, projectId) : undefined,
+  );
+
+  const [rows, allProjects] = await Promise.all([
+    db
+      .select({
+        id:                  invoices.id,
+        status:              invoices.status,
+        grossAccomplishment: invoices.grossAccomplishment,
+        lessDpRecovery:      invoices.lessDpRecovery,
+        lessOsmDeduction:    invoices.lessOsmDeduction,
+        lessRetention:       invoices.lessRetention,
+        netAmountDue:        invoices.netAmountDue,
+        generatedAt:         invoices.generatedAt,
+        collectedAt:         invoices.collectedAt,
+        collectionAmount:    invoices.collectionAmount,
+        projName:            projects.name,
+        projId:              projects.id,
+        unitCode:            projectUnits.unitCode,
+        milestoneName:       milestoneDefinitions.name,
+      })
+      .from(invoices)
+      .leftJoin(projects,               eq(invoices.projectId,             projects.id))
+      .leftJoin(workAccomplishedReports, eq(invoices.warId,                workAccomplishedReports.id))
+      .leftJoin(unitMilestones,          eq(invoices.unitMilestoneId,       unitMilestones.id))
+      .leftJoin(milestoneDefinitions,    eq(unitMilestones.milestoneDefId,  milestoneDefinitions.id))
+      .leftJoin(projectUnits,            eq(workAccomplishedReports.unitId, projectUnits.id))
+      .where(conditions)
+      .orderBy(desc(invoices.generatedAt)),
+    db.selectDistinct({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name),
+  ]);
 
   const totalDraft     = rows.filter((r) => r.status === "DRAFT").length;
   const totalSubmitted = rows.filter((r) => r.status === "SUBMITTED").length;
   const totalCollected = rows.filter((r) => r.status === "COLLECTED").length;
-
   const totalCollectedValue = rows
     .filter((r) => r.status === "COLLECTED" && r.collectionAmount)
     .reduce((s, r) => s + Number(r.collectionAmount), 0);
 
   const fmt = (v: string | null) =>
     v != null ? `PHP ${Number(v).toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "—";
+
+  const filterValues: Record<string, string> = {
+    ...(status    ? { status }    : {}),
+    ...(projectId ? { projectId } : {}),
+  };
+
+  const isFiltered = !!(status || projectId);
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -60,11 +79,12 @@ export default async function InvoicesPage() {
           <a href="/finance" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>← Finance & Accounting</a>
         </div>
 
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.5rem" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
           <div>
             <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Invoices</h1>
             <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
               {totalDraft} draft · {totalSubmitted} submitted · {totalCollected} collected
+              {isFiltered ? " (filtered)" : ""}
             </p>
           </div>
           <a href="/finance/invoices/new" style={{
@@ -74,11 +94,11 @@ export default async function InvoicesPage() {
         </div>
 
         {/* KPI strip */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.75rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
           {[
-            { label: "Draft", value: totalDraft, color: "#6b7280" },
-            { label: "Submitted", value: totalSubmitted, color: "#1a56db" },
-            { label: "Collected", value: totalCollected, color: "#057a55" },
+            { label: "Draft",          value: totalDraft,     color: "#6b7280" },
+            { label: "Submitted",      value: totalSubmitted, color: "#1a56db" },
+            { label: "Collected",      value: totalCollected, color: "#057a55" },
             { label: "Total Collected", value: `PHP ${totalCollectedValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`, color: "#057a55" },
           ].map((k) => (
             <div key={k.label} style={{ background: "#fff", borderRadius: "8px", padding: "1rem 1.25rem", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", borderLeft: `4px solid ${k.color}` }}>
@@ -88,9 +108,18 @@ export default async function InvoicesPage() {
           ))}
         </div>
 
+        <FilterBar
+          accent={ACCENT}
+          values={filterValues}
+          fields={[
+            { type: "select", name: "status", placeholder: "All statuses", options: ["DRAFT","SUBMITTED","COLLECTED","REJECTED"].map((s) => ({ value: s, label: s })) },
+            { type: "select", name: "projectId", placeholder: "All projects", options: allProjects.map((p) => ({ value: p.id, label: p.name })) },
+          ]}
+        />
+
         {rows.length === 0 ? (
           <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>
-            No invoices yet. <a href="/finance/invoices/new" style={{ color: ACCENT }}>Generate first invoice →</a>
+            {isFiltered ? "No invoices match your filters." : <>No invoices yet. <a href="/finance/invoices/new" style={{ color: ACCENT }}>Generate first invoice →</a></>}
           </div>
         ) : (
           <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>

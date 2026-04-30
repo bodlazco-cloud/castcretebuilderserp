@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { purchaseOrders, projects, suppliers } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
+import FilterBar from "@/components/FilterBar";
 
 const ACCENT = "#e3a008";
 
@@ -17,29 +18,51 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   CANCELLED:           { bg: "#fef2f2", color: "#b91c1c" },
 };
 
-export default async function PurchaseOrdersPage() {
+type SearchParams = Promise<{ status?: string; projectId?: string; supplierId?: string }>;
+
+export default async function PurchaseOrdersPage({ searchParams }: { searchParams: SearchParams }) {
   await getAuthUser();
 
-  const rows = await db
-    .select({
-      id:           purchaseOrders.id,
-      totalAmount:  purchaseOrders.totalAmount,
-      status:       purchaseOrders.status,
-      isPrepaid:    purchaseOrders.isPrepaid,
-      createdAt:    purchaseOrders.createdAt,
-      deliveredAt:  purchaseOrders.deliveredAt,
-      bodApprovedAt: purchaseOrders.bodApprovedAt,
-      projName:     projects.name,
-      projId:       projects.id,
-      supplierName: suppliers.name,
-    })
-    .from(purchaseOrders)
-    .leftJoin(projects,   eq(purchaseOrders.projectId,   projects.id))
-    .leftJoin(suppliers,  eq(purchaseOrders.supplierId,  suppliers.id))
-    .orderBy(desc(purchaseOrders.createdAt));
+  const { status, projectId, supplierId } = await searchParams;
+
+  const conditions = and(
+    status     ? sql`${purchaseOrders.status} = ${status}`  : undefined,
+    projectId  ? eq(purchaseOrders.projectId,  projectId)  : undefined,
+    supplierId ? eq(purchaseOrders.supplierId, supplierId) : undefined,
+  );
+
+  const [rows, allProjects, allSuppliers] = await Promise.all([
+    db
+      .select({
+        id:           purchaseOrders.id,
+        totalAmount:  purchaseOrders.totalAmount,
+        status:       purchaseOrders.status,
+        isPrepaid:    purchaseOrders.isPrepaid,
+        createdAt:    purchaseOrders.createdAt,
+        deliveredAt:  purchaseOrders.deliveredAt,
+        projName:     projects.name,
+        projId:       projects.id,
+        supplierName: suppliers.name,
+        suppId:       suppliers.id,
+      })
+      .from(purchaseOrders)
+      .leftJoin(projects,  eq(purchaseOrders.projectId,  projects.id))
+      .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+      .where(conditions)
+      .orderBy(desc(purchaseOrders.createdAt)),
+    db.selectDistinct({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name),
+    db.selectDistinct({ id: suppliers.id, name: suppliers.name }).from(suppliers).orderBy(suppliers.name),
+  ]);
 
   const totalValue = rows.reduce((s, r) => s + Number(r.totalAmount), 0);
   const pending = rows.filter((r) => ["AUDIT_REVIEW", "BOD_APPROVED", "AWAITING_DELIVERY"].includes(r.status)).length;
+
+  const filterValues: Record<string, string> = {
+    ...(status     ? { status }     : {}),
+    ...(projectId  ? { projectId }  : {}),
+    ...(supplierId ? { supplierId } : {}),
+  };
+  const isFiltered = !!(status || projectId || supplierId);
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -48,16 +71,27 @@ export default async function PurchaseOrdersPage() {
           <a href="/procurement" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>← Procurement & Stock</a>
         </div>
 
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.5rem" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
           <div>
             <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Purchase Orders</h1>
             <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
               {rows.length} POs — PHP {totalValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })} total, {pending} in progress
+              {isFiltered ? " (filtered)" : ""}
             </p>
           </div>
         </div>
 
-        {/* Status pills */}
+        <FilterBar
+          accent={ACCENT}
+          values={filterValues}
+          fields={[
+            { type: "select", name: "status",     placeholder: "All statuses",  options: Object.keys(STATUS_STYLE).map((s) => ({ value: s, label: s.replace(/_/g, " ") })) },
+            { type: "select", name: "projectId",  placeholder: "All projects",  options: allProjects.map((p) => ({ value: p.id, label: p.name })) },
+            { type: "select", name: "supplierId", placeholder: "All suppliers", options: allSuppliers.map((s) => ({ value: s.id, label: s.name })) },
+          ]}
+        />
+
+        {/* Status summary pills */}
         {rows.length > 0 && (
           <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
             {Object.entries(STATUS_STYLE).map(([s, st]) => {
@@ -74,7 +108,7 @@ export default async function PurchaseOrdersPage() {
 
         {rows.length === 0 ? (
           <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>
-            No POs yet. POs are created from approved PRs. <a href="/procurement/pr" style={{ color: ACCENT }}>View PRs →</a>
+            {isFiltered ? "No POs match your filters." : <>No POs yet. POs are created from approved PRs. <a href="/procurement/pr" style={{ color: ACCENT }}>View PRs →</a></>}
           </div>
         ) : (
           <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>

@@ -1,13 +1,25 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { materials, suppliers } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, ilike, and, or } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
+import FilterBar from "@/components/FilterBar";
 
 const ACCENT = "#dc2626";
 
-export default async function MaterialsPage() {
+type SearchParams = Promise<{ q?: string; category?: string; status?: string }>;
+
+export default async function MaterialsPage({ searchParams }: { searchParams: SearchParams }) {
   await getAuthUser();
+
+  const { q, category, status } = await searchParams;
+
+  const conditions = and(
+    q        ? or(ilike(materials.name, `%${q}%`), ilike(materials.code, `%${q}%`)) : undefined,
+    category ? eq(materials.category, category)                                      : undefined,
+    status === "active"   ? eq(materials.isActive, true)  : undefined,
+    status === "inactive" ? eq(materials.isActive, false) : undefined,
+  );
 
   const rows = await db
     .select({
@@ -19,18 +31,28 @@ export default async function MaterialsPage() {
       adminPrice:   materials.adminPrice,
       priceVersion: materials.priceVersion,
       isActive:     materials.isActive,
-      createdAt:    materials.createdAt,
       supplierName: suppliers.name,
     })
     .from(materials)
     .leftJoin(suppliers, eq(materials.preferredSupplierId, suppliers.id))
+    .where(conditions)
     .orderBy(materials.category, materials.code);
 
-  const active   = rows.filter((r) => r.isActive).length;
-  const catCounts = new Map<string, number>();
-  for (const r of rows) catCounts.set(r.category, (catCounts.get(r.category) ?? 0) + 1);
+  // Category list for filter dropdown (unfiltered)
+  const allCats = await db
+    .selectDistinct({ category: materials.category })
+    .from(materials)
+    .orderBy(materials.category);
 
-  const fmt = (v: string) => `PHP ${Number(v).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+  const active = rows.filter((r) => r.isActive).length;
+  const fmt = (v: string) =>
+    `PHP ${Number(v).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+
+  const filterValues: Record<string, string> = {
+    ...(q        ? { q }        : {}),
+    ...(category ? { category } : {}),
+    ...(status   ? { status }   : {}),
+  };
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -39,11 +61,12 @@ export default async function MaterialsPage() {
           <a href="/admin" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>← Administration</a>
         </div>
 
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.5rem" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.25rem" }}>
           <div>
             <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Materials & Pricing</h1>
             <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-              {active} active · {rows.length} total · {catCounts.size} categories
+              {active} active · {rows.length} shown
+              {(q || category || status) ? " (filtered)" : ""}
             </p>
           </div>
           <a href="/admin/materials/new" style={{
@@ -52,20 +75,19 @@ export default async function MaterialsPage() {
           }}>+ Add Material</a>
         </div>
 
-        {/* Category pills */}
-        {catCounts.size > 0 && (
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1.25rem" }}>
-            {[...catCounts.entries()].map(([cat, count]) => (
-              <span key={cat} style={{ padding: "0.2rem 0.6rem", borderRadius: "999px", fontSize: "0.78rem", fontWeight: 600, background: "#f3f4f6", color: "#374151" }}>
-                {cat}: {count}
-              </span>
-            ))}
-          </div>
-        )}
+        <FilterBar
+          accent={ACCENT}
+          values={filterValues}
+          fields={[
+            { type: "text",   name: "q",        placeholder: "Search name or code…" },
+            { type: "select", name: "category",  placeholder: "All categories", options: allCats.map((c) => ({ value: c.category, label: c.category })) },
+            { type: "select", name: "status",    placeholder: "All status", options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
+          ]}
+        />
 
         {rows.length === 0 ? (
           <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>
-            No materials yet. <a href="/admin/materials/new" style={{ color: ACCENT }}>Add first material →</a>
+            {(q || category || status) ? "No materials match your filters." : <>No materials yet. <a href="/admin/materials/new" style={{ color: ACCENT }}>Add first material →</a></>}
           </div>
         ) : (
           <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
