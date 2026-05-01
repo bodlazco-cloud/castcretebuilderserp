@@ -6,7 +6,7 @@ import { users } from "./core";
 import { projects } from "./projects";
 import { projectUnits } from "./units";
 import { activityDefinitions, materials, suppliers } from "./admin";
-import { approvalStatusEnum, poStatusEnum, inventorySourceEnum } from "./enums";
+import { approvalStatusEnum, poStatusEnum, inventorySourceEnum, materialMovementTypeEnum } from "./enums";
 
 export const purchaseRequisitions = pgTable("purchase_requisitions", {
   id:                 uuid("id").primaryKey().defaultRandom(),
@@ -39,10 +39,13 @@ export const purchaseOrders = pgTable("purchase_orders", {
   supplierId:           uuid("supplier_id").notNull().references(() => suppliers.id),
   status:               poStatusEnum("status").notNull().default("DRAFT"),
   isPrepaid:            boolean("is_prepaid").notNull().default(false),
+  isOsm:                boolean("is_osm").notNull().default(false),          // developer OSM-supplied materials deduction flag
   proformaInvoiceUrl:   text("proforma_invoice_url"),
   totalAmount:          numeric("total_amount", { precision: 15, scale: 2 }).notNull(),
+  requiresDualAuth:     boolean("requires_dual_auth").notNull().default(false), // auto-set true when totalAmount > 50,000
   createdBy:            uuid("created_by").notNull().references(() => users.id),
   createdAt:            timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  auditStatus:          varchar("audit_status", { length: 20 }).notNull().default("PENDING_REVIEW"),
   auditReviewedBy:      uuid("audit_reviewed_by").references(() => users.id),
   auditReviewedAt:      timestamp("audit_reviewed_at", { withTimezone: true }),
   bodApprovedBy:        uuid("bod_approved_by").references(() => users.id),
@@ -66,10 +69,11 @@ export const materialReceivingReports = pgTable("material_receiving_reports", {
   sourceType:    inventorySourceEnum("source_type").notNull(),
   supplierId:    uuid("supplier_id").references(() => suppliers.id),
   receivedDate:  date("received_date").notNull(),
-  receivedBy:    uuid("received_by").notNull().references(() => users.id),
-  notes:         text("notes"),
-  status:        varchar("status", { length: 20 }).notNull().default("PENDING"),
-  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  receivedBy:        uuid("received_by").notNull().references(() => users.id),
+  photoEvidenceUrl:  text("photo_evidence_url"),   // required by the Attachment Rule before PENDING_APPROVAL
+  notes:             text("notes"),
+  status:            varchar("status", { length: 20 }).notNull().default("PENDING"),
+  createdAt:         timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const mrrItems = pgTable("mrr_items", {
@@ -145,4 +149,20 @@ export const osmDeductionBuckets = pgTable("osm_deduction_buckets", {
   amountApplied:  numeric("amount_applied", { precision: 15, scale: 2 }).notNull().default("0.00"),
   amountPending:  numeric("amount_pending", { precision: 15, scale: 2 }), // generated in DB
   lastUpdated:    timestamp("last_updated", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Immutable audit trail for every stock movement — feeds the Variance Audit queue
+export const materialMovementLogs = pgTable("material_movement_logs", {
+  id:             uuid("id").primaryKey().defaultRandom(),
+  movementType:   materialMovementTypeEnum("movement_type").notNull(),
+  referenceType:  varchar("reference_type", { length: 30 }).notNull(),  // 'PO', 'NTP', 'TRANSFER', 'ADJUSTMENT'
+  referenceId:    uuid("reference_id").notNull(),
+  materialId:     uuid("material_id").notNull().references(() => materials.id),
+  projectId:      uuid("project_id").notNull().references(() => projects.id),
+  unitId:         uuid("unit_id").references(() => projectUnits.id),
+  quantity:       numeric("quantity", { precision: 15, scale: 4 }).notNull(),
+  unitPrice:      numeric("unit_price", { precision: 15, scale: 2 }),
+  notes:          text("notes"),
+  performedBy:    uuid("performed_by").notNull().references(() => users.id),
+  createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

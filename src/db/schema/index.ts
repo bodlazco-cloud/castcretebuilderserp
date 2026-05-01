@@ -6,6 +6,7 @@ export * from "./subcontractors";
 export * from "./units";
 export * from "./procurement";
 export * from "./construction";
+export * from "./planning";
 export * from "./batching";
 export * from "./motorpool";
 export * from "./hr";

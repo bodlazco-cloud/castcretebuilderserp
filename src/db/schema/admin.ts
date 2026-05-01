@@ -50,6 +50,7 @@ export const bomStandards = pgTable("bom_standards", {
   unitType:         unitTypeEnum("unit_type").notNull(),
   materialId:       uuid("material_id").notNull().references(() => materials.id),
   quantityPerUnit:  numeric("quantity_per_unit", { precision: 15, scale: 4 }).notNull(),
+  baseRatePhp:      numeric("base_rate_php", { precision: 15, scale: 2 }),  // model-specific rate for job costing; falls back to materials.adminPrice if null
   version:          integer("version").notNull().default(1),
   isActive:         boolean("is_active").notNull().default(true),
   approvedBy:       uuid("approved_by").references(() => users.id),

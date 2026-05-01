@@ -6,7 +6,7 @@ import { users } from "./core";
 import { projects } from "./projects";
 import { projectUnits, unitMilestones, unitActivities } from "./units";
 import { subcontractors } from "./subcontractors";
-import { workCategoryEnum, tradeTypeEnum, delayReasonEnum, milestoneDocTypeEnum, approvalStatusEnum, deptCodeEnum } from "./enums";
+import { workCategoryEnum, tradeTypeEnum, delayReasonEnum, milestoneDocTypeEnum, approvalStatusEnum, deptCodeEnum, ntpStatusEnum } from "./enums";
 
 export const taskAssignments = pgTable("task_assignments", {
   id:                   uuid("id").primaryKey().defaultRandom(),
@@ -17,7 +17,7 @@ export const taskAssignments = pgTable("task_assignments", {
   workType:             tradeTypeEnum("work_type").notNull(),
   startDate:            date("start_date").notNull(),
   endDate:              date("end_date").notNull(),
-  status:               varchar("status", { length: 30 }).notNull().default("DRAFT"),
+  status:               ntpStatusEnum("status").notNull().default("DRAFT"),
   capacityCheckPassed:  boolean("capacity_check_passed").notNull().default(false),
   capacityCheckedAt:    timestamp("capacity_checked_at", { withTimezone: true }),
   capacityCheckedBy:    uuid("capacity_checked_by").references(() => users.id),

@@ -62,3 +62,23 @@ export const payrollStatusEnum = pgEnum("payroll_status", ["DRAFT", "PROCESSING"
 export const bankTransactionTypeEnum = pgEnum("bank_transaction_type", ["DEBIT", "CREDIT"]);
 
 export const punchListStatusEnum = pgEnum("punch_list_status", ["OPEN", "IN_PROGRESS", "CLOSED"]);
+
+// NTP lifecycle: DRAFT → BOD_APPROVED → ACTIVE (triggers resource forecast) → COMPLETED
+export const ntpStatusEnum = pgEnum("ntp_status", [
+  "DRAFT", "BOD_APPROVED", "ACTIVE", "COMPLETED",
+]);
+
+// Resource forecast lifecycle driven by the Chain of Necessity
+export const resourceForecastStatusEnum = pgEnum("resource_forecast_status", [
+  "PENDING_PR", "PR_CREATED", "PO_ISSUED", "ISSUED",
+]);
+
+// Explicit payment flow for Finance module (DRAFT → PREPARED → RELEASED)
+export const paymentFlowStatusEnum = pgEnum("payment_flow_status", [
+  "DRAFT", "PREPARED", "RELEASED",
+]);
+
+// Full audit trail for all stock movements
+export const materialMovementTypeEnum = pgEnum("material_movement_type", [
+  "RECEIPT", "ISSUANCE", "TRANSFER", "ADJUSTMENT",
+]);
