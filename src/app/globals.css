@@ -44,36 +44,30 @@ body {
 
 /* ─── Responsive layout ──────────────────────────────────────────────────── */
 
-/* Sidebar drawer on mobile */
+/* Sidebar — base transition covers both mobile drawer and desktop collapse */
 .app-sidebar {
-  transition: transform 0.25s ease;
+  transition: transform 0.25s ease, width 0.25s ease, min-width 0.25s ease;
 }
 
-/* Mobile topbar: hidden on desktop, shown on mobile */
-.mobile-topbar {
-  display: none;
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 52px;
-  background: #18181b;
-  border-bottom: 1px solid #27272a;
-  align-items: center;
-  padding: 0 1rem;
-  z-index: 98;
-  gap: 0.75rem;
+/* Desktop collapse: zero-out width so content expands to fill */
+.sidebar-desktop-collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden;
 }
 
-/* Content area offset for mobile topbar */
+/* Content area */
 .erp-content {
   flex: 1;
   overflow-y: auto;
 }
 
 /* Mobile-only / desktop-only utility classes */
-.mobile-only { display: none !important; }
+.mobile-only  { display: none !important; }
 .desktop-only { display: flex !important; }
 
 @media (max-width: 767px) {
+  /* On mobile the sidebar is a fixed overlay drawer */
   .app-sidebar {
     position: fixed !important;
     left: 0; top: 0;
@@ -84,15 +78,13 @@ body {
   .app-sidebar.sidebar-open {
     transform: translateX(0);
   }
-  .mobile-topbar {
-    display: flex;
-  }
-  .erp-content {
-    padding-top: 52px;
+  /* Desktop collapse has no effect on the mobile overlay */
+  .sidebar-desktop-collapsed {
+    width: 240px !important;
+    min-width: 240px !important;
   }
   .mobile-only  { display: flex !important; }
   .desktop-only { display: none  !important; }
-  /* Reduce page padding on small screens */
   main {
     padding: 1rem !important;
   }

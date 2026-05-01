@@ -3,6 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  HardHat, Building2, Package, Factory,
+  Truck, ShieldCheck, Wallet, BookOpen, Settings,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 const C = {
   bg:       "#18181b",
@@ -18,11 +23,12 @@ type NavLink    = { label: string; href: string; isDivider?: never; isGroup?: ne
 type NavDivider = { label: string; isDivider: true; href?: never; isGroup?: never };
 type NavGroup   = { label: string; isGroup: true; isDivider?: never; href?: never };
 type NavItem    = NavLink | NavDivider | NavGroup;
-type NavSection = { title: string; items: NavItem[] };
+type NavSection = { title: string; icon: LucideIcon; items: NavItem[] };
 
 const NAV: NavSection[] = [
   {
     title: "Planning & Engineering",
+    icon: HardHat,
     items: [
       { label: "Overview",              href: "/planning" },
       { label: "Bill of Materials",     href: "/planning/bom" },
@@ -38,6 +44,7 @@ const NAV: NavSection[] = [
   },
   {
     title: "Construction",
+    icon: Building2,
     items: [
       { label: "Overview",             href: "/construction" },
       { label: "Site Registry",        href: "/construction/sites" },
@@ -51,6 +58,7 @@ const NAV: NavSection[] = [
   },
   {
     title: "Procurement & Stock",
+    icon: Package,
     items: [
       { label: "Overview",                   href: "/procurement" },
       { label: "PR/PO Management",           href: "/procurement/pr-po" },
@@ -62,6 +70,7 @@ const NAV: NavSection[] = [
   },
   {
     title: "Batching Plant",
+    icon: Factory,
     items: [
       { label: "Overview",          href: "/batching" },
       { label: "Mix Designs",       href: "/batching/mix-designs" },
@@ -74,6 +83,7 @@ const NAV: NavSection[] = [
   },
   {
     title: "Fleet (Motorpool)",
+    icon: Truck,
     items: [
       { label: "Overview",              href: "/motorpool" },
       { label: "Equipment Directory",   href: "/motorpool/equipment" },
@@ -86,6 +96,7 @@ const NAV: NavSection[] = [
   },
   {
     title: "Audit & Quality",
+    icon: ShieldCheck,
     items: [
       { label: "Overview",          href: "/audit" },
       { label: "PO Verification",   href: "/audit/po-compliance" },
@@ -98,6 +109,7 @@ const NAV: NavSection[] = [
   },
   {
     title: "Finance & Accounting",
+    icon: Wallet,
     items: [
       { label: "Overview",               href: "/finance" },
       { label: "Billing",                href: "/finance/invoices" },
@@ -121,6 +133,7 @@ const NAV: NavSection[] = [
   },
   {
     title: "Master List",
+    icon: BookOpen,
     items: [
       { label: "Construction Phases",  href: "/master-list/construction-phases" },
       { label: "Material List",        href: "/master-list/materials" },
@@ -131,6 +144,7 @@ const NAV: NavSection[] = [
   },
   {
     title: "Admin Settings",
+    icon: Settings,
     items: [
       { label: "User Permissions",      href: "/admin/users" },
       { label: "System Logs",           href: "/admin/system-logs" },
@@ -147,7 +161,7 @@ const OVERVIEW_HREFS = new Set([
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
       style={{ transition: "transform 0.2s", transform: open ? "rotate(90deg)" : "rotate(0deg)", flexShrink: 0 }}>
       <polyline points="9 18 15 12 9 6" />
@@ -159,10 +173,14 @@ interface AppSidebarProps {
   displayName: string;
   deptCode: string;
   mobileOpen?: boolean;
+  desktopOpen?: boolean;
   onClose?: () => void;
 }
 
-export default function AppSidebar({ displayName, deptCode, mobileOpen = false, onClose }: AppSidebarProps) {
+export default function AppSidebar({
+  displayName, deptCode,
+  mobileOpen = false, desktopOpen = true, onClose,
+}: AppSidebarProps) {
   const pathname = usePathname();
 
   function isActive(href: string) {
@@ -187,39 +205,22 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
     });
   }
 
+  // Production target — TODO: wire to real DB query via layout.tsx props
+  const targetUnits = 120;
+  const completedUnits = 84;  // placeholder
+  const progressPct = Math.round((completedUnits / targetUnits) * 100);
+
   return (
     <aside
-      className={`app-sidebar${mobileOpen ? " sidebar-open" : ""}`}
+      className={`app-sidebar${mobileOpen ? " sidebar-open" : ""}${!desktopOpen ? " sidebar-desktop-collapsed" : ""}`}
       style={{
-        width: "240px", minWidth: "240px", height: "100vh",
+        width: "240px", minWidth: "240px", height: "100%",
         background: C.bg, color: C.fg,
         display: "flex", flexDirection: "column", overflow: "hidden",
         borderRight: `1px solid ${C.border}`, fontFamily: "system-ui, sans-serif",
+        transition: "width 0.25s ease, min-width 0.25s ease",
       }}
     >
-      {/* Brand */}
-      <div style={{
-        padding: "0 1rem", height: "56px", display: "flex", alignItems: "center",
-        justifyContent: "space-between",
-        borderBottom: `1px solid ${C.border}`, flexShrink: 0,
-      }}>
-        <span style={{ fontWeight: 700, fontSize: "1rem", letterSpacing: "-0.01em" }}>Castcrete 360</span>
-        <button
-          onClick={onClose}
-          className="mobile-only"
-          style={{
-            background: "transparent", border: "none", cursor: "pointer",
-            color: C.muted, padding: "0.25rem", alignItems: "center",
-          }}
-          aria-label="Close navigation"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "0.5rem 0" }}>
         {/* Executive Dashboard */}
@@ -242,6 +243,7 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
         <div style={{ height: "1px", background: C.border, margin: "0.25rem 0 0.5rem" }} />
 
         {NAV.map((section) => {
+          const SectionIcon = section.icon;
           const isOpen = openSections.has(section.title);
           const hasCurrent = section.items.some((item) => item.href && isActive(item.href));
 
@@ -252,11 +254,17 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
                 width: "100%", padding: "0.45rem 1rem",
                 background: "transparent", border: "none", cursor: "pointer",
                 color: hasCurrent ? "#fff" : C.muted,
-                fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.07em",
+                fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.07em",
                 textTransform: "uppercase", textAlign: "left",
               }}>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {section.title}
+                <span style={{ display: "flex", alignItems: "center", gap: "0.5rem", overflow: "hidden" }}>
+                  <SectionIcon
+                    size={13}
+                    style={{ flexShrink: 0, color: hasCurrent ? "#3b82f6" : C.muted }}
+                  />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {section.title}
+                  </span>
                 </span>
                 <Chevron open={isOpen} />
               </button>
@@ -274,7 +282,7 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
                         }}>
                           <div style={{ flex: 1, height: "1px", background: C.border }} />
                           <span style={{
-                            fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.08em",
+                            fontSize: "0.58rem", fontWeight: 700, letterSpacing: "0.08em",
                             textTransform: "uppercase", color: "#52525b", whiteSpace: "nowrap",
                           }}>
                             {item.label}
@@ -289,7 +297,7 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
                       return (
                         <div key={`grp-${idx}`} style={{
                           padding: "0.5rem 1rem 0.15rem 1.75rem",
-                          fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.06em",
+                          fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.06em",
                           textTransform: "uppercase", color: "#3b82f6",
                         }}>
                           {item.label}
@@ -297,12 +305,9 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
                       );
                     }
 
-                    // Regular link — indent further if it follows a group label
-                    const prevItem = idx > 0 ? section.items[idx - 1] : null;
-                    const isUnderGroup = prevItem?.isGroup || (
-                      idx > 1 && section.items.slice(0, idx).some((it, i) =>
-                        it.isGroup && !section.items.slice(i + 1, idx).some((x) => x.isDivider || x.isGroup)
-                      )
+                    // Indent items that follow a group label
+                    const isUnderGroup = idx > 0 && section.items.slice(0, idx).some((it, i) =>
+                      it.isGroup && !section.items.slice(i + 1, idx).some((x) => x.isDivider || x.isGroup)
                     );
                     const paddingLeft = isUnderGroup ? "2.25rem" : "1.75rem";
 
@@ -329,31 +334,55 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
         })}
       </nav>
 
-      {/* User + sign out */}
-      <div style={{ padding: "0.75rem 1rem", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
-        <div style={{ marginBottom: "0.5rem" }}>
-          <div style={{ fontSize: "0.8rem", fontWeight: 600, color: C.fg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {displayName}
+      {/* ── Footer: production target + sign out ─────────────────── */}
+      <div style={{ padding: "0.75rem", borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+        {/* Production Target Widget */}
+        <div style={{
+          background: "#1d1d20", borderRadius: "10px", padding: "0.85rem 1rem",
+          marginBottom: "0.75rem",
+        }}>
+          <div style={{ fontSize: "0.68rem", fontWeight: 600, color: C.muted, marginBottom: "0.3rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Monthly Production Target
           </div>
-          {deptCode && (
-            <div style={{
-              display: "inline-block", marginTop: "0.2rem",
-              padding: "0.1rem 0.45rem", background: "rgba(29,78,216,0.3)", color: "#93c5fd",
-              borderRadius: "999px", fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.05em",
-            }}>
-              {deptCode}
-            </div>
-          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "0.5rem" }}>
+            <span style={{ fontSize: "1.15rem", fontWeight: 700, color: "#fff" }}>
+              {completedUnits} / {targetUnits}
+            </span>
+            <span style={{ fontSize: "0.68rem", fontWeight: 700, color: "#3b82f6" }}>
+              {progressPct}%
+            </span>
+          </div>
+          <div style={{ background: "#3f3f46", height: "4px", borderRadius: "999px", overflow: "hidden" }}>
+            <div style={{ background: "#3b82f6", height: "100%", width: `${progressPct}%`, transition: "width 0.4s ease" }} />
+          </div>
         </div>
-        <form method="POST" action="/auth/logout" style={{ margin: 0 }}>
-          <button type="submit" style={{
-            width: "100%", padding: "0.4rem 0", background: "transparent",
-            border: `1px solid ${C.border}`, borderRadius: "6px",
-            color: C.muted, fontSize: "0.75rem", cursor: "pointer", textAlign: "center",
-          }}>
-            Sign out
-          </button>
-        </form>
+
+        {/* User + sign out */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+          <div style={{ overflow: "hidden" }}>
+            <div style={{ fontSize: "0.78rem", fontWeight: 600, color: C.fg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {displayName}
+            </div>
+            {deptCode && (
+              <div style={{
+                display: "inline-block", marginTop: "0.15rem",
+                padding: "0.1rem 0.4rem", background: "rgba(29,78,216,0.3)", color: "#93c5fd",
+                borderRadius: "999px", fontSize: "0.62rem", fontWeight: 700, letterSpacing: "0.05em",
+              }}>
+                {deptCode}
+              </div>
+            )}
+          </div>
+          <form method="POST" action="/auth/logout" style={{ margin: 0, flexShrink: 0 }}>
+            <button type="submit" style={{
+              padding: "0.35rem 0.65rem", background: "transparent",
+              border: `1px solid ${C.border}`, borderRadius: "6px",
+              color: C.muted, fontSize: "0.7rem", cursor: "pointer", whiteSpace: "nowrap",
+            }}>
+              Sign out
+            </button>
+          </form>
+        </div>
       </div>
     </aside>
   );
