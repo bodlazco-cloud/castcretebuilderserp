@@ -14,6 +14,7 @@ export const projectUnits = pgTable("project_units", {
   lotNumber:       varchar("lot_number", { length: 20 }).notNull(),
   unitCode:        varchar("unit_code", { length: 50 }).notNull().unique(),
   unitModel:       varchar("unit_model", { length: 50 }).notNull(),
+  contractPrice:   numeric("contract_price", { precision: 15, scale: 2 }),
   currentCategory: workCategoryEnum("current_category").notNull().default("STRUCTURAL"),
   status:          varchar("status", { length: 30 }).notNull().default("PENDING"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
