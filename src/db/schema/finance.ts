@@ -8,7 +8,7 @@ import { projectUnits, unitMilestones } from "./units";
 import { subcontractors } from "./subcontractors";
 import { purchaseOrders } from "./procurement";
 import { workAccomplishedReports } from "./construction";
-import { resourceTypeEnum, transactionTypeEnum, approvalStatusEnum } from "./enums";
+import { resourceTypeEnum, transactionTypeEnum, approvalStatusEnum, paymentFlowStatusEnum } from "./enums";
 
 export const financialLedger = pgTable("financial_ledger", {
   id:              uuid("id").primaryKey().defaultRandom(),
@@ -82,9 +82,12 @@ export const manualVouchers = pgTable("manual_vouchers", {
   requiresBodApproval: boolean("requires_bod_approval").notNull().default(false),
   supportingDocUrl:    text("supporting_doc_url"),
   status:              approvalStatusEnum("status").notNull().default("DRAFT"),
+  paymentStatus:       paymentFlowStatusEnum("payment_status").notNull().default("DRAFT"),
   createdBy:           uuid("created_by").notNull().references(() => users.id),
+  preparedBy:          uuid("prepared_by").references(() => users.id),
   approvedBy:          uuid("approved_by").references(() => users.id),
   approvedAt:          timestamp("approved_at", { withTimezone: true }),
+  authorizedBy:        uuid("authorized_by").references(() => users.id),
   paidAt:              timestamp("paid_at", { withTimezone: true }),
   createdAt:           timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
