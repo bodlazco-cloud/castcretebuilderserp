@@ -16,3 +16,4 @@ export * from "./manpower";
 export * from "./payroll";
 export * from "./banking";
 export * from "./quality";
+export * from "./inventory";
