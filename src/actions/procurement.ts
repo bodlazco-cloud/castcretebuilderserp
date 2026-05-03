@@ -8,6 +8,7 @@ import {
   poPriceChangeRequests, suppliers,
   materialReceivingReports, mrrItems, inventoryLedger,
   materialMovementLogs,
+  taskAssignments, projectUnits, projects, subcontractors,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -635,4 +636,47 @@ export async function adjustInventory(
 
   revalidatePath("/procurement/inventory");
   return { success: true, logId: log.id, flagged, adjustmentValue };
+}
+
+// ─── Active Procurement NTP Index ─────────────────────────────────────────────
+// Gemini: getProcurementForecast() — supabase client, 'units'/'master_price_list'
+//         tables, 'model_type' column. createAutomatedPO() rejected: Chain of
+//         Necessity violation (NTP → PR → PO); purchase_orders.pr_id is NOT NULL.
+//
+// Cross-project read: all ACTIVE task_assignments with their unit model,
+// project name, and assigned subcontractor. Distinct from getMrpQueue (material
+// demand aggregation per project) — this is the NTP-level index procurement
+// uses to see what work is currently in flight across all projects.
+
+export interface ActiveNtpRow {
+  ntpId:       string;
+  projectId:   string;
+  projectName: string;
+  unitId:      string;
+  unitCode:    string;
+  unitModel:   string;
+  subconName:  string;
+  ntpStatus:   string;
+}
+
+export async function getActiveProcurementNtps(): Promise<ActiveNtpRow[]> {
+  const rows = await db
+    .select({
+      ntpId:       taskAssignments.id,
+      projectId:   taskAssignments.projectId,
+      projectName: projects.name,
+      unitId:      projectUnits.id,
+      unitCode:    projectUnits.unitCode,
+      unitModel:   projectUnits.unitModel,
+      subconName:  subcontractors.name,
+      ntpStatus:   taskAssignments.status,
+    })
+    .from(taskAssignments)
+    .innerJoin(projectUnits,    eq(projectUnits.id,    taskAssignments.unitId))
+    .innerJoin(projects,        eq(projects.id,        taskAssignments.projectId))
+    .innerJoin(subcontractors,  eq(subcontractors.id,  taskAssignments.subconId))
+    .where(eq(taskAssignments.status, "ACTIVE"))
+    .orderBy(projects.name, projectUnits.unitCode);
+
+  return rows;
 }
