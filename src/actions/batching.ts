@@ -5,8 +5,10 @@ import {
   batchingProductionLogs, concreteDeliveryNotes,
   concreteDeliveryReceipts, batchingInternalSales,
   mixDesigns, inventoryStock, inventoryLedger,
+  financialLedger, departments,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { getAuthUser } from "@/lib/supabase-server";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
@@ -175,10 +177,128 @@ export async function receiveConcreteDelivery(
   });
 
   revalidatePath(`/projects/${note.projectId}/batching`);
+  revalidatePath("/batching/production");
   return {
     success: true,
     receiptId: receipt.id,
     isFlagged: isDeliveryFlagged,
     varianceM3,
   };
+}
+
+// ─── Combined dispatch + receipt for field-side quick delivery logging ─────────
+// Rate sourced from Admin-locked mix_designs.internal_rate_per_m3 — the caller
+// cannot override it. Dual financial_ledger entries are created automatically
+// (DEBIT construction site, CREDIT batching dept) to satisfy Departmental P&L.
+
+const LogConcreteDeliverySchema = z.object({
+  projectId:   z.string().uuid(),
+  unitId:      z.string().uuid(),
+  mixId:       z.string().uuid(),
+  cubicMeters: z.number().positive(),
+  truckId:     z.string().uuid().optional(),
+  costCenterId: z.string().uuid(),
+});
+
+export type LogConcreteDeliveryResult =
+  | { success: true; receiptId: string; totalValue: number }
+  | { success: false; error: string };
+
+export async function logConcreteDelivery(
+  input: z.infer<typeof LogConcreteDeliverySchema>,
+): Promise<LogConcreteDeliveryResult> {
+  const parsed = LogConcreteDeliverySchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { projectId, unitId, mixId, cubicMeters, truckId, costCenterId } = parsed.data;
+
+  // ── Fetch Admin-locked rate from mix design ───────────────────────────────
+  const [mix] = await db
+    .select({ internalRatePerM3: mixDesigns.internalRatePerM3, isActive: mixDesigns.isActive })
+    .from(mixDesigns)
+    .where(eq(mixDesigns.id, mixId))
+    .limit(1);
+
+  if (!mix) return { success: false, error: "Mix design not found." };
+  if (!mix.isActive) return { success: false, error: "Mix design is inactive." };
+  if (!mix.internalRatePerM3) return { success: false, error: "Mix design has no internal rate set. Contact Admin." };
+
+  const ratePerM3   = Number(mix.internalRatePerM3);
+  const totalValue  = cubicMeters * ratePerM3;
+
+  // ── Create delivery note (dispatch from plant) ────────────────────────────
+  const [note] = await db
+    .insert(concreteDeliveryNotes)
+    .values({
+      projectId,
+      unitId,
+      mixDesignId:        mixId,
+      truckId:            truckId ?? null,
+      volumeDispatchedM3: String(cubicMeters),
+      dispatchedBy:       user.id,
+    })
+    .returning({ id: concreteDeliveryNotes.id });
+
+  // ── Create delivery receipt (site acknowledgement — same-step for quick log) ─
+  const [receipt] = await db
+    .insert(concreteDeliveryReceipts)
+    .values({
+      deliveryNoteId:    note.id,
+      unitId,
+      volumeReceivedM3:  String(cubicMeters),
+      volumeVarianceM3:  "0",
+      isDeliveryFlagged: false,
+      receivedBy:        user.id,
+    })
+    .returning({ id: concreteDeliveryReceipts.id });
+
+  // ── Internal sale record (Batching P&L credit) ────────────────────────────
+  await db.insert(batchingInternalSales).values({
+    deliveryReceiptId:    receipt.id,
+    projectId,
+    unitId,
+    volumeM3:             String(cubicMeters),
+    internalRatePerM3:    String(ratePerM3),
+    totalInternalRevenue: String(totalValue),
+    transactionDate:      new Date().toISOString().split("T")[0],
+  });
+
+  // ── Dual financial_ledger entries (execute_internal_concrete_sale equivalent) ─
+  const deptRows = await db
+    .select({ code: departments.code, id: departments.id })
+    .from(departments)
+    .where(sql`${departments.code} IN ('CONSTRUCTION', 'BATCHING')`);
+
+  const constDept   = deptRows.find((d) => d.code === "CONSTRUCTION");
+  const batchDept   = deptRows.find((d) => d.code === "BATCHING");
+
+  if (constDept && batchDept) {
+    const ledgerBase = {
+      projectId,
+      costCenterId,
+      unitId,
+      resourceType:   "MATERIAL" as const,
+      resourceId:     mixId,
+      transactionType: "INTERNAL_TRANSFER" as const,
+      referenceType:  "batching_internal_sales",
+      referenceId:    receipt.id,
+      amount:         String(totalValue),
+      isExternal:     false,
+      transactionDate: new Date().toISOString().split("T")[0],
+    };
+
+    await db.insert(financialLedger).values([
+      { ...ledgerBase, deptId: constDept.id,
+        description: `Concrete charge: ${cubicMeters}m³ @ ₱${ratePerM3}/m³` },
+      { ...ledgerBase, deptId: batchDept.id,
+        description: `Concrete internal revenue: ${cubicMeters}m³ @ ₱${ratePerM3}/m³` },
+    ]);
+  }
+
+  revalidatePath("/batching/production");
+  revalidatePath(`/projects/${projectId}/batching`);
+  return { success: true, receiptId: receipt.id, totalValue };
 }

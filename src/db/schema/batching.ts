@@ -4,6 +4,7 @@ import {
 import { users } from "./core";
 import { projects } from "./projects";
 import { projectUnits } from "./units";
+import { equipment } from "./motorpool";
 
 export const mixDesigns = pgTable("mix_designs", {
   id:                  uuid("id").primaryKey().defaultRandom(),
@@ -14,6 +15,7 @@ export const mixDesigns = pgTable("mix_designs", {
   sandKgPerM3:         numeric("sand_kg_per_m3", { precision: 10, scale: 4 }).notNull(),
   gravelKgPerM3:       numeric("gravel_kg_per_m3", { precision: 10, scale: 4 }).notNull(),
   waterLitersPerM3:    numeric("water_liters_per_m3", { precision: 8, scale: 4 }).notNull(),
+  internalRatePerM3:   numeric("internal_rate_per_m3", { precision: 15, scale: 2 }), // Admin-locked billing rate for internal sales
   isActive:            boolean("is_active").notNull().default(true),
   createdBy:           uuid("created_by").notNull().references(() => users.id),
   approvedBy:          uuid("approved_by").references(() => users.id),
@@ -41,9 +43,11 @@ export const batchingProductionLogs = pgTable("batching_production_logs", {
 
 export const concreteDeliveryNotes = pgTable("concrete_delivery_notes", {
   id:                  uuid("id").primaryKey().defaultRandom(),
-  productionLogId:     uuid("production_log_id").notNull().references(() => batchingProductionLogs.id),
+  productionLogId:     uuid("production_log_id").references(() => batchingProductionLogs.id), // nullable: quick deliveries may not have a prior batch log
   projectId:           uuid("project_id").notNull().references(() => projects.id),
   unitId:              uuid("unit_id").notNull().references(() => projectUnits.id),
+  mixDesignId:         uuid("mix_design_id").references(() => mixDesigns.id),
+  truckId:             uuid("truck_id").references(() => equipment.id),
   volumeDispatchedM3:  numeric("volume_dispatched_m3", { precision: 10, scale: 4 }).notNull(),
   dispatchedAt:        timestamp("dispatched_at", { withTimezone: true }).notNull().defaultNow(),
   dispatchedBy:        uuid("dispatched_by").notNull().references(() => users.id),
