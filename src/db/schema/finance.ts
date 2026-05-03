@@ -105,6 +105,7 @@ export const paymentRequests = pgTable("payment_requests", {
   requestedBy:   uuid("requested_by").notNull().references(() => users.id),
   approvedBy:    uuid("approved_by").references(() => users.id),
   approvedAt:    timestamp("approved_at", { withTimezone: true }),
+  releasedBy:    uuid("released_by").references(() => users.id),
   releasedAt:    timestamp("released_at", { withTimezone: true }),
   createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
