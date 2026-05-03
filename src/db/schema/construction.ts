@@ -54,6 +54,7 @@ export const workAccomplishedReports = pgTable("work_accomplished_reports", {
   grossAccomplishment:      numeric("gross_accomplishment", { precision: 15, scale: 2 }).notNull(),
   status:                   approvalStatusEnum("status").notNull().default("DRAFT"),
   rejectionReason:          text("rejection_reason"),
+  auditRemarks:             text("audit_remarks"),
   submittedBy:              uuid("submitted_by").notNull().references(() => users.id),
   submittedAt:              timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
   accountingVerifiedBy:     uuid("accounting_verified_by").references(() => users.id),
