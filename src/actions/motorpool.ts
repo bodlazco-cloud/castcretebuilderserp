@@ -427,3 +427,75 @@ export async function createEquipmentAssignment(
   revalidatePath("/motorpool");
   return { success: true, assignmentId: assignment.id };
 }
+
+// ─── Complete Equipment Assignment (triggers internal rental billing) ─────────
+// Gemini: logEquipmentUsage(equipment_id, site_id, unit_id, days_used)
+//         → supabase.rpc('execute_internal_rental_charge', ...)
+//
+// The correct approach: completing the assignment fires fn_post_internal_rental
+// (migration 016), which automatically posts the dual financial_ledger entries
+// (DEBIT construction site / CREDIT motorpool) using equipment.daily_rental_rate.
+// days_rented is a DB-generated column (returned_date − assigned_date) so the
+// trigger always computes the correct number of days — no caller input needed.
+
+const CompleteAssignmentSchema = z.object({
+  assignmentId: z.string().uuid(),
+  returnedDate: z.string().date(),
+});
+
+export type CompleteAssignmentResult =
+  | { success: true; totalRentalIncome: number; daysRented: number }
+  | { success: false; error: string };
+
+export async function completeEquipmentAssignment(
+  input: z.infer<typeof CompleteAssignmentSchema>,
+): Promise<CompleteAssignmentResult> {
+  const parsed = CompleteAssignmentSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+
+  const { assignmentId, returnedDate } = parsed.data;
+
+  const [assignment] = await db
+    .select({
+      status:       equipmentAssignments.status,
+      equipmentId:  equipmentAssignments.equipmentId,
+      assignedDate: equipmentAssignments.assignedDate,
+      dailyRate:    equipmentAssignments.dailyRate,
+    })
+    .from(equipmentAssignments)
+    .where(eq(equipmentAssignments.id, assignmentId))
+    .limit(1);
+
+  if (!assignment) return { success: false, error: "Assignment not found." };
+  if (assignment.status === "COMPLETED") return { success: false, error: "Assignment already completed." };
+  if (assignment.status !== "ACTIVE") return { success: false, error: `Assignment is ${assignment.status}, not ACTIVE.` };
+
+  if (returnedDate < assignment.assignedDate) {
+    return { success: false, error: "Returned date cannot be before assigned date." };
+  }
+
+  const daysRented = Math.max(
+    Math.round(
+      (new Date(returnedDate).getTime() - new Date(assignment.assignedDate).getTime())
+      / (1000 * 60 * 60 * 24),
+    ),
+    1,
+  );
+  const totalRentalIncome = daysRented * Number(assignment.dailyRate);
+
+  // Setting status = 'COMPLETED' fires fn_post_internal_rental trigger (migration 016),
+  // which posts the dual financial_ledger INTERNAL_TRANSFER entries automatically.
+  await db.update(equipmentAssignments).set({
+    status:            "COMPLETED",
+    returnedDate,
+    totalRentalIncome: String(totalRentalIncome),
+  }).where(eq(equipmentAssignments.id, assignmentId));
+
+  await db.update(equipment)
+    .set({ status: "AVAILABLE", updatedAt: new Date() })
+    .where(eq(equipment.id, assignment.equipmentId));
+
+  revalidatePath("/motorpool/usage");
+  revalidatePath("/motorpool");
+  return { success: true, totalRentalIncome, daysRented };
+}
