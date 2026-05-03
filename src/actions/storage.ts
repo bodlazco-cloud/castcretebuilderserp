@@ -8,19 +8,21 @@ export const BUCKETS = {
   DOCUMENTS:     "documents",
   NTP:           "ntp-documents",
   PROFORMA:      "proforma-invoices",
+  MRR_EVIDENCE:  "mrr-evidence",
 } as const;
 
 type BucketName = (typeof BUCKETS)[keyof typeof BUCKETS];
 
 const BUCKET_PERMISSIONS: Record<BucketName, string[]> = {
-  [BUCKETS.SITE_PHOTOS]: ["CONSTRUCTION", "AUDIT"],
-  [BUCKETS.DOCUMENTS]:   ["CONSTRUCTION", "PROCUREMENT", "FINANCE", "AUDIT", "HR"],
-  [BUCKETS.NTP]:         ["CONSTRUCTION", "ADMIN", "BOD"],
-  [BUCKETS.PROFORMA]:    ["PROCUREMENT"],
+  [BUCKETS.SITE_PHOTOS]:  ["CONSTRUCTION", "AUDIT"],
+  [BUCKETS.DOCUMENTS]:    ["CONSTRUCTION", "PROCUREMENT", "FINANCE", "AUDIT", "HR"],
+  [BUCKETS.NTP]:          ["CONSTRUCTION", "ADMIN", "BOD"],
+  [BUCKETS.PROFORMA]:     ["PROCUREMENT"],
+  [BUCKETS.MRR_EVIDENCE]: ["PROCUREMENT", "AUDIT"],
 };
 
 const UploadSchema = z.object({
-  bucket:   z.enum([BUCKETS.SITE_PHOTOS, BUCKETS.DOCUMENTS, BUCKETS.NTP, BUCKETS.PROFORMA]),
+  bucket:   z.enum([BUCKETS.SITE_PHOTOS, BUCKETS.DOCUMENTS, BUCKETS.NTP, BUCKETS.PROFORMA, BUCKETS.MRR_EVIDENCE]),
   folder:   z.string().min(1),
   fileName: z.string().min(1),
 });
