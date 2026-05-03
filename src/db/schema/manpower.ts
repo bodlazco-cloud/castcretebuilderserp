@@ -11,18 +11,20 @@ import { equipment } from "./motorpool";
 import { employees } from "./hr";
 
 export const constructionManpowerLogs = pgTable("construction_manpower_logs", {
-  id:                 uuid("id").primaryKey().defaultRandom(),
-  projectId:          uuid("project_id").notNull().references(() => projects.id),
-  unitId:             uuid("unit_id").references(() => projectUnits.id),
-  logDate:            date("log_date").notNull(),
-  activityDefId:      uuid("activity_def_id").references(() => activityDefinitions.id),
-  subconId:           uuid("subcon_id").references(() => subcontractors.id),
-  subconHeadcount:    integer("subcon_headcount").notNull().default(0),
-  directStaffCount:   integer("direct_staff_count").notNull().default(0),
-  laborCostPhp:       numeric("labor_cost_php", { precision: 15, scale: 2 }).notNull().default("0"),
-  remarks:            text("remarks"),
-  recordedBy:         uuid("recorded_by").notNull().references(() => users.id),
-  createdAt:          timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  id:                  uuid("id").primaryKey().defaultRandom(),
+  projectId:           uuid("project_id").notNull().references(() => projects.id),
+  unitId:              uuid("unit_id").references(() => projectUnits.id),
+  logDate:             date("log_date").notNull(),
+  activityDefId:       uuid("activity_def_id").references(() => activityDefinitions.id),
+  subconId:            uuid("subcon_id").references(() => subcontractors.id),
+  subconHeadcount:     integer("subcon_headcount").notNull().default(0),
+  directStaffCount:    integer("direct_staff_count").notNull().default(0),
+  committedHeadcount:  integer("committed_headcount"),           // expected deployment; migration 026
+  isNoShowFlagged:     boolean("is_no_show_flagged").notNull().default(false),  // migration 026
+  laborCostPhp:        numeric("labor_cost_php", { precision: 15, scale: 2 }).notNull().default("0"),
+  remarks:             text("remarks"),
+  recordedBy:          uuid("recorded_by").notNull().references(() => users.id),
+  createdAt:           timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const batchingManpowerLogs = pgTable("batching_manpower_logs", {

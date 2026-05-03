@@ -144,14 +144,17 @@ export async function reviewChangeOrder(
 
 // ─── Resource Forecasting (Manpower Logs) ────────────────────────────────────
 
+const NO_SHOW_THRESHOLD = 0.80;   // flag when actual < 80% of committed
+
 const CreateManpowerLogSchema = z.object({
-  projectId:        z.string().uuid(),
-  logDate:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  activityDefId:    z.string().uuid().optional(),
-  subconId:         z.string().uuid().optional(),
-  subconHeadcount:  z.number().int().min(0),
-  directStaffCount: z.number().int().min(0),
-  remarks:          z.string().max(1000).optional(),
+  projectId:          z.string().uuid(),
+  logDate:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  activityDefId:      z.string().uuid().optional(),
+  subconId:           z.string().uuid().optional(),
+  subconHeadcount:    z.number().int().min(0),
+  directStaffCount:   z.number().int().min(0),
+  committedHeadcount: z.number().int().min(1).optional(),  // expected deployment for the day
+  remarks:            z.string().max(1000).optional(),
 });
 
 export type CreateManpowerLogResult = { success: true; id: string } | { success: false; error: string };
@@ -162,19 +165,26 @@ export async function createManpowerLog(input: z.infer<typeof CreateManpowerLogS
 
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
-  const { projectId, logDate, activityDefId, subconId, subconHeadcount, directStaffCount, remarks } = parsed.data;
+  const { projectId, logDate, activityDefId, subconId, subconHeadcount, directStaffCount, committedHeadcount, remarks } = parsed.data;
+
+  const isNoShowFlagged =
+    committedHeadcount != null
+      ? subconHeadcount < committedHeadcount * NO_SHOW_THRESHOLD
+      : false;
 
   const [row] = await db
     .insert(constructionManpowerLogs)
     .values({
       projectId,
       logDate,
-      activityDefId:    activityDefId    ?? null,
-      subconId:         subconId         ?? null,
+      activityDefId:      activityDefId      ?? null,
+      subconId:           subconId           ?? null,
       subconHeadcount,
       directStaffCount,
-      remarks:          remarks          ?? null,
-      recordedBy:       user.id,
+      committedHeadcount: committedHeadcount ?? null,
+      isNoShowFlagged,
+      remarks:            remarks            ?? null,
+      recordedBy:         user.id,
     })
     .returning({ id: constructionManpowerLogs.id });
 
