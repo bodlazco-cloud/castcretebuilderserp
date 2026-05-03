@@ -300,3 +300,66 @@ export async function submitWorkAccomplishedReport(
   void notifyWarSubmitted(war.id);
   return { success: true, warId: war.id };
 }
+
+// ─── Standalone capacity check for UI pre-validation ─────────────────────────
+// Call this before showing the NTP form to warn the user proactively.
+// Mirrors the DB-level guard in issue_ntp_v2.sql but returns a user-facing message.
+// activeUnitsCount is NOT a stored field — it is always counted live from task_assignments.
+
+export type CapacityCheckResult =
+  | { allowed: true;  activeUnits: number; ratedCapacity: number; headroom: number }
+  | { allowed: false; activeUnits: number; ratedCapacity: number; message: string };
+
+export async function checkSubconCapacity(
+  subconId:        string,
+  additionalUnits: number,
+  workType?:       string,
+): Promise<CapacityCheckResult> {
+  const [subcon] = await db
+    .select({ defaultMax: subcontractors.defaultMaxActiveUnits })
+    .from(subcontractors)
+    .where(eq(subcontractors.id, subconId))
+    .limit(1);
+
+  if (!subcon) throw new Error("Subcontractor not found.");
+
+  // Per-work-type capacity if available, else default
+  const [matrixRow] = workType
+    ? await db
+        .select({ ratedCapacity: subcontractorCapacityMatrix.ratedCapacity })
+        .from(subcontractorCapacityMatrix)
+        .where(
+          and(
+            eq(subcontractorCapacityMatrix.subconId, subconId),
+            eq(subcontractorCapacityMatrix.workType, workType as any),
+          ),
+        )
+        .limit(1)
+    : [];
+
+  const ratedCapacity = matrixRow?.ratedCapacity ?? subcon.defaultMax;
+
+  // Live count — never trust a cached/stored activeUnitsCount
+  const [{ activeUnits }] = await db
+    .select({ activeUnits: count() })
+    .from(taskAssignments)
+    .where(
+      and(
+        eq(taskAssignments.subconId, subconId),
+        sql`${taskAssignments.status} IN ('DRAFT', 'BOD_APPROVED', 'ACTIVE')`,
+      ),
+    );
+
+  const headroom = ratedCapacity - activeUnits;
+
+  if (headroom < additionalUnits) {
+    return {
+      allowed:       false,
+      activeUnits,
+      ratedCapacity,
+      message: `Capacity exceeded: subcontractor has ${activeUnits} active unit(s), rated for ${ratedCapacity}. Only ${headroom} slot(s) available, ${additionalUnits} requested.`,
+    };
+  }
+
+  return { allowed: true, activeUnits, ratedCapacity, headroom };
+}

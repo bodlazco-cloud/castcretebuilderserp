@@ -8,6 +8,7 @@ import {
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { getAuthUser } from "@/lib/supabase-server";
 
 // ─── Developers ────────────────────────────────────────────────────────────
 
@@ -228,15 +229,21 @@ export async function createActivityDefinition(
 // ─── Project BOD Approval ──────────────────────────────────────────────────
 
 export async function approveProject(id: string): Promise<{ success: boolean; error?: string }> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
   const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, id));
   if (!project) return { success: false, error: "Project not found." };
 
   await db.update(projects).set({
-    status: "ACTIVE",
+    status:        "ACTIVE",
     bodApprovedAt: new Date(),
+    bodApprovedBy: user.id,
   }).where(eq(projects.id, id));
 
   revalidatePath(`/master-list/projects/${id}`);
+  revalidatePath("/planning");
+  revalidatePath("/main-dashboard");
   return { success: true };
 }
 
