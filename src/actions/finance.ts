@@ -4,7 +4,7 @@ import { db } from "@/db";
 import {
   invoices, payables, requestsForPayment,
   bankTransactions, workAccomplishedReports,
-  manualVouchers, bankAccounts,
+  manualVouchers, bankAccounts, paymentRequests,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
@@ -382,4 +382,40 @@ export async function authorizePaymentRelease(
   revalidatePath("/finance/disbursements");
   revalidatePath("/main-dashboard");
   return { success: true, requiresDualAuth };
+}
+
+// ─── Payment Request Release ──────────────────────────────────────────────────
+// Gemini: releasePayment(paymentId, authUser) — authUser from client (security hole).
+// Covers payment_requests (PO/payable/voucher payment queue) distinct from
+// manual_vouchers. Applies same segregation-of-duties gate; no bank balance
+// update here — that happens when the bank transaction is separately approved.
+
+export async function releasePaymentRequest(
+  paymentRequestId: string,
+): Promise<SimpleResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const [pr] = await db
+    .select({ requestedBy: paymentRequests.requestedBy, status: paymentRequests.status })
+    .from(paymentRequests)
+    .where(eq(paymentRequests.id, paymentRequestId))
+    .limit(1);
+
+  if (!pr) return { success: false, error: "Payment request not found." };
+  if (pr.status === "RELEASED") return { success: false, error: "Already released." };
+
+  // Segregation of Duties: requester cannot self-authorize release
+  if (pr.requestedBy === user.id) {
+    return { success: false, error: "Dual-Auth Violation: Requester cannot authorize the release." };
+  }
+
+  await db.update(paymentRequests).set({
+    status:     "RELEASED",
+    releasedBy: user.id,
+    releasedAt: new Date(),
+  }).where(eq(paymentRequests.id, paymentRequestId));
+
+  revalidatePath("/finance/disbursements");
+  return { success: true };
 }
