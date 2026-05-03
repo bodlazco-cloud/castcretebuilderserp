@@ -10,6 +10,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { notifyWarSubmitted } from "@/lib/notifications";
+import { getAuthUser } from "@/lib/supabase-server";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE I — BOD Strategic Gate
@@ -151,8 +152,7 @@ const REQUIRED_DOC_TYPES = [
 ] as const;
 
 const VerifyChecklistSchema = z.object({
-  warId:      z.string().uuid(),
-  verifiedBy: z.string().uuid(),
+  warId: z.string().uuid(),
 });
 
 export type VerifyChecklistResult =
@@ -165,7 +165,11 @@ export async function verifyDocumentChecklist(
   const parsed = VerifyChecklistSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Invalid input." };
 
-  const { warId, verifiedBy } = parsed.data;
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { warId } = parsed.data;
+  const verifiedBy = user.id;
 
   // ── Fetch WAR and check it's in the right state ───────────────────────────
   const [war] = await db
