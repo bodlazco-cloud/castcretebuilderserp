@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
+import type React from "react";
 import { getAuthUser } from "@/lib/supabase-server";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import { eq, count, and } from "drizzle-orm";
+import { eq, count, countDistinct, desc } from "drizzle-orm";
 
 const ACCENT = "#057a55";
 
@@ -68,9 +69,9 @@ export default async function ConstructionPage() {
     activeNtps = Number(ntpResult?.value ?? 0);
 
     const [unitsResult] = await db
-      .select({ value: count() })
-      .from(schema.projectUnits)
-      .where(eq(schema.projectUnits.status, "IN_PROGRESS"));
+      .select({ value: countDistinct(schema.taskAssignments.unitId) })
+      .from(schema.taskAssignments)
+      .where(eq(schema.taskAssignments.status, "ACTIVE"));
     unitsInProgress = Number(unitsResult?.value ?? 0);
 
     const [warsResult] = await db
@@ -97,7 +98,10 @@ export default async function ConstructionPage() {
       })
       .from(schema.taskAssignments)
       .leftJoin(schema.projectUnits, eq(schema.taskAssignments.unitId, schema.projectUnits.id))
-      .leftJoin(schema.subcontractors, eq(schema.taskAssignments.subconId, schema.subcontractors.id));
+      .leftJoin(schema.subcontractors, eq(schema.taskAssignments.subconId, schema.subcontractors.id))
+      .where(eq(schema.taskAssignments.status, "ACTIVE"))
+      .orderBy(desc(schema.taskAssignments.createdAt))
+      .limit(25);
 
     taskRows = rawTasks.map((r) => ({
       unitCode: r.unitCode ?? "—",
@@ -118,7 +122,7 @@ export default async function ConstructionPage() {
       })
       .from(schema.workAccomplishedReports)
       .leftJoin(schema.projectUnits, eq(schema.workAccomplishedReports.unitId, schema.projectUnits.id))
-      .orderBy(schema.workAccomplishedReports.submittedAt)
+      .orderBy(desc(schema.workAccomplishedReports.submittedAt))
       .limit(10);
 
     warRows = rawWars.map((r) => ({
