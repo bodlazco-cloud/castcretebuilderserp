@@ -7,6 +7,7 @@ import {
   purchaseOrders, purchaseOrderItems,
   poPriceChangeRequests, suppliers,
   materialReceivingReports, mrrItems, inventoryLedger,
+  materialMovementLogs,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -410,12 +411,13 @@ export async function markPoDelivered(poId: string): Promise<SimpleResult> {
 // ─── Material Receiving Report ────────────────────────────────────────────────
 
 const CreateMrrSchema = z.object({
-  poId:         z.string().uuid().optional(),
-  projectId:    z.string().uuid(),
-  supplierId:   z.string().uuid().optional(),
-  sourceType:   z.enum(["SUPPLIER", "DEVELOPER_OSM"]),
-  receivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  notes:        z.string().max(1000).optional(),
+  poId:             z.string().uuid().optional(),
+  projectId:        z.string().uuid(),
+  supplierId:       z.string().uuid().optional(),
+  sourceType:       z.enum(["SUPPLIER", "DEVELOPER_OSM"]),
+  receivedDate:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  photoEvidenceUrl: z.string().url().optional(),
+  notes:            z.string().max(1000).optional(),
   items: z.array(z.object({
     materialId:       z.string().uuid(),
     quantityReceived: z.number().positive(),
@@ -433,19 +435,20 @@ export async function createMrr(input: z.infer<typeof CreateMrrSchema>): Promise
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
 
-  const { poId, projectId, supplierId, sourceType, receivedDate, notes, items } = parsed.data;
+  const { poId, projectId, supplierId, sourceType, receivedDate, photoEvidenceUrl, notes, items } = parsed.data;
 
   const [mrr] = await db
     .insert(materialReceivingReports)
     .values({
-      poId:         poId ?? null,
+      poId:             poId ?? null,
       projectId,
-      supplierId:   supplierId ?? null,
+      supplierId:       supplierId ?? null,
       sourceType,
       receivedDate,
-      receivedBy:   user.id,
-      notes:        notes ?? null,
-      status:       "PENDING",
+      receivedBy:       user.id,
+      photoEvidenceUrl: photoEvidenceUrl ?? null,
+      notes:            notes ?? null,
+      status:           "PENDING",
     })
     .returning({ id: materialReceivingReports.id });
 
@@ -498,6 +501,22 @@ export async function createMrr(input: z.infer<typeof CreateMrrSchema>): Promise
     }
   }
 
+  // Post RECEIPT entries to materialMovementLogs so fn_sync_inventory_ledger
+  // (migration 017) can update virtualInventoryLedger automatically.
+  await db.insert(materialMovementLogs).values(
+    items.map((item) => ({
+      movementType:  "RECEIPT" as const,
+      referenceType: "MRR",
+      referenceId:   mrr.id,
+      materialId:    item.materialId,
+      projectId,
+      quantity:      String(item.quantityReceived),
+      unitPrice:     String(item.unitPrice),
+      notes:         notes ?? null,
+      performedBy:   user.id,
+    })),
+  );
+
   // Mark the linked PO as delivered if all items received
   if (poId) {
     await db
@@ -509,4 +528,111 @@ export async function createMrr(input: z.infer<typeof CreateMrrSchema>): Promise
   revalidatePath("/procurement/receipts-and-transfers");
   revalidatePath("/procurement/inventory");
   return { success: true, mrrId: mrr.id };
+}
+
+// ─── Inventory Adjustment ─────────────────────────────────────────────────────
+// Gemini: adjustInventory({ material_id, site_id, adjustment_qty, reason,
+//           photo_proof, unit_price }) — unit_price from caller (security hole).
+// Fixed:  adminPrice fetched server-side from materials table; caller-supplied
+//         price ignored. Threshold hardcoded as a named constant.
+
+const ADJUSTMENT_FLAG_THRESHOLD = 5_000;  // ₱5,000 — flag for Audit/BOD review
+
+const AdjustInventorySchema = z.object({
+  materialId:      z.string().uuid(),
+  projectId:       z.string().uuid(),
+  adjustmentQty:   z.number().refine((n: number) => n !== 0, { message: "Adjustment qty must be non-zero." }),
+  reason:          z.enum(["THEFT", "DAMAGE", "SPILLAGE", "FOUND_STOCK", "OTHER"]),
+  photoEvidenceUrl: z.string().url({ message: "Photo proof URL is required." }),
+  notes:           z.string().max(500).optional(),
+});
+
+export type AdjustInventoryResult =
+  | { success: true; logId: string; flagged: boolean; adjustmentValue: number }
+  | { success: false; error: string };
+
+export async function adjustInventory(
+  input: z.infer<typeof AdjustInventorySchema>,
+): Promise<AdjustInventoryResult> {
+  const parsed = AdjustInventorySchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { materialId, projectId, adjustmentQty, reason, photoEvidenceUrl, notes } = parsed.data;
+
+  // ── Admin-locked price: never trust caller-supplied value ─────────────────
+  const [mat] = await db
+    .select({ adminPrice: materials.adminPrice })
+    .from(materials)
+    .where(eq(materials.id, materialId))
+    .limit(1);
+
+  if (!mat) return { success: false, error: "Material not found." };
+
+  // ── Guard: negative adjustment cannot exceed current stock ────────────────
+  if (adjustmentQty < 0) {
+    const [stock] = await db
+      .select({ quantityOnHand: inventoryStock.quantityOnHand })
+      .from(inventoryStock)
+      .where(and(eq(inventoryStock.materialId, materialId), eq(inventoryStock.projectId, projectId)))
+      .limit(1);
+
+    const onHand = Number(stock?.quantityOnHand ?? 0);
+    if (Math.abs(adjustmentQty) > onHand) {
+      return {
+        success: false,
+        error: `Adjustment of ${adjustmentQty} would bring stock negative (currently ${onHand} on hand).`,
+      };
+    }
+  }
+
+  const adjustmentValue = Math.abs(adjustmentQty * Number(mat.adminPrice));
+  const flagged = adjustmentValue > ADJUSTMENT_FLAG_THRESHOLD;
+
+  // ── Post to materialMovementLogs (triggers fn_sync_inventory_ledger) ──────
+  const [log] = await db
+    .insert(materialMovementLogs)
+    .values({
+      movementType:     "ADJUSTMENT",
+      referenceType:    "ADJUSTMENT",
+      referenceId:      materialId,   // self-reference; no separate adjustment table
+      materialId,
+      projectId,
+      quantity:         String(adjustmentQty),   // signed: negative = loss, positive = found
+      unitPrice:        mat.adminPrice,
+      notes:            [reason, notes].filter(Boolean).join(" — ") || null,
+      photoEvidenceUrl,
+      performedBy:      user.id,
+    })
+    .returning({ id: materialMovementLogs.id });
+
+  // ── Update inventoryStock running balance ─────────────────────────────────
+  const [existing] = await db
+    .select({ id: inventoryStock.id })
+    .from(inventoryStock)
+    .where(and(eq(inventoryStock.materialId, materialId), eq(inventoryStock.projectId, projectId)))
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(inventoryStock)
+      .set({
+        quantityOnHand: sql`${inventoryStock.quantityOnHand} + ${String(adjustmentQty)}`,
+        lastUpdated: new Date(),
+      })
+      .where(eq(inventoryStock.id, existing.id));
+  } else if (adjustmentQty > 0) {
+    // FOUND_STOCK for a material with no prior stock row
+    await db.insert(inventoryStock).values({
+      materialId,
+      projectId,
+      quantityOnHand:   String(adjustmentQty),
+      quantityReserved: "0",
+    });
+  }
+
+  revalidatePath("/procurement/inventory");
+  return { success: true, logId: log.id, flagged, adjustmentValue };
 }

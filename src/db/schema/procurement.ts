@@ -153,16 +153,17 @@ export const osmDeductionBuckets = pgTable("osm_deduction_buckets", {
 
 // Immutable audit trail for every stock movement — feeds the Variance Audit queue
 export const materialMovementLogs = pgTable("material_movement_logs", {
-  id:             uuid("id").primaryKey().defaultRandom(),
-  movementType:   materialMovementTypeEnum("movement_type").notNull(),
-  referenceType:  varchar("reference_type", { length: 30 }).notNull(),  // 'PO', 'NTP', 'TRANSFER', 'ADJUSTMENT'
-  referenceId:    uuid("reference_id").notNull(),
-  materialId:     uuid("material_id").notNull().references(() => materials.id),
-  projectId:      uuid("project_id").notNull().references(() => projects.id),
-  unitId:         uuid("unit_id").references(() => projectUnits.id),
-  quantity:       numeric("quantity", { precision: 15, scale: 4 }).notNull(),
-  unitPrice:      numeric("unit_price", { precision: 15, scale: 2 }),
-  notes:          text("notes"),
-  performedBy:    uuid("performed_by").notNull().references(() => users.id),
-  createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  id:               uuid("id").primaryKey().defaultRandom(),
+  movementType:     materialMovementTypeEnum("movement_type").notNull(),
+  referenceType:    varchar("reference_type", { length: 30 }).notNull(),  // 'PO', 'NTP', 'TRANSFER', 'ADJUSTMENT'
+  referenceId:      uuid("reference_id").notNull(),
+  materialId:       uuid("material_id").notNull().references(() => materials.id),
+  projectId:        uuid("project_id").notNull().references(() => projects.id),
+  unitId:           uuid("unit_id").references(() => projectUnits.id),
+  quantity:         numeric("quantity", { precision: 15, scale: 4 }).notNull(),
+  unitPrice:        numeric("unit_price", { precision: 15, scale: 2 }),
+  notes:            text("notes"),
+  photoEvidenceUrl: text("photo_evidence_url"),  // mandatory for ADJUSTMENT; migration 024
+  performedBy:      uuid("performed_by").notNull().references(() => users.id),
+  createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
