@@ -7,6 +7,7 @@ import {
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { TaggingForm } from "./TaggingForm";
 
 export type TaggingUnit = {
@@ -90,7 +91,9 @@ export default async function MilestoneTaggingPage({
           Log daily activity progress per unit. 100% marks the activity complete.
         </p>
       </div>
-      <TaggingForm units={units} activities={activities} />
+      <Suspense fallback={null}>
+        <TaggingForm units={units} activities={activities} />
+      </Suspense>
     </main>
   );
 }

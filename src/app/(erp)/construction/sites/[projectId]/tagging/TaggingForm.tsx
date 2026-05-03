@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, type ChangeEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import type React from "react";
 import { updateMilestoneProgress } from "@/actions/construction";
 import type { TaggingUnit, TaggingActivity } from "./page";
@@ -18,8 +19,13 @@ export function TaggingForm({
   units:      TaggingUnit[];
   activities: TaggingActivity[];
 }) {
+  const searchParams = useSearchParams();
+  const preselect = searchParams.get("unit");
+
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(
-    units[0]?.unitId ?? null,
+    preselect && units.some((u) => u.unitId === preselect)
+      ? preselect
+      : (units[0]?.unitId ?? null),
   );
   const [pctMap, setPctMap] = useState<Record<string, number>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});

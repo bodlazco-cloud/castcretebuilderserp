@@ -121,12 +121,16 @@ export interface UnitGridRow {
   status:          string;
   currentCategory: string;
   assignedSubcon:  string | null;
+  // TRUE when the most-recent daily progress entry raised a doc-gap or delay flag,
+  // or the most-recent manpower log raised a no-show flag.
+  isFlagged:       boolean;
 }
 
 export async function getProjectUnitGrid(projectId: string): Promise<UnitGridRow[]> {
   const rows = await db.execute<{
     unit_id: string; unit_code: string; unit_model: string;
     status: string; current_category: string; assigned_subcon: string | null;
+    is_flagged: boolean;
   }>(sql`
     SELECT
         pu.id               AS unit_id,
@@ -134,7 +138,8 @@ export async function getProjectUnitGrid(projectId: string): Promise<UnitGridRow
         pu.unit_model,
         pu.status,
         pu.current_category,
-        s.name              AS assigned_subcon
+        s.name              AS assigned_subcon,
+        COALESCE(dpe.doc_gap_flagged, cml.is_no_show_flagged, FALSE) AS is_flagged
     FROM project_units pu
     LEFT JOIN LATERAL (
         SELECT subcon_id
@@ -145,6 +150,21 @@ export async function getProjectUnitGrid(projectId: string): Promise<UnitGridRow
         LIMIT 1
     ) ta ON TRUE
     LEFT JOIN subcontractors s ON s.id = ta.subcon_id
+    LEFT JOIN LATERAL (
+        SELECT doc_gap_flagged
+        FROM   daily_progress_entries
+        WHERE  unit_id = pu.id
+        ORDER BY created_at DESC
+        LIMIT 1
+    ) dpe ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT is_no_show_flagged
+        FROM   construction_manpower_logs
+        WHERE  project_id = pu.project_id
+          AND  unit_id    = pu.id
+        ORDER BY created_at DESC
+        LIMIT 1
+    ) cml ON TRUE
     WHERE pu.project_id = ${projectId}
     ORDER BY pu.unit_code ASC
   `);
@@ -156,5 +176,6 @@ export async function getProjectUnitGrid(projectId: string): Promise<UnitGridRow
     status:          r.status,
     currentCategory: r.current_category,
     assignedSubcon:  r.assigned_subcon,
+    isFlagged:       Boolean(r.is_flagged),
   }));
 }
