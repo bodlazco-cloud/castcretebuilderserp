@@ -5,8 +5,9 @@ import {
   projects, taskAssignments, subcontractors,
   subcontractorCapacityMatrix, workAccomplishedReports,
   milestoneDocuments, unitMilestones, dailyProgressEntries,
+  unitActivities,
 } from "@/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, ne } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { notifyWarSubmitted } from "@/lib/notifications";
@@ -189,7 +190,7 @@ export async function verifyDocumentChecklist(
     .from(milestoneDocuments)
     .where(eq(milestoneDocuments.warId, warId));
 
-  const uploadedTypes = new Set(uploadedDocs.map((d) => d.docType));
+  const uploadedTypes = new Set(uploadedDocs.map((d: { docType: string }) => d.docType));
   const missingDocs = REQUIRED_DOC_TYPES.filter((t) => !uploadedTypes.has(t));
 
   if (missingDocs.length > 0) {
@@ -366,4 +367,64 @@ export async function checkSubconCapacity(
   }
 
   return { allowed: true, activeUnits, ratedCapacity, headroom };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UPDATE MILESTONE / ACTIVITY PROGRESS
+// progressPct 0 = PENDING (no-op if already PENDING), 1-99 = IN_PROGRESS,
+// 100 = COMPLETE. actualStart is stamped on first IN_PROGRESS transition;
+// actualEnd is stamped on COMPLETE.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const UpdateActivityProgressSchema = z.object({
+  unitActivityId: z.string().uuid(),
+  progressPct:    z.number().int().min(0).max(100),
+});
+
+export type UpdateActivityProgressResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function updateMilestoneProgress(
+  input: z.infer<typeof UpdateActivityProgressSchema>,
+): Promise<UpdateActivityProgressResult> {
+  const parsed = UpdateActivityProgressSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { unitActivityId, progressPct } = parsed.data;
+
+  const [activity] = await db
+    .select({
+      id:          unitActivities.id,
+      status:      unitActivities.status,
+      actualStart: unitActivities.actualStart,
+    })
+    .from(unitActivities)
+    .where(eq(unitActivities.id, unitActivityId))
+    .limit(1);
+
+  if (!activity) return { success: false, error: "Activity not found." };
+  if (activity.status === "COMPLETE") {
+    return { success: false, error: "Activity is already complete." };
+  }
+
+  if (progressPct === 0) return { success: true }; // no status change
+
+  const today = new Date().toISOString().slice(0, 10);
+  const newStatus = progressPct === 100 ? "COMPLETE" : "IN_PROGRESS";
+
+  await db
+    .update(unitActivities)
+    .set({
+      status:      newStatus,
+      actualStart: activity.actualStart ?? today,
+      ...(newStatus === "COMPLETE" ? { actualEnd: today } : {}),
+    })
+    .where(eq(unitActivities.id, unitActivityId));
+
+  revalidatePath("/construction");
+  return { success: true };
 }
