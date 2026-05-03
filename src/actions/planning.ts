@@ -4,7 +4,7 @@ import { db } from "@/db";
 import {
   bomStandards, activityDefinitions, changeOrderRequests, constructionManpowerLogs,
   inventoryStock, purchaseRequisitions, purchaseRequisitionItems,
-  projectUnits, materials,
+  projectUnits, materials, resourceForecasts,
 } from "@/db/schema";
 import { eq, and, sql, sum, desc } from "drizzle-orm";
 import { z } from "zod";
@@ -379,4 +379,123 @@ export async function getProjectBomForecast(projectId: string): Promise<BomForec
       estimatedCost: totalNeeded * unitRate,
     };
   });
+}
+
+// ─── Generate PR from Resource Forecasts ─────────────────────────────────────
+// Gemini: generatePRFromForecast(siteId)
+//   - site_id → projectId
+//   - requested_by: 'SYSTEM_FORECAST' (a literal string in a UUID FK) → getAuthUser()
+//   - status: 'AWAITING_PO_CONVERSION' (not in approvalStatusEnum) → 'DRAFT'
+//   - pr_items → purchaseRequisitionItems; f.item_id → materialId
+//   - unitPrice missing → fetched from materials.adminPrice (admin sovereignty)
+//   - resource_forecasts.prId column ignored → now stamped on status update
+//   - no stock netting → nets against inventoryStock (same as consolidateAndIssuePR)
+
+const GeneratePrFromForecastSchema = z.object({
+  projectId: z.string().uuid(),
+});
+
+export type GeneratePrFromForecastResult =
+  | { success: true; prId: string; lineCount: number; forecastsLinked: number }
+  | { success: false; error: string };
+
+export async function generatePRFromForecast(
+  input: z.infer<typeof GeneratePrFromForecastSchema>,
+): Promise<GeneratePrFromForecastResult> {
+  const parsed = GeneratePrFromForecastSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { projectId } = parsed.data;
+
+  // ── 1. PENDING_PR forecasts for this project ──────────────────────────────
+  const forecasts = await db
+    .select({
+      id:          resourceForecasts.id,
+      materialId:  resourceForecasts.materialId,
+      forecastQty: resourceForecasts.forecastQty,
+    })
+    .from(resourceForecasts)
+    .where(
+      and(
+        eq(resourceForecasts.projectId, projectId),
+        eq(resourceForecasts.status, "PENDING_PR"),
+      ),
+    );
+
+  if (forecasts.length === 0) {
+    return { success: false, error: "No pending forecasts found for this project." };
+  }
+
+  // ── 2. Aggregate demand per material ─────────────────────────────────────
+  const demandMap = new Map<string, number>();
+  for (const f of forecasts) {
+    demandMap.set(f.materialId, (demandMap.get(f.materialId) ?? 0) + Number(f.forecastQty));
+  }
+  const materialIds = [...demandMap.keys()];
+
+  // ── 3. Admin-locked prices + current stock (parallel) ────────────────────
+  const [priceRows, stockRows] = await Promise.all([
+    db.select({ id: materials.id, adminPrice: materials.adminPrice })
+      .from(materials)
+      .where(sql`${materials.id} = ANY(${materialIds})`),
+    db.select({ materialId: inventoryStock.materialId, quantityOnHand: inventoryStock.quantityOnHand })
+      .from(inventoryStock)
+      .where(
+        and(
+          eq(inventoryStock.projectId, projectId),
+          sql`${inventoryStock.materialId} = ANY(${materialIds})`,
+        ),
+      ),
+  ]);
+
+  const priceMap = new Map<string, number>(priceRows.map((r) => [r.id, Number(r.adminPrice)]));
+  const stockMap = new Map<string, number>(stockRows.map((s) => [s.materialId, Number(s.quantityOnHand)]));
+
+  // ── 4. Net against physical stock ────────────────────────────────────────
+  const lineItems = materialIds
+    .map((materialId) => {
+      const required = demandMap.get(materialId) ?? 0;
+      const onHand   = stockMap.get(materialId)  ?? 0;
+      const toOrder  = Math.max(0, required - onHand);
+      const price    = priceMap.get(materialId)  ?? 0;
+      return { materialId, required, onHand, toOrder, price };
+    })
+    .filter((item) => item.toOrder > 0);
+
+  // ── 5. Create PR header ───────────────────────────────────────────────────
+  const [pr] = await db
+    .insert(purchaseRequisitions)
+    .values({ projectId, status: "DRAFT", requestedBy: user.id })
+    .returning({ id: purchaseRequisitions.id });
+
+  if (lineItems.length > 0) {
+    await db.insert(purchaseRequisitionItems).values(
+      lineItems.map((item) => ({
+        prId:             pr.id,
+        materialId:       item.materialId,
+        quantityRequired: String(item.required.toFixed(4)),
+        quantityInStock:  String(item.onHand.toFixed(4)),
+        quantityToOrder:  String(item.toOrder.toFixed(4)),
+        unitPrice:        String(item.price.toFixed(2)),
+      })),
+    );
+  }
+
+  // ── 6. Mark forecasts PR_CREATED + stamp prId for traceability ───────────
+  await db
+    .update(resourceForecasts)
+    .set({ status: "PR_CREATED", prId: pr.id })
+    .where(
+      and(
+        eq(resourceForecasts.projectId, projectId),
+        eq(resourceForecasts.status, "PENDING_PR"),
+      ),
+    );
+
+  revalidatePath(`/projects/${projectId}/procurement`);
+  revalidatePath("/procurement/requisitions");
+  return { success: true, prId: pr.id, lineCount: lineItems.length, forecastsLinked: forecasts.length };
 }
