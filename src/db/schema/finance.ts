@@ -8,6 +8,7 @@ import { projectUnits, unitMilestones } from "./units";
 import { subcontractors } from "./subcontractors";
 import { purchaseOrders } from "./procurement";
 import { workAccomplishedReports } from "./construction";
+import { bankAccounts } from "./banking";
 import { resourceTypeEnum, transactionTypeEnum, approvalStatusEnum, paymentFlowStatusEnum } from "./enums";
 
 export const financialLedger = pgTable("financial_ledger", {
@@ -80,6 +81,8 @@ export const manualVouchers = pgTable("manual_vouchers", {
   description:         text("description").notNull(),
   amount:              numeric("amount", { precision: 15, scale: 2 }).notNull(),
   requiresBodApproval: boolean("requires_bod_approval").notNull().default(false),
+  requiresDualAuth:    boolean("requires_dual_auth").notNull().default(false),
+  bankAccountId:       uuid("bank_account_id").references(() => bankAccounts.id),
   supportingDocUrl:    text("supporting_doc_url"),
   status:              approvalStatusEnum("status").notNull().default("DRAFT"),
   paymentStatus:       paymentFlowStatusEnum("payment_status").notNull().default("DRAFT"),

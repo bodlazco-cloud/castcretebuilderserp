@@ -4,8 +4,9 @@ import { db } from "@/db";
 import {
   invoices, payables, requestsForPayment,
   bankTransactions, workAccomplishedReports,
+  manualVouchers, bankAccounts,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import {
   notifyInvoiceSubmitted, notifyInvoiceCollected,
@@ -294,4 +295,91 @@ export async function finalApproveBankTxn(id: string): Promise<SimpleResult> {
     .where(eq(bankTransactions.id, id));
 
   return { success: true };
+}
+
+// ─── Voucher Payment Release (Zero-Trust Gate) ────────────────────────────────
+// Gemini: authorizePaymentRelease(voucher_id, authorizer_id)
+// Fixed:  authorizer_id resolved server-side via getAuthUser() — never trusted from client.
+//         execute_financial_finalization RPC replaced with:
+//           1. DB transaction: update voucher + insert bankTransaction + decrement balance
+//           2. requiresDualAuth flag set when amount >= ₱50,000 (audit trail)
+
+export type AuthorizeReleaseResult =
+  | { success: true; requiresDualAuth: boolean }
+  | { success: false; error: string };
+
+export async function authorizePaymentRelease(
+  voucherId:     string,
+  bankAccountId: string,
+): Promise<AuthorizeReleaseResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  // ── Fetch voucher ─────────────────────────────────────────────────────────
+  const [voucher] = await db
+    .select({
+      amount:           manualVouchers.amount,
+      supportingDocUrl: manualVouchers.supportingDocUrl,
+      preparedBy:       manualVouchers.preparedBy,
+      paymentStatus:    manualVouchers.paymentStatus,
+      projectId:        manualVouchers.projectId,
+      costCenterId:     manualVouchers.costCenterId,
+      description:      manualVouchers.description,
+    })
+    .from(manualVouchers)
+    .where(eq(manualVouchers.id, voucherId))
+    .limit(1);
+
+  if (!voucher) return { success: false, error: "Voucher not found." };
+
+  // ── Zero-Trust Gate 1: attachment required ────────────────────────────────
+  if (!voucher.supportingDocUrl) {
+    return { success: false, error: "Zero-Trust Violation: No source document attached. Upload a PDF or photo before releasing." };
+  }
+
+  // ── Zero-Trust Gate 2: segregation of duties ──────────────────────────────
+  if (voucher.preparedBy === user.id) {
+    return { success: false, error: "Segregation of Duties Violation: The voucher preparer cannot authorize the release." };
+  }
+
+  // ── Gate 3: prevent double-release ───────────────────────────────────────
+  if (voucher.paymentStatus === "RELEASED") {
+    return { success: false, error: "Voucher has already been released." };
+  }
+
+  const amount        = Number(voucher.amount);
+  const requiresDualAuth = amount >= 50_000;
+
+  // ── Atomic transaction: release + bank debit + balance update ────────────
+  await db.transaction(async (tx) => {
+    // 1. Mark voucher RELEASED
+    await tx.update(manualVouchers).set({
+      paymentStatus:  "RELEASED",
+      authorizedBy:   user.id,
+      paidAt:         new Date(),
+      requiresDualAuth,
+      bankAccountId,
+    }).where(eq(manualVouchers.id, voucherId));
+
+    // 2. Create bank DEBIT transaction record
+    await tx.insert(bankTransactions).values({
+      bankAccountId,
+      transactionDate:  new Date().toISOString().split("T")[0],
+      transactionType:  "DEBIT",
+      amount:           String(amount),
+      description:      `Voucher release: ${voucher.description}`,
+      requiresDualAuth,
+      status:           "APPROVED",
+      enteredBy:        user.id,
+    });
+
+    // 3. Decrement bank balance (execute_financial_finalization equivalent)
+    await tx.update(bankAccounts)
+      .set({ currentBalance: sql`current_balance - ${amount}` })
+      .where(eq(bankAccounts.id, bankAccountId));
+  });
+
+  revalidatePath("/finance/disbursements");
+  revalidatePath("/main-dashboard");
+  return { success: true, requiresDualAuth };
 }
