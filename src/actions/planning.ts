@@ -74,16 +74,17 @@ export async function saveBomEntries(
 // ─── Change Orders ────────────────────────────────────────────────────────────
 
 const CreateCoSchema = z.object({
-  projectId:    z.string().uuid(),
-  activityDefId: z.string().uuid().optional(),
-  bomStandardId: z.string().uuid().optional(),
-  unitModel:    z.string().max(50).optional(),
-  unitType:     z.enum(["BEG", "REG", "END"]).optional(),
-  materialId:   z.string().uuid().optional(),
-  changeType:   z.enum(["ADD", "MODIFY", "REMOVE"]),
-  oldQuantity:  z.number().positive().optional(),
-  newQuantity:  z.number().positive().optional(),
-  reason:       z.string().min(1).max(2000),
+  projectId:      z.string().uuid(),
+  activityDefId:  z.string().uuid().optional(),
+  bomStandardId:  z.string().uuid().optional(),
+  unitModel:      z.string().max(50).optional(),
+  unitType:       z.enum(["BEG", "REG", "END"]).optional(),
+  materialId:     z.string().uuid().optional(),
+  changeType:     z.enum(["ADD", "MODIFY", "REMOVE"]),
+  oldQuantity:    z.number().positive().optional(),
+  newQuantity:    z.number().positive().optional(),
+  reason:         z.string().min(1).max(2000),
+  attachmentUrls: z.array(z.string().url()).max(5).optional(),
 });
 
 export type CreateCoResult = { success: true; id: string } | { success: false; error: string };
@@ -94,7 +95,7 @@ export async function createChangeOrder(input: z.infer<typeof CreateCoSchema>): 
 
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
-  const { projectId, activityDefId, bomStandardId, unitModel, unitType, materialId, changeType, oldQuantity, newQuantity, reason } = parsed.data;
+  const { projectId, activityDefId, bomStandardId, unitModel, unitType, materialId, changeType, oldQuantity, newQuantity, reason, attachmentUrls } = parsed.data;
 
   const [row] = await db
     .insert(changeOrderRequests)
@@ -109,6 +110,7 @@ export async function createChangeOrder(input: z.infer<typeof CreateCoSchema>): 
       oldQuantity:    oldQuantity != null ? String(oldQuantity) : null,
       newQuantity:    newQuantity != null ? String(newQuantity) : null,
       reason,
+      attachmentUrls: attachmentUrls && attachmentUrls.length > 0 ? attachmentUrls : null,
       status:         "PENDING",
       requestedBy:    user.id,
     })

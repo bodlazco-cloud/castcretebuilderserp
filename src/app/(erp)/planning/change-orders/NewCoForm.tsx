@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
+import type React from "react";
 import { createChangeOrder } from "@/actions/planning";
+import { uploadFile, BUCKETS } from "@/actions/storage";
 
 type Project  = { id: string; name: string };
 type Activity = { id: string; projectId: string; activityCode: string; activityName: string; scopeName: string };
@@ -29,8 +31,38 @@ export function NewCoForm({
   const [error, setError] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState("");
   const [changeType, setChangeType] = useState<"ADD" | "MODIFY" | "REMOVE">("MODIFY");
+  const [attachmentUrls, setAttachmentUrls] = useState<string[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredActivities = activities.filter((a) => a.projectId === selectedProject);
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (attachmentUrls.length >= 5) {
+      setUploadError("Maximum 5 photos per change order.");
+      return;
+    }
+    setUploadError(null);
+    setIsUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const result = await uploadFile(fd, {
+      bucket:   BUCKETS.ECO_PHOTOS,
+      folder:   "change-orders",
+      fileName: file.name,
+    });
+    setIsUploading(false);
+    if (result.success) {
+      setAttachmentUrls((prev) => [...prev, result.publicUrl]);
+    } else {
+      setUploadError(result.error);
+    }
+    // Reset input so the same file can be re-selected if needed
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -51,6 +83,7 @@ export function NewCoForm({
         oldQuantity:      oldQ ? Number(oldQ) : undefined,
         newQuantity:      newQ ? Number(newQ) : undefined,
         reason:           fd.get("reason") as string,
+        attachmentUrls:   attachmentUrls.length > 0 ? attachmentUrls : undefined,
       });
       if (result.success) {
         router.push(`/planning/change-orders/${result.id}`);
@@ -168,6 +201,61 @@ export function NewCoForm({
           style={{ ...inputStyle, resize: "vertical" }}
         />
       </label>
+
+      {/* Site Photo Evidence — required for audit trail */}
+      <div>
+        <span style={labelStyle}>
+          Site Photo Evidence
+          <span style={{ marginLeft: "0.4rem", fontSize: "0.75rem", fontWeight: 400, color: "#6b7280" }}>
+            (max 5 photos · JPEG, PNG, PDF · 20 MB each)
+          </span>
+        </span>
+
+        <label
+          htmlFor="eco-photo-input"
+          style={{
+            display: "flex", flexDirection: "column", alignItems: "center",
+            padding: "1.25rem", border: "2px dashed #d1d5db", borderRadius: "8px",
+            cursor: isUploading || attachmentUrls.length >= 5 ? "not-allowed" : "pointer",
+            background: "#f9fafb", color: "#6b7280", fontSize: "0.875rem", textAlign: "center",
+            opacity: isUploading || attachmentUrls.length >= 5 ? 0.6 : 1,
+          }}
+        >
+          {isUploading ? "Uploading…" : "Click to attach a photo or PDF"}
+        </label>
+        <input
+          id="eco-photo-input"
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          style={{ display: "none" }}
+          disabled={isUploading || attachmentUrls.length >= 5}
+          onChange={handleFileSelect}
+        />
+
+        {uploadError && (
+          <p style={{ marginTop: "0.4rem", fontSize: "0.8rem", color: "#b91c1c" }}>{uploadError}</p>
+        )}
+
+        {attachmentUrls.length > 0 && (
+          <ul style={{ marginTop: "0.6rem", listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+            {attachmentUrls.map((url, i) => (
+              <li key={url} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "0.8rem", color: "#374151", background: "#eff6ff", borderRadius: "5px", padding: "0.35rem 0.6rem" }}>
+                <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "#1d4ed8", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "85%" }}>
+                  Photo {i + 1}
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setAttachmentUrls((prev) => prev.filter((_, j) => j !== i))}
+                  style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: "0.85rem", padding: "0 0.25rem" }}
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
         <a href="/planning/change-orders" style={{
