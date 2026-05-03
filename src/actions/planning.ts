@@ -4,8 +4,9 @@ import { db } from "@/db";
 import {
   bomStandards, activityDefinitions, changeOrderRequests, constructionManpowerLogs,
   inventoryStock, purchaseRequisitions, purchaseRequisitionItems,
+  projectUnits, materials,
 } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, sum, desc } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
@@ -325,4 +326,57 @@ export async function consolidateAndIssuePR(
   revalidatePath("/planning/resource-mapping");
   revalidatePath("/procurement/requisitions");
   return { success: true, prId: pr.id, itemCount: lineItems.length, totalEstValue: totalEstValue.toFixed(2) };
+}
+
+// ─── Project BOM Forecast ─────────────────────────────────────────────────────
+// Gemini SQL: JOIN units → master_bom → master_price_list
+// Fixed: project_units → bom_standards (quantityPerUnit, not required_quantity,
+//        isActive filter) → materials. Aggregates total material requirement
+//        across ALL units in the project regardless of NTP status.
+// Distinct from getMrpQueue which only covers BOD_APPROVED/ACTIVE NTPs with
+// buffer multipliers. Use this for initial project planning before NTPs are issued.
+
+export interface BomForecastRow {
+  materialId:   string;
+  materialName: string;
+  uom:          string;
+  totalNeeded:  number;
+  unitRate:     number;
+  estimatedCost: number;
+}
+
+export async function getProjectBomForecast(projectId: string): Promise<BomForecastRow[]> {
+  const rows = await db
+    .select({
+      materialId:    materials.id,
+      materialName:  materials.name,
+      uom:           materials.uom,
+      totalNeeded:   sum(bomStandards.quantityPerUnit),
+      unitRate:      materials.adminPrice,
+    })
+    .from(projectUnits)
+    .innerJoin(bomStandards, eq(bomStandards.unitModel, projectUnits.unitModel))
+    .innerJoin(materials, eq(materials.id, bomStandards.materialId))
+    .where(
+      and(
+        eq(projectUnits.projectId, projectId),
+        eq(bomStandards.isActive, true),
+        eq(materials.isActive, true),
+      ),
+    )
+    .groupBy(materials.id, materials.name, materials.uom, materials.adminPrice)
+    .orderBy(desc(sum(bomStandards.quantityPerUnit)));
+
+  return rows.map((r) => {
+    const totalNeeded  = Number(r.totalNeeded  ?? 0);
+    const unitRate     = Number(r.unitRate      ?? 0);
+    return {
+      materialId:    r.materialId,
+      materialName:  r.materialName,
+      uom:           r.uom,
+      totalNeeded,
+      unitRate,
+      estimatedCost: totalNeeded * unitRate,
+    };
+  });
 }

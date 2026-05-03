@@ -1,7 +1,8 @@
 "use server";
 
 import { db } from "@/db";
-import { sql } from "drizzle-orm";
+import { projectUnits, taskAssignments, subcontractors } from "@/db/schema";
+import { eq, sql } from "drizzle-orm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,4 +105,56 @@ export async function getExecutiveMetrics(): Promise<ExecutiveMetrics> {
     phaseCounts,
     units: rows.slice(0, 50),
   };
+}
+
+// ─── Production Status Grid ───────────────────────────────────────────────────
+// Gemini SQL: SELECT from 'units' (wrong table), model_type/current_status
+// (wrong columns), correlated subquery for subcontractor (inefficient).
+// Fixed: project_units + LEFT JOIN LATERAL on most-recent ACTIVE task_assignment
+//        + subcontractors.name. Returns all units for the project ordered by
+//        unit_code for the 120-unit production grid.
+
+export interface UnitGridRow {
+  unitId:          string;
+  unitCode:        string;
+  unitModel:       string;
+  status:          string;
+  currentCategory: string;
+  assignedSubcon:  string | null;
+}
+
+export async function getProjectUnitGrid(projectId: string): Promise<UnitGridRow[]> {
+  const rows = await db.execute<{
+    unit_id: string; unit_code: string; unit_model: string;
+    status: string; current_category: string; assigned_subcon: string | null;
+  }>(sql`
+    SELECT
+        pu.id               AS unit_id,
+        pu.unit_code,
+        pu.unit_model,
+        pu.status,
+        pu.current_category,
+        s.name              AS assigned_subcon
+    FROM project_units pu
+    LEFT JOIN LATERAL (
+        SELECT subcon_id
+        FROM   task_assignments
+        WHERE  unit_id = pu.id
+          AND  status  = 'ACTIVE'
+        ORDER BY created_at DESC
+        LIMIT 1
+    ) ta ON TRUE
+    LEFT JOIN subcontractors s ON s.id = ta.subcon_id
+    WHERE pu.project_id = ${projectId}
+    ORDER BY pu.unit_code ASC
+  `);
+
+  return rows.map((r) => ({
+    unitId:          r.unit_id,
+    unitCode:        r.unit_code,
+    unitModel:       r.unit_model,
+    status:          r.status,
+    currentCategory: r.current_category,
+    assignedSubcon:  r.assigned_subcon,
+  }));
 }
