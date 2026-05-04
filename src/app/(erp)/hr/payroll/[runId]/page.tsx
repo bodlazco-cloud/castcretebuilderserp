@@ -32,6 +32,7 @@ export default async function PayrollRunDetailPage({
       totalDeductions: payrollRuns.totalDeductions,
       totalNet:        payrollRuns.totalNet,
       dtrVerified:     payrollRuns.dtrVerified,
+      rejectionNote:   payrollRuns.rejectionNote,
     })
     .from(payrollRuns)
     .where(eq(payrollRuns.id, runId))
@@ -110,6 +111,19 @@ export default async function PayrollRunDetailPage({
             ))}
           </div>
         </div>
+
+        {run.status === "REJECTED" && run.rejectionNote && (
+          <div style={{
+            display: "flex", alignItems: "flex-start", gap: "0.75rem",
+            padding: "0.9rem 1.1rem", marginBottom: "1rem",
+            background: "#fef2f2", borderLeft: "4px solid #dc2626",
+          }}>
+            <span style={{ fontSize: "1rem" }}>↩</span>
+            <p style={{ margin: 0, fontSize: "0.82rem", color: "#7f1d1d" }}>
+              <strong>Returned to site:</strong> {run.rejectionNote}
+            </p>
+          </div>
+        )}
 
         {!run.dtrVerified && (
           <div style={{

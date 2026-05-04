@@ -395,3 +395,50 @@ export async function approvePayrollRun(
   revalidatePath(`/hr/payroll/${runId}`);
   return { success: true };
 }
+
+// ─── Reject / Return Payroll Run ──────────────────────────────────────────────
+const RejectPayrollSchema = z.object({
+  runId: z.string().uuid(),
+  note:  z.string().min(1, "A rejection reason is required.").max(500),
+});
+
+export type RejectPayrollResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function rejectPayrollRun(
+  input: z.infer<typeof RejectPayrollSchema>,
+): Promise<RejectPayrollResult> {
+  const parsed = RejectPayrollSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { runId, note } = parsed.data;
+
+  const [existing] = await db
+    .select({ id: payrollRuns.id, status: payrollRuns.status })
+    .from(payrollRuns)
+    .where(eq(payrollRuns.id, runId))
+    .limit(1);
+
+  if (!existing) return { success: false, error: "Payroll run not found." };
+  if (existing.status !== "DRAFT") {
+    return { success: false, error: `Run is already ${existing.status}. Only DRAFT runs can be returned.` };
+  }
+
+  await db
+    .update(payrollRuns)
+    .set({
+      status:        "REJECTED",
+      rejectedBy:    user.id,
+      rejectedAt:    new Date(),
+      rejectionNote: note,
+    })
+    .where(eq(payrollRuns.id, runId));
+
+  revalidatePath("/hr/payroll");
+  revalidatePath(`/hr/payroll/${runId}`);
+  return { success: true };
+}

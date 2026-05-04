@@ -57,7 +57,7 @@ export const unitTypeEnum = pgEnum("unit_type", ["BEG", "REG", "END"]);
 
 export const changeOrderTypeEnum = pgEnum("change_order_type", ["ADD", "MODIFY", "REMOVE"]);
 
-export const payrollStatusEnum = pgEnum("payroll_status", ["DRAFT", "PROCESSING", "APPROVED", "RELEASED"]);
+export const payrollStatusEnum = pgEnum("payroll_status", ["DRAFT", "PROCESSING", "APPROVED", "RELEASED", "REJECTED"]);
 
 export const bankTransactionTypeEnum = pgEnum("bank_transaction_type", ["DEBIT", "CREDIT"]);
 

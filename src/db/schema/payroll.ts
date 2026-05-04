@@ -1,6 +1,6 @@
 import {
   pgTable, uuid, numeric, boolean,
-  timestamp, date,
+  timestamp, date, text,
 } from "drizzle-orm/pg-core";
 import { users, costCenters } from "./core";
 import { employees } from "./hr";
@@ -18,6 +18,9 @@ export const payrollRuns = pgTable("payroll_runs", {
   processedBy:      uuid("processed_by").references(() => users.id),
   approvedBy:       uuid("approved_by").references(() => users.id),
   approvedAt:       timestamp("approved_at", { withTimezone: true }),
+  rejectedBy:       uuid("rejected_by").references(() => users.id),
+  rejectedAt:       timestamp("rejected_at", { withTimezone: true }),
+  rejectionNote:    text("rejection_note"),
   releasedBy:       uuid("released_by").references(() => users.id),
   releasedAt:       timestamp("released_at", { withTimezone: true }),
   createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
