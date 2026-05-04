@@ -47,9 +47,10 @@ export default async function PayrollRunDetailPage({
       costCenterName:      costCenters.name,
       daysWorked:          payrollLineItems.daysWorked,
       overtimeHours:       payrollLineItems.overtimeHours,
-      grossPay:            payrollLineItems.grossPay,
-      sssDeduction:        payrollLineItems.sssDeduction,
-      philhealthDeduction: payrollLineItems.philhealthDeduction,
+      grossPay:             payrollLineItems.grossPay,
+      sssRegularDeduction:  payrollLineItems.sssRegularDeduction,
+      sssMpfDeduction:      payrollLineItems.sssMpfDeduction,
+      philhealthDeduction:  payrollLineItems.philhealthDeduction,
       pagibigDeduction:    payrollLineItems.pagibigDeduction,
       taxWithheld:         payrollLineItems.taxWithheld,
       otherDeductions:     payrollLineItems.otherDeductions,
@@ -147,9 +148,9 @@ export default async function PayrollRunDetailPage({
                 ) : (
                   lineItems.map((item) => {
                     const totalDeductions =
-                      Number(item.sssDeduction) + Number(item.philhealthDeduction) +
-                      Number(item.pagibigDeduction) + Number(item.taxWithheld) +
-                      Number(item.otherDeductions);
+                      Number(item.sssRegularDeduction) + Number(item.sssMpfDeduction) +
+                      Number(item.philhealthDeduction) + Number(item.pagibigDeduction) +
+                      Number(item.taxWithheld) + Number(item.otherDeductions);
 
                     return (
                       <tr key={item.id}>
@@ -171,7 +172,7 @@ export default async function PayrollRunDetailPage({
                         <td style={{ ...tdStyle, textAlign: "right", fontFamily: "monospace", color: "#dc2626" }}>
                           ({fmtPhp(String(totalDeductions.toFixed(2)))})
                           <span style={{ display: "block", fontSize: "0.65rem", color: "#9ca3af" }}>
-                            SSS·PhilHealth·Pag-IBIG·Tax
+                            SSS·MPF·PhilHealth·Pag-IBIG·Tax
                           </span>
                         </td>
                         <td style={{ ...tdStyle, textAlign: "right", fontFamily: "monospace", fontWeight: 700 }}>{fmtPhp(item.netPay)}</td>

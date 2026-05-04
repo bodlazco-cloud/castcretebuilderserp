@@ -298,18 +298,19 @@ export async function processPayrollRun(
     const otPay      = otHours * hourlyRate * 1.25;   // Labor Code Art. 87: 125%
     const grossPay   = regularPay + otPay;
 
-    const { phicEE, hdmfEE, sssEE } = computeStatutoryDeductions(grossPay, grossPay, periodType);
+    const { phicEE, hdmfEE, sssRegularEE, sssMpfEE, sssEE } = computeStatutoryDeductions(grossPay, grossPay, periodType);
     const tax    = computeMonthlyWithholdingTax(grossPay);
     const netPay = Math.max(0, grossPay - sssEE - phicEE - hdmfEE - tax);
 
     return {
-      employeeId:          emp.id,
-      costCenterId:        emp.costCenterId,
-      daysWorked:          String(daysWorked),
-      overtimeHours:       String(otHours),
-      grossPay:            String(grossPay.toFixed(2)),
-      sssDeduction:        String(sssEE.toFixed(2)),
-      philhealthDeduction: String(phicEE.toFixed(2)),
+      employeeId:           emp.id,
+      costCenterId:         emp.costCenterId,
+      daysWorked:           String(daysWorked),
+      overtimeHours:        String(otHours),
+      grossPay:             String(grossPay.toFixed(2)),
+      sssRegularDeduction:  String(sssRegularEE.toFixed(2)),
+      sssMpfDeduction:      String(sssMpfEE.toFixed(2)),
+      philhealthDeduction:  String(phicEE.toFixed(2)),
       pagibigDeduction:    String(hdmfEE.toFixed(2)),
       taxWithheld:         String(tax.toFixed(2)),
       otherDeductions:     "0",
@@ -320,8 +321,9 @@ export async function processPayrollRun(
   // ── 6. Write payroll run + line items ─────────────────────────────────────
   const totalGross       = lineItems.reduce((s, l) => s + Number(l.grossPay), 0);
   const totalDeductions  = lineItems.reduce(
-    (s, l) => s + Number(l.sssDeduction) + Number(l.philhealthDeduction)
-                + Number(l.pagibigDeduction) + Number(l.taxWithheld),
+    (s, l) => s + Number(l.sssRegularDeduction) + Number(l.sssMpfDeduction)
+                + Number(l.philhealthDeduction) + Number(l.pagibigDeduction)
+                + Number(l.taxWithheld),
     0,
   );
   const totalNet = lineItems.reduce((s, l) => s + Number(l.netPay), 0);
