@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { payables, subcontractors, projects } from "@/db/schema";
-import { eq, notInArray } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 
 const ACCENT = "#1a56db";
@@ -11,65 +11,60 @@ const BUCKET_COLORS = ["#1a56db", "#d97706", "#dc2626", "#7f1d1d"];
 const fmtPhp = (n: number) =>
   `₱${n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function ageBucket(createdAt: Date, now: Date): 0 | 1 | 2 | 3 {
-  const days = Math.floor((now.getTime() - createdAt.getTime()) / 86_400_000);
-  if (days <= 30)  return 0;
-  if (days <= 60)  return 1;
-  if (days <= 90)  return 2;
+function ageBucket(days: number): 0 | 1 | 2 | 3 {
+  if (days <= 30) return 0;
+  if (days <= 60) return 1;
+  if (days <= 90) return 2;
   return 3;
 }
 
 export default async function AgedPayablesReportPage() {
   await getAuthUser();
 
-  // Outstanding = not yet paid, not draft/rejected/cancelled
+  // "certified_not_paid" = BOD-approved but paidAt is null
   const outstanding = await db
     .select({
-      id:          payables.id,
-      netPayable:  payables.netPayable,
-      grossAmount: payables.grossAmount,
-      status:      payables.status,
-      createdAt:   payables.createdAt,
-      subconName:  subcontractors.name,
-      tradeTypes:  subcontractors.tradeTypes,
-      projectName: projects.name,
+      id:           payables.id,
+      netPayable:   payables.netPayable,
+      grossAmount:  payables.grossAmount,
+      bodApprovedAt: payables.bodApprovedAt,
+      createdAt:    payables.createdAt,
+      subconName:   subcontractors.name,
+      projectName:  projects.name,
     })
     .from(payables)
     .leftJoin(subcontractors, eq(payables.subconId, subcontractors.id))
     .leftJoin(projects,       eq(payables.projectId, projects.id))
-    .where(
-      notInArray(payables.status, ["DRAFT", "REJECTED", "CANCELLED"]),
-    )
-    .orderBy(payables.createdAt);
-
-  // Only unpaid rows (paidAt IS NULL equivalent — filter in JS since paidAt drives the paid state)
-  // Status "APPROVED" with no paidAt still outstanding; we exclude rows that have been fully paid
-  // The payables table uses status column not paidAt to track payment
-  // "PAID" isn't in approvalStatusEnum — payment is tracked via paymentRequests.
-  // So all non-DRAFT/REJECTED/CANCELLED payables are outstanding here.
+    .where(and(
+      eq(payables.status, "APPROVED"),
+      isNull(payables.paidAt),
+    ))
+    .orderBy(payables.bodApprovedAt);
 
   const now = new Date();
 
   const buckets = [0, 0, 0, 0] as [number, number, number, number];
-  type Row = { id: string; subconName: string; category: string; days: number; amount: number; bucket: 0 | 1 | 2 | 3 };
+  type Row = { id: string; subconName: string; category: string; certifiedDate: string; days: number; amount: number; bucket: 0 | 1 | 2 | 3 };
   const rows: Row[] = [];
 
   for (const p of outstanding) {
     const amount = Number(p.netPayable ?? p.grossAmount);
-    const bucket = ageBucket(p.createdAt, now);
-    const days   = Math.floor((now.getTime() - p.createdAt.getTime()) / 86_400_000);
-    buckets[bucket] += amount;
+    // Age from BOD approval date (the moment the obligation was "certified"); fall back to createdAt
+    const certifiedAt = p.bodApprovedAt ?? p.createdAt;
+    const days        = Math.floor((now.getTime() - certifiedAt.getTime()) / 86_400_000);
+    const bucket      = ageBucket(days);
+    buckets[bucket]  += amount;
     rows.push({
-      id:        p.id,
-      subconName: p.subconName ?? "Unknown",
-      category:  p.projectName ?? "—",
+      id:            p.id,
+      subconName:    p.subconName ?? "Unknown",
+      category:      p.projectName ?? "—",
+      certifiedDate: certifiedAt.toISOString().split("T")[0],
       days,
       amount,
       bucket,
     });
   }
 
-  // Sort by days descending (oldest first)
   rows.sort((a, b) => b.days - a.days);
 
   const totalOutstanding = buckets.reduce((s, b) => s + b, 0);
@@ -90,7 +85,8 @@ export default async function AgedPayablesReportPage() {
               Aged Payables Report
             </h1>
             <p style={{ margin: 0, color: "#6b7280", fontSize: "0.875rem", paddingLeft: "1.25rem" }}>
-              Outstanding subcon billings bucketed by age. Total outstanding: <strong style={{ color: "#111827" }}>{fmtPhp(totalOutstanding)}</strong>
+              BOD-approved subcon billings not yet paid, aged from certification date.
+              Total outstanding: <strong style={{ color: "#111827" }}>{fmtPhp(totalOutstanding)}</strong>
             </p>
           </div>
           <div style={{ fontSize: "0.78rem", color: "#9ca3af", fontFamily: "monospace", alignSelf: "flex-end" }}>
@@ -124,7 +120,7 @@ export default async function AgedPayablesReportPage() {
         {/* Detail table */}
         {rows.length === 0 ? (
           <div style={{ padding: "3rem", background: "#fff", borderRadius: "10px", border: "1px solid #e5e7eb", textAlign: "center", color: "#9ca3af" }}>
-            No outstanding payables.
+            No outstanding certified payables.
           </div>
         ) : (
           <div style={{ background: "#fff", borderRadius: "10px", border: "1px solid #e5e7eb", overflow: "hidden" }}>
@@ -133,11 +129,11 @@ export default async function AgedPayablesReportPage() {
               <span style={{ fontWeight: 400, fontSize: "0.78rem", color: "#9ca3af" }}>Sorted oldest first</span>
             </div>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", minWidth: "640px" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", minWidth: "680px" }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["Subcontractor", "Project", "Age", "Bucket", "Amount"].map((h, i) => (
-                      <th key={i} style={{ padding: "0.7rem 1rem", textAlign: i >= 2 ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
+                    {["Subcontractor", "Project", "Certified Date", "Days Outstanding", "Bucket", "Amount"].map((h, i) => (
+                      <th key={i} style={{ padding: "0.7rem 1rem", textAlign: i >= 3 ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -146,6 +142,7 @@ export default async function AgedPayablesReportPage() {
                     <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6", background: r.bucket >= 2 ? "#fff9f9" : "transparent" }}>
                       <td style={{ padding: "0.7rem 1rem", fontWeight: 500, color: "#111827" }}>{r.subconName}</td>
                       <td style={{ padding: "0.7rem 1rem", color: "#6b7280" }}>{r.category}</td>
+                      <td style={{ padding: "0.7rem 1rem", fontFamily: "monospace", fontSize: "0.8rem", color: "#6b7280" }}>{r.certifiedDate}</td>
                       <td style={{ padding: "0.7rem 1rem", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: r.bucket >= 2 ? BUCKET_COLORS[r.bucket] : "#374151" }}>
                         {r.days} days
                       </td>
@@ -162,7 +159,7 @@ export default async function AgedPayablesReportPage() {
                 </tbody>
                 <tfoot>
                   <tr style={{ background: "#f9fafb", borderTop: "2px solid #e5e7eb" }}>
-                    <td colSpan={4} style={{ padding: "0.7rem 1rem", fontWeight: 700, color: "#374151", fontSize: "0.88rem" }}>Total Outstanding</td>
+                    <td colSpan={5} style={{ padding: "0.7rem 1rem", fontWeight: 700, color: "#374151", fontSize: "0.88rem" }}>Total Outstanding</td>
                     <td style={{ padding: "0.7rem 1rem", textAlign: "right", fontFamily: "monospace", fontWeight: 700, fontSize: "0.95rem", color: "#111827" }}>
                       {fmtPhp(totalOutstanding)}
                     </td>
