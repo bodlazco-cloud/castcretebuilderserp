@@ -7,7 +7,7 @@ import { createChangeOrder } from "@/actions/planning";
 import { uploadFile, BUCKETS } from "@/actions/storage";
 
 type Project  = { id: string; name: string };
-type Activity = { id: string; projectId: string; activityCode: string; activityName: string; scopeName: string };
+type Activity = { id: string; activityCode: string; activityName: string; scopeName: string };
 type Material = { id: string; code: string; name: string; unit: string };
 
 const ACCENT = "#1a56db";
@@ -35,8 +35,6 @@ export function NewCoForm({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const filteredActivities = activities.filter((a) => a.projectId === selectedProject);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -136,9 +134,9 @@ export function NewCoForm({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Activity (optional)</span>
-          <select name="activityDefId" style={inputStyle} disabled={!selectedProject}>
+          <select name="activityDefId" style={inputStyle}>
             <option value="">Any / not specific…</option>
-            {filteredActivities.map((a) => (
+            {activities.map((a) => (
               <option key={a.id} value={a.id}>[{a.activityCode}] {a.activityName}</option>
             ))}
           </select>

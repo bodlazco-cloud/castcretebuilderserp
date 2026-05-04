@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { milestoneDefinitions, projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { milestoneDefinitions } from "@/db/schema";
 import { getAuthUser } from "@/lib/supabase-server";
 
 const ACCENT = "#dc2626";
@@ -18,11 +17,9 @@ export default async function MilestoneDefsPage() {
       triggersBilling: milestoneDefinitions.triggersBilling,
       weightPct:       milestoneDefinitions.weightPct,
       isActive:        milestoneDefinitions.isActive,
-      projName:        projects.name,
     })
     .from(milestoneDefinitions)
-    .leftJoin(projects, eq(milestoneDefinitions.projectId, projects.id))
-    .orderBy(projects.name, milestoneDefinitions.sequenceOrder);
+    .orderBy(milestoneDefinitions.category, milestoneDefinitions.sequenceOrder);
 
   const billing = rows.filter((r) => r.triggersBilling).length;
 
@@ -50,8 +47,8 @@ export default async function MilestoneDefsPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "700px" }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["#", "Project", "Milestone Name", "Category", "Weight %", "Billing Trigger", "Status"].map((h, i) => (
-                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: [4].includes(i) ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                    {["#", "Milestone Name", "Category", "Weight %", "Billing Trigger", "Status"].map((h, i) => (
+                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: [3].includes(i) ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -59,7 +56,6 @@ export default async function MilestoneDefsPage() {
                   {rows.map((r) => (
                     <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6", opacity: r.isActive ? 1 : 0.5 }}>
                       <td style={{ padding: "0.65rem 1rem", color: "#9ca3af", fontSize: "0.8rem" }}>{r.sequenceOrder}</td>
-                      <td style={{ padding: "0.65rem 1rem", color: "#374151", fontSize: "0.82rem" }}>{r.projName ?? "—"}</td>
                       <td style={{ padding: "0.65rem 1rem", fontWeight: 600, color: "#111827" }}>{r.name}</td>
                       <td style={{ padding: "0.65rem 1rem" }}>
                         <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "0.15rem 0.4rem", borderRadius: "4px", background: "#f3f4f6", color: "#374151" }}>{r.category}</span>

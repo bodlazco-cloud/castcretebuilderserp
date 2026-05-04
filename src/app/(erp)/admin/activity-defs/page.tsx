@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { activityDefinitions, projects } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { activityDefinitions } from "@/db/schema";
 import { getAuthUser } from "@/lib/supabase-server";
 
 const ACCENT = "#dc2626";
@@ -29,11 +28,9 @@ export default async function ActivityDefsPage() {
       weightInScopePct:     activityDefinitions.weightInScopePct,
       sequenceOrder:        activityDefinitions.sequenceOrder,
       isActive:             activityDefinitions.isActive,
-      projName:             projects.name,
     })
     .from(activityDefinitions)
-    .leftJoin(projects, eq(activityDefinitions.projectId, projects.id))
-    .orderBy(projects.name, activityDefinitions.sequenceOrder);
+    .orderBy(activityDefinitions.category, activityDefinitions.sequenceOrder);
 
   const active = rows.filter((r) => r.isActive).length;
 
@@ -59,8 +56,8 @@ export default async function ActivityDefsPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "900px" }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["#", "Project", "Scope", "Activity", "Category", "Duration", "Weight %", "Status"].map((h, i) => (
-                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: i >= 5 ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                    {["#", "Scope", "Activity", "Category", "Duration", "Weight %", "Status"].map((h, i) => (
+                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: i >= 4 ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -70,7 +67,6 @@ export default async function ActivityDefsPage() {
                     return (
                       <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6", opacity: r.isActive ? 1 : 0.5 }}>
                         <td style={{ padding: "0.65rem 1rem", color: "#9ca3af", fontSize: "0.8rem" }}>{r.sequenceOrder}</td>
-                        <td style={{ padding: "0.65rem 1rem", color: "#374151", fontSize: "0.82rem" }}>{r.projName ?? "—"}</td>
                         <td style={{ padding: "0.65rem 1rem" }}>
                           <div style={{ fontWeight: 600, color: "#374151", fontSize: "0.82rem" }}>{r.scopeCode}</div>
                           <div style={{ color: "#6b7280", fontSize: "0.78rem" }}>{r.scopeName}</div>

@@ -189,7 +189,6 @@ export async function toggleSubconActive(id: string, isActive: boolean): Promise
 // ─── Activity Definitions (SOW) ────────────────────────────────────────────
 
 const ActivityDefSchema = z.object({
-  projectId:            z.string().uuid(),
   category:             z.enum(["STRUCTURAL", "ARCHITECTURAL", "TURNOVER"]),
   scopeCode:            z.string().min(1).max(100),
   scopeName:            z.string().min(1).max(150),
@@ -210,7 +209,6 @@ export async function createActivityDefinition(
   const [row] = await db
     .insert(activityDefinitions)
     .values({
-      projectId:            d.projectId,
       category:             d.category,
       scopeCode:            d.scopeCode,
       scopeName:            d.scopeName,

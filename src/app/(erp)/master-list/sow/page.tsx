@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { activityDefinitions, projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { activityDefinitions } from "@/db/schema";
 import { getAuthUser } from "@/lib/supabase-server";
 
 export default async function SowPage() {
@@ -9,19 +8,16 @@ export default async function SowPage() {
 
   const rows = await db
     .select({
-      id:           activityDefinitions.id,
-      activityCode: activityDefinitions.activityCode,
-      scopeName:    activityDefinitions.scopeName,
-      category:     activityDefinitions.category,
-      sequenceOrder: activityDefinitions.sequenceOrder,
+      id:                   activityDefinitions.id,
+      activityCode:         activityDefinitions.activityCode,
+      scopeName:            activityDefinitions.scopeName,
+      category:             activityDefinitions.category,
+      sequenceOrder:        activityDefinitions.sequenceOrder,
       standardDurationDays: activityDefinitions.standardDurationDays,
-      isActive:     activityDefinitions.isActive,
-      projName:     projects.name,
-      projId:       projects.id,
+      isActive:             activityDefinitions.isActive,
     })
     .from(activityDefinitions)
-    .leftJoin(projects, eq(activityDefinitions.projectId, projects.id))
-    .orderBy(projects.name, activityDefinitions.sequenceOrder);
+    .orderBy(activityDefinitions.category, activityDefinitions.sequenceOrder);
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -32,7 +28,7 @@ export default async function SowPage() {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.5rem" }}>
           <div>
             <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Scope of Work</h1>
-            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>Activity definitions and scope items per project.</p>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>System-wide activity definitions. Link to a project by adding BOM entries.</p>
           </div>
           <a href="/master-list/sow/new" style={{
             padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#6366f1",
@@ -50,7 +46,7 @@ export default async function SowPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "900px" }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["#", "Activity Code", "Scope Name", "Project", "Category", "Std. Days", "Status", ""].map((h, i) => (
+                    {["#", "Activity Code", "Scope Name", "Category", "Std. Days", "Status", ""].map((h, i) => (
                       <th key={i} style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                     ))}
                   </tr>
@@ -61,11 +57,6 @@ export default async function SowPage() {
                       <td style={{ padding: "0.65rem 1rem", color: "#9ca3af", fontSize: "0.8rem" }}>{r.sequenceOrder}</td>
                       <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.82rem", color: "#374151" }}>{r.activityCode}</td>
                       <td style={{ padding: "0.65rem 1rem", fontWeight: 500, color: "#111827" }}>{r.scopeName}</td>
-                      <td style={{ padding: "0.65rem 1rem" }}>
-                        {r.projId
-                          ? <a href={`/master-list/projects/${r.projId}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.82rem" }}>{r.projName}</a>
-                          : <span style={{ color: "#9ca3af" }}>—</span>}
-                      </td>
                       <td style={{ padding: "0.65rem 1rem", color: "#6b7280", fontSize: "0.82rem" }}>{r.category}</td>
                       <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>{r.standardDurationDays}d</td>
                       <td style={{ padding: "0.65rem 1rem" }}>

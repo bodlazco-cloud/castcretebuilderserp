@@ -3,7 +3,7 @@ import {
   timestamp, date, text,
 } from "drizzle-orm/pg-core";
 import { users } from "./core";
-import { projects } from "./projects";
+import { projects } from "./projects";   // still needed for developerRateCards
 import { workCategoryEnum, unitTypeEnum } from "./enums";
 
 export const suppliers = pgTable("suppliers", {
@@ -60,7 +60,6 @@ export const bomStandards = pgTable("bom_standards", {
 
 export const activityDefinitions = pgTable("activity_definitions", {
   id:                    uuid("id").primaryKey().defaultRandom(),
-  projectId:             uuid("project_id").notNull().references(() => projects.id),
   category:              workCategoryEnum("category").notNull(),
   scopeCode:             varchar("scope_code", { length: 100 }).notNull(),
   scopeName:             varchar("scope_name", { length: 150 }).notNull(),
@@ -75,7 +74,6 @@ export const activityDefinitions = pgTable("activity_definitions", {
 
 export const milestoneDefinitions = pgTable("milestone_definitions", {
   id:              uuid("id").primaryKey().defaultRandom(),
-  projectId:       uuid("project_id").notNull().references(() => projects.id),
   name:            varchar("name", { length: 150 }).notNull(),
   category:        workCategoryEnum("category").notNull(),
   sequenceOrder:   integer("sequence_order").notNull(),

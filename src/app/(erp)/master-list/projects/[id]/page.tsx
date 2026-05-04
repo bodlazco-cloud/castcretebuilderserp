@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { projects, developers, activityDefinitions, blocks, projectUnits } from "@/db/schema";
+import { projects, developers, blocks, projectUnits } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
@@ -50,18 +50,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   if (!project) notFound();
 
-  const [scopeRows, blockRows] = await Promise.all([
-    db
-      .select({ id: activityDefinitions.id, activityCode: activityDefinitions.activityCode, scopeName: activityDefinitions.scopeName, category: activityDefinitions.category, sequenceOrder: activityDefinitions.sequenceOrder, isActive: activityDefinitions.isActive })
-      .from(activityDefinitions)
-      .where(eq(activityDefinitions.projectId, id))
-      .orderBy(activityDefinitions.sequenceOrder),
-    db
-      .select({ id: blocks.id, blockName: blocks.blockName, totalLots: blocks.totalLots })
-      .from(blocks)
-      .where(eq(blocks.projectId, id))
-      .orderBy(blocks.blockName),
-  ]);
+  const blockRows = await db
+    .select({ id: blocks.id, blockName: blocks.blockName, totalLots: blocks.totalLots })
+    .from(blocks)
+    .where(eq(blocks.projectId, id))
+    .orderBy(blocks.blockName);
 
   const unitRows = blockRows.length > 0
     ? await db
@@ -103,10 +96,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </div>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             {!isApproved && <ApproveProjectButton projectId={id} />}
-            <a href={`/master-list/sow/new?projectId=${id}`} style={{
+            <a href="/master-list/sow" style={{
               padding: "0.5rem 1rem", borderRadius: "6px", background: "#6366f1",
               color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
-            }}>+ Add Scope</a>
+            }}>Scope of Work →</a>
             <a href={`/construction/ntp`} style={{
               padding: "0.5rem 1rem", borderRadius: "6px", background: "#057a55",
               color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
@@ -214,43 +207,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </div>
 
         {/* Scope of Work */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h2 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 700, color: "#374151" }}>Scope of Work ({scopeRows.length})</h2>
-          {scopeRows.length === 0 ? (
-            <div style={{ padding: "1.5rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af", fontSize: "0.875rem" }}>
-              No scope of work defined. <a href={`/master-list/sow/new?projectId=${id}`} style={{ color: "#6366f1" }}>Add one →</a>
-            </div>
-          ) : (
-            <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-                <thead>
-                  <tr style={{ background: "#f9fafb" }}>
-                    {["#", "Activity Code", "Scope Name", "Category", "Status", ""].map((h, i) => (
-                      <th key={i} style={{ padding: "0.6rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {scopeRows.map((s) => (
-                    <tr key={s.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "0.6rem 0.9rem", color: "#9ca3af", fontSize: "0.8rem" }}>{s.sequenceOrder}</td>
-                      <td style={{ padding: "0.6rem 0.9rem", fontFamily: "monospace", fontSize: "0.82rem", color: "#374151" }}>{s.activityCode}</td>
-                      <td style={{ padding: "0.6rem 0.9rem", fontWeight: 500, color: "#111827" }}>{s.scopeName}</td>
-                      <td style={{ padding: "0.6rem 0.9rem", color: "#6b7280", fontSize: "0.82rem" }}>{s.category}</td>
-                      <td style={{ padding: "0.6rem 0.9rem" }}>
-                        <span style={{ display: "inline-block", padding: "0.15rem 0.5rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: s.isActive ? "#dcfce7" : "#f3f4f6", color: s.isActive ? "#166534" : "#6b7280" }}>
-                          {s.isActive ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                      <td style={{ padding: "0.6rem 0.9rem", textAlign: "right" }}>
-                        <a href={`/master-list/sow/${s.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <div style={{ padding: "1rem 1.25rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#374151" }}>Scope of Work</div>
+            <div style={{ fontSize: "0.82rem", color: "#6b7280", marginTop: "0.15rem" }}>Activity definitions are system-wide. Link to BOM entries for cost planning.</div>
+          </div>
+          <a href="/master-list/sow" style={{ padding: "0.45rem 0.9rem", borderRadius: "6px", background: "#6366f1", color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none" }}>
+            View Scope of Work →
+          </a>
         </div>
       </div>
     </main>

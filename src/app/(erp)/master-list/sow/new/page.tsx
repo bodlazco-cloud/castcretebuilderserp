@@ -1,17 +1,10 @@
 export const dynamic = "force-dynamic";
-import { db } from "@/db";
-import { projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { Suspense } from "react";
 import { NewSowForm } from "../NewSowForm";
 
 export default async function NewSowPage() {
   await getAuthUser();
-  const projectOptions = await db
-    .select({ id: projects.id, name: projects.name })
-    .from(projects)
-    .orderBy(projects.name);
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -24,12 +17,12 @@ export default async function NewSowPage() {
             Add Scope Item
           </h1>
           <p style={{ margin: "0 0 0 1.25rem", color: "#6b7280", fontSize: "0.9rem" }}>
-            Define an activity scope item for use in BOMs and task assignments.
+            Define a reusable activity. Attach it to a project by adding BOM entries under Planning.
           </p>
         </header>
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.75rem" }}>
           <Suspense>
-            <NewSowForm projects={projectOptions} />
+            <NewSowForm />
           </Suspense>
         </div>
       </div>

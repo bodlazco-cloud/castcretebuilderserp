@@ -8,13 +8,9 @@ import { BomEntryForm } from "../BomEntryForm";
 export default async function NewBomEntryPage() {
   await getAuthUser();
 
-  const [projectRows, sowRows, materialRows, vendorRows] = await Promise.all([
-    db.select({ id: schema.projects.id, name: schema.projects.name })
-      .from(schema.projects)
-      .orderBy(schema.projects.name),
+  const [sowRows, materialRows, vendorRows] = await Promise.all([
     db.select({
         id:           schema.activityDefinitions.id,
-        projectId:    schema.activityDefinitions.projectId,
         scopeName:    schema.activityDefinitions.scopeName,
         activityCode: schema.activityDefinitions.activityCode,
       })
@@ -51,7 +47,6 @@ export default async function NewBomEntryPage() {
 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.75rem" }}>
           <BomEntryForm
-            projects={projectRows}
             sowItems={sowRows}
             materials={materialRows}
             vendors={vendorRows}

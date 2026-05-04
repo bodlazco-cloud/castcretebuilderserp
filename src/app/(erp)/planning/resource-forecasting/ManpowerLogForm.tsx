@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createManpowerLog } from "@/actions/planning";
 
 type Project  = { id: string; name: string };
-type Activity = { id: string; projectId: string; activityCode: string; activityName: string };
+type Activity = { id: string; activityCode: string; activityName: string };
 type Subcon   = { id: string; name: string; code: string };
 
 const ACCENT = "#1a56db";
@@ -28,8 +28,6 @@ export function ManpowerLogForm({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState("");
-
-  const filteredActivities = activities.filter((a) => a.projectId === selectedProject);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -80,9 +78,9 @@ export function ManpowerLogForm({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Activity (optional)</span>
-          <select name="activityDefId" style={inputStyle} disabled={!selectedProject}>
+          <select name="activityDefId" style={inputStyle}>
             <option value="">Not specific…</option>
-            {filteredActivities.map((a) => (
+            {activities.map((a) => (
               <option key={a.id} value={a.id}>[{a.activityCode}] {a.activityName}</option>
             ))}
           </select>

@@ -37,7 +37,7 @@ export async function saveBomEntries(
 
   // Verify activity exists
   const [activity] = await db
-    .select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId })
+    .select({ id: activityDefinitions.id })
     .from(activityDefinitions)
     .where(eq(activityDefinitions.id, activityDefId));
 

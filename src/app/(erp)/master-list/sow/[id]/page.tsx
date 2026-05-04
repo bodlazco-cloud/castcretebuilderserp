@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { activityDefinitions, projects, bomStandards, materials } from "@/db/schema";
+import { activityDefinitions, bomStandards, materials } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
@@ -15,7 +15,6 @@ export default async function SowDetailPage({ params }: { params: Promise<{ id: 
   const [activity] = await db
     .select({
       id:                   activityDefinitions.id,
-      projectId:            activityDefinitions.projectId,
       category:             activityDefinitions.category,
       scopeCode:            activityDefinitions.scopeCode,
       scopeName:            activityDefinitions.scopeName,
@@ -26,10 +25,8 @@ export default async function SowDetailPage({ params }: { params: Promise<{ id: 
       sequenceOrder:        activityDefinitions.sequenceOrder,
       isActive:             activityDefinitions.isActive,
       createdAt:            activityDefinitions.createdAt,
-      projName:             projects.name,
     })
     .from(activityDefinitions)
-    .leftJoin(projects, eq(activityDefinitions.projectId, projects.id))
     .where(eq(activityDefinitions.id, id));
 
   if (!activity) notFound();
@@ -83,12 +80,6 @@ export default async function SowDetailPage({ params }: { params: Promise<{ id: 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
           <h2 style={{ margin: "0 0 1rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Activity Details</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1.25rem" }}>
-            <div>
-              <div style={LABEL}>Project</div>
-              {activity.projectId
-                ? <a href={`/master-list/projects/${activity.projectId}`} style={{ ...VALUE, color: "#6366f1", textDecoration: "none" }}>{activity.projName}</a>
-                : <div style={VALUE}>—</div>}
-            </div>
             <div><div style={LABEL}>Scope Code</div><div style={VALUE}>{activity.scopeCode}</div></div>
             <div><div style={LABEL}>Activity Name</div><div style={VALUE}>{activity.activityName}</div></div>
             <div><div style={LABEL}>Std. Duration</div><div style={VALUE}>{activity.standardDurationDays} days</div></div>

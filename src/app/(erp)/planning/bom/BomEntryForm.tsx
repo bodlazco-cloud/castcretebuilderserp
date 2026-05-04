@@ -3,8 +3,7 @@
 import { useState, useTransition } from "react";
 import { saveBomEntries } from "@/actions/planning";
 
-type Project  = { id: string; name: string };
-type SowItem  = { id: string; projectId: string; scopeName: string; activityCode: string };
+type SowItem  = { id: string; scopeName: string; activityCode: string };
 type Material = { id: string; code: string; name: string; unit: string };
 type Vendor   = { id: string; name: string };
 
@@ -25,8 +24,7 @@ const UNIT_TYPES = [
 
 type LineItem = { materialId: string; qty: string; unitPrice: string; preferredSupplierId: string };
 
-export function BomEntryForm({ projects, sowItems, materials, vendors }: {
-  projects:  Project[];
+export function BomEntryForm({ sowItems, materials, vendors }: {
   sowItems:  SowItem[];
   materials: Material[];
   vendors:   Vendor[];
@@ -35,15 +33,12 @@ export function BomEntryForm({ projects, sowItems, materials, vendors }: {
   const [error,   setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [selectedProject, setSelectedProject] = useState("");
-  const [selectedSow,     setSelectedSow]     = useState("");
-  const [unitModel,       setUnitModel]        = useState("");
-  const [unitType,        setUnitType]         = useState("");
+  const [selectedSow, setSelectedSow] = useState("");
+  const [unitModel,   setUnitModel]   = useState("");
+  const [unitType,    setUnitType]    = useState("");
   const [lines, setLines] = useState<LineItem[]>([
     { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" },
   ]);
-
-  const filteredSow = sowItems.filter((s) => s.projectId === selectedProject);
 
   function addLine() {
     setLines((l) => [...l, { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" }]);
@@ -87,7 +82,6 @@ export function BomEntryForm({ projects, sowItems, materials, vendors }: {
       if (result.success) {
         setSuccess(`Saved ${result.inserted} BOM line(s). Previous entries for this scope were versioned out. `);
         setLines([{ materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" }]);
-        setSelectedProject("");
         setSelectedSow("");
         setUnitModel("");
         setUnitType("");
@@ -110,28 +104,17 @@ export function BomEntryForm({ projects, sowItems, materials, vendors }: {
         </div>
       )}
 
-      {/* Project + Scope */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-        <label>
-          <span style={labelStyle}>Project / Site *</span>
-          <select required style={inputStyle} value={selectedProject}
-            onChange={(e) => { setSelectedProject(e.target.value); setSelectedSow(""); }}>
-            <option value="">Select project…</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </label>
-        <label>
-          <span style={labelStyle}>Scope of Work *</span>
-          <select required style={inputStyle} value={selectedSow}
-            onChange={(e) => setSelectedSow(e.target.value)}
-            disabled={!selectedProject}>
-            <option value="">Select scope…</option>
-            {filteredSow.map((s) => (
-              <option key={s.id} value={s.id}>[{s.activityCode}] {s.scopeName}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {/* Scope of Work */}
+      <label>
+        <span style={labelStyle}>Scope of Work *</span>
+        <select required style={inputStyle} value={selectedSow}
+          onChange={(e) => setSelectedSow(e.target.value)}>
+          <option value="">Select scope…</option>
+          {sowItems.map((s) => (
+            <option key={s.id} value={s.id}>[{s.activityCode}] {s.scopeName}</option>
+          ))}
+        </select>
+      </label>
 
       {/* Unit Model (free-text, project-specific) + Unit Type */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>

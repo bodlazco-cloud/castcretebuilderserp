@@ -2,9 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createActivityDefinition } from "@/actions/master-list";
-import { useRouter, useSearchParams } from "next/navigation";
-
-type Project = { id: string; name: string };
+import { useRouter } from "next/navigation";
 
 const inputStyle: React.CSSProperties = {
   display: "block", width: "100%", padding: "0.6rem 0.8rem",
@@ -14,31 +12,25 @@ const labelStyle: React.CSSProperties = {
   display: "block", fontSize: "0.82rem", fontWeight: 600, color: "#374151", marginBottom: "0.35rem",
 };
 
-export function NewSowForm({ projects }: { projects: Project[] }) {
+export function NewSowForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const defaultProject = searchParams.get("projectId") ?? "";
-
-  const [projectId, setProjectId]           = useState(defaultProject);
-  const [category, setCategory]             = useState<"STRUCTURAL" | "ARCHITECTURAL" | "TURNOVER">("STRUCTURAL");
-  const [scopeCode, setScopeCode]           = useState("");
-  const [scopeName, setScopeName]           = useState("");
-  const [activityCode, setActivityCode]     = useState("");
-  const [activityName, setActivityName]     = useState("");
-  const [durationDays, setDurationDays]     = useState("14");
-  const [weightPct, setWeightPct]           = useState("0.00");
-  const [sequenceOrder, setSequenceOrder]   = useState("1");
+  const [category, setCategory]           = useState<"STRUCTURAL" | "ARCHITECTURAL" | "TURNOVER">("STRUCTURAL");
+  const [scopeCode, setScopeCode]         = useState("");
+  const [scopeName, setScopeName]         = useState("");
+  const [activityCode, setActivityCode]   = useState("");
+  const [activityName, setActivityName]   = useState("");
+  const [durationDays, setDurationDays]   = useState("14");
+  const [weightPct, setWeightPct]         = useState("0.00");
+  const [sequenceOrder, setSequenceOrder] = useState("1");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!projectId) { setError("Please select a project."); return; }
     startTransition(async () => {
       const result = await createActivityDefinition({
-        projectId,
         category,
         scopeCode,
         scopeName,
@@ -64,23 +56,14 @@ export function NewSowForm({ projects }: { projects: Project[] }) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
-        <label>
-          <span style={labelStyle}>Project *</span>
-          <select required value={projectId} onChange={(e) => setProjectId(e.target.value)} style={inputStyle}>
-            <option value="">Select project…</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </label>
-        <label>
-          <span style={labelStyle}>Category *</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value as typeof category)} style={inputStyle}>
-            <option value="STRUCTURAL">STRUCTURAL</option>
-            <option value="ARCHITECTURAL">ARCHITECTURAL</option>
-            <option value="TURNOVER">TURNOVER</option>
-          </select>
-        </label>
-      </div>
+      <label>
+        <span style={labelStyle}>Category *</span>
+        <select value={category} onChange={(e) => setCategory(e.target.value as typeof category)} style={inputStyle}>
+          <option value="STRUCTURAL">STRUCTURAL</option>
+          <option value="ARCHITECTURAL">ARCHITECTURAL</option>
+          <option value="TURNOVER">TURNOVER</option>
+        </select>
+      </label>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "1rem" }}>
         <label>

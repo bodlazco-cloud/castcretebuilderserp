@@ -15,7 +15,6 @@ export default async function NewChangeOrderPage() {
       .from(projects).orderBy(projects.name),
     db.select({
         id:           activityDefinitions.id,
-        projectId:    activityDefinitions.projectId,
         activityCode: activityDefinitions.activityCode,
         activityName: activityDefinitions.activityName,
         scopeName:    activityDefinitions.scopeName,
