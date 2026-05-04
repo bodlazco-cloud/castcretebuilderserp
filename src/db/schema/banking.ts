@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, varchar, numeric, boolean,
+  pgTable, uuid, varchar, numeric, boolean, integer,
   timestamp, date, text,
 } from "drizzle-orm/pg-core";
 import { users, costCenters } from "./core";
@@ -66,5 +66,38 @@ export const requestsForPayment = pgTable("requests_for_payment", {
   finalApprovalBy:  uuid("final_approval_by").references(() => users.id),
   finalApprovalAt:  timestamp("final_approval_at", { withTimezone: true }),
   rejectionReason:  text("rejection_reason"),
+  createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const corporateLoans = pgTable("corporate_loans", {
+  id:                    uuid("id").primaryKey().defaultRandom(),
+  lenderName:            varchar("lender_name", { length: 150 }).notNull(),
+  loanType:              varchar("loan_type", { length: 100 }),          // e.g., Equipment Loan, Working Capital
+  principalAmount:       numeric("principal_amount", { precision: 15, scale: 2 }).notNull(),
+  interestRate:          numeric("interest_rate", { precision: 5, scale: 2 }).notNull(),
+  tenorMonths:           integer("tenor_months").notNull(),
+  startDate:             date("start_date").notNull(),
+  maturityDate:          date("maturity_date").notNull(),                 // start_date + tenor_months; stored to avoid recalculation
+  monthlyAmortization:   numeric("monthly_amortization", { precision: 15, scale: 2 }).notNull(),
+  outstandingBalance:    numeric("outstanding_balance", { precision: 15, scale: 2 }).notNull(),
+  disbursementAccountId: uuid("disbursement_account_id").references(() => bankAccounts.id),
+  status:                varchar("status", { length: 20 }).notNull().default("ACTIVE"),  // ACTIVE, FULLY_PAID, RESTRUCTURED
+  notes:                 text("notes"),
+  createdBy:             uuid("created_by").notNull().references(() => users.id),
+  createdAt:             timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:             timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const loanPayments = pgTable("loan_payments", {
+  id:               uuid("id").primaryKey().defaultRandom(),
+  loanId:           uuid("loan_id").notNull().references(() => corporateLoans.id),
+  paymentDate:      date("payment_date").notNull(),
+  principalPaid:    numeric("principal_paid", { precision: 15, scale: 2 }).notNull(),
+  interestPaid:     numeric("interest_paid", { precision: 15, scale: 2 }).notNull(),
+  totalPaid:        numeric("total_paid", { precision: 15, scale: 2 }).notNull(),  // principalPaid + interestPaid
+  bankAccountId:    uuid("bank_account_id").references(() => bankAccounts.id),
+  referenceNumber:  varchar("reference_number", { length: 100 }),
+  status:           varchar("status", { length: 20 }).notNull().default("POSTED"),
+  recordedBy:       uuid("recorded_by").notNull().references(() => users.id),
   createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
