@@ -8,6 +8,7 @@ import {
 } from "@/db/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
+import { computeStatutoryDeductions, detectPeriodType } from "@/lib/payroll-utils";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
 
@@ -203,12 +204,9 @@ export async function processPayrollRun(
   // ── 1. Active employees for this department ───────────────────────────────
   const empList = await db
     .select({
-      id:                     employees.id,
-      costCenterId:           employees.costCenterId,
-      dailyRate:              employees.dailyRate,
-      sssContribution:        employees.sssContribution,
-      philhealthContribution: employees.philhealthContribution,
-      pagibigContribution:    employees.pagibigContribution,
+      id:          employees.id,
+      costCenterId: employees.costCenterId,
+      dailyRate:   employees.dailyRate,
     })
     .from(employees)
     .where(and(eq(employees.deptId, deptId), eq(employees.isActive, true)));
@@ -287,6 +285,8 @@ export async function processPayrollRun(
   type DtrRow = { employeeId: string; daysWorked: number; totalHours: number; overtimeSum: number };
   const dtrMap = new Map<string, DtrRow>(dtrRows.map((r) => [r.employeeId, r as DtrRow]));
 
+  const periodType = detectPeriodType(periodStart, periodEnd);
+
   const lineItems = empList.map((emp) => {
     const dtr        = dtrMap.get(emp.id);
     const daysWorked = Number(dtr?.daysWorked  ?? 0);
@@ -298,11 +298,9 @@ export async function processPayrollRun(
     const otPay      = otHours * hourlyRate * 1.25;   // Labor Code Art. 87: 125%
     const grossPay   = regularPay + otPay;
 
-    const sss        = Number(emp.sssContribution);
-    const philhealth = Number(emp.philhealthContribution);
-    const pagibig    = Number(emp.pagibigContribution);
-    const tax        = computeMonthlyWithholdingTax(grossPay);
-    const netPay     = Math.max(0, grossPay - sss - philhealth - pagibig - tax);
+    const { phicEE, hdmfEE, sssEE } = computeStatutoryDeductions(grossPay, grossPay, periodType);
+    const tax    = computeMonthlyWithholdingTax(grossPay);
+    const netPay = Math.max(0, grossPay - sssEE - phicEE - hdmfEE - tax);
 
     return {
       employeeId:          emp.id,
@@ -310,9 +308,9 @@ export async function processPayrollRun(
       daysWorked:          String(daysWorked),
       overtimeHours:       String(otHours),
       grossPay:            String(grossPay.toFixed(2)),
-      sssDeduction:        String(sss.toFixed(2)),
-      philhealthDeduction: String(philhealth.toFixed(2)),
-      pagibigDeduction:    String(pagibig.toFixed(2)),
+      sssDeduction:        String(sssEE.toFixed(2)),
+      philhealthDeduction: String(phicEE.toFixed(2)),
+      pagibigDeduction:    String(hdmfEE.toFixed(2)),
       taxWithheld:         String(tax.toFixed(2)),
       otherDeductions:     "0",
       netPay:              String(netPay.toFixed(2)),
