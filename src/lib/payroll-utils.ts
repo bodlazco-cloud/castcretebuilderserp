@@ -10,10 +10,14 @@
 export type PayrollPeriodType = "MONTHLY" | "SEMI_MONTHLY";
 
 export type StatutoryDeductions = {
-  phicEE: number;  // PhilHealth EE share — deducted from gross
-  hdmfEE: number;  // Pag-IBIG EE contribution — deducted from gross
-  sssEE:  number;  // SSS EE contribution including MPF if MSC > ₱20k — deducted from gross
-  sssEC:  number;  // SSS Employees' Compensation — EMPLOYER COST ONLY, not deducted from EE pay
+  phicEE:       number;  // PhilHealth EE share — deducted from gross
+  hdmfEE:       number;  // Pag-IBIG EE contribution — deducted from gross
+  sssRegularEE: number;  // SSS regular EE contribution (cap ₱1,000) — deducted from gross
+  sssMpfEE:     number;  // SSS MPF EE contribution (cap ₱750) — deducted from gross
+  sssEE:        number;  // sssRegularEE + sssMpfEE — use this for net pay calculation
+  sssRegularER: number;  // SSS regular employer share (cap ₱2,000) — NOT deducted from EE pay
+  sssMpfER:     number;  // SSS MPF employer share (cap ₱1,500) — NOT deducted from EE pay
+  sssEC:        number;  // SSS Employees' Compensation employer cost (₱10 or ₱30) — NOT deducted from EE pay
 };
 
 /**
@@ -43,24 +47,22 @@ export function computeStatutoryDeductions(
 
   // ── SSS (Circular 2024-006) ───────────────────────────────────────────────
   // Monthly Salary Credit (MSC): gross rounded up to nearest ₱500, bounded ₱5k–₱35k.
-  // EE rate: 5% of MSC up to ₱20k; Mandatory Provident Fund (MPF) = 5% on excess.
-  // Both regular SSS and MPF are EE deductions that go to the member's account.
-  // EC (Employees' Compensation): employer-borne only — never deducted from EE pay.
+  // EE rate: 5% of MSC (regular); 5% of MSC excess above ₱20k (MPF).
+  // ER rate: ~10% of MSC (regular); ~10% of MSC excess above ₱20k (MPF).
+  // Hard caps enforced below regardless of rate × MSC result.
   const msc = Math.min(Math.max(Math.ceil(grossPay / 500) * 500, 5_000), 35_000);
 
-  let sssEE: number;
-  if (msc <= 20_000) {
-    sssEE = msc * 0.05;
-  } else {
-    const regular = 20_000 * 0.05;          // ₱1,000 — capped at ₱20k MSC regular SSS
-    const mpf     = (msc - 20_000) * 0.05;  // MPF on excess up to ₱35k MSC
-    sssEE = regular + mpf;
-  }
+  // Employee contributions (deducted from pay)
+  const sssRegularEE = Math.min(msc * 0.05,              1_000);           // cap ₱1,000
+  const sssMpfEE     = Math.min(msc > 20_000 ? (msc - 20_000) * 0.05 : 0, 750);  // cap ₱750
+  const sssEE        = sssRegularEE + sssMpfEE;
 
-  // EC rates per SSS schedule (employer cost only)
-  const sssEC = msc > 14_750 ? 30 : 10;
+  // Employer contributions (NOT deducted from EE pay — tracked for total labor cost)
+  const sssRegularER = Math.min(msc * 0.10,              2_000);           // cap ₱2,000
+  const sssMpfER     = Math.min(msc > 20_000 ? (msc - 20_000) * 0.10 : 0, 1_500); // cap ₱1,500
+  const sssEC        = msc > 14_750 ? 30 : 10;
 
-  return { phicEE, hdmfEE, sssEE, sssEC };
+  return { phicEE, hdmfEE, sssRegularEE, sssMpfEE, sssEE, sssRegularER, sssMpfER, sssEC };
 }
 
 /** Detect period type from date strings (YYYY-MM-DD). */
