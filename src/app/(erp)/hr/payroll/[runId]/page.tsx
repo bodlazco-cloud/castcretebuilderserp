@@ -5,6 +5,7 @@ import { payrollRuns, payrollLineItems, employees, costCenters } from "@/db/sche
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { getAuthUser } from "@/lib/supabase-server";
+import ApproveButton from "./ApproveButton";
 
 const ACCENT = "#7c3aed";
 
@@ -95,7 +96,8 @@ export default async function PayrollRunDetailPage({
           </div>
 
           {/* Run totals */}
-          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "center" }}>
+            {run.status === "DRAFT" && <ApproveButton runId={run.id} />}
             {[
               { label: "Gross", value: fmtPhp(run.totalGross) },
               { label: "Deductions", value: run.totalDeductions ? `(${fmtPhp(run.totalDeductions)})` : "—", red: true },

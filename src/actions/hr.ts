@@ -350,3 +350,48 @@ export async function processPayrollRun(
   revalidatePath("/hr/payroll");
   return { success: true, payrollRunId: run.id, employeeCount: lineItems.length, totalNet: totalNet.toFixed(2), dtrVerified };
 }
+
+// ─── Approve Payroll Run ──────────────────────────────────────────────────────
+const ApprovePayrollSchema = z.object({
+  runId: z.string().uuid(),
+});
+
+export type ApprovePayrollResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function approvePayrollRun(
+  input: z.infer<typeof ApprovePayrollSchema>,
+): Promise<ApprovePayrollResult> {
+  const parsed = ApprovePayrollSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { runId } = parsed.data;
+
+  const [existing] = await db
+    .select({ id: payrollRuns.id, status: payrollRuns.status })
+    .from(payrollRuns)
+    .where(eq(payrollRuns.id, runId))
+    .limit(1);
+
+  if (!existing) return { success: false, error: "Payroll run not found." };
+  if (existing.status !== "DRAFT") {
+    return { success: false, error: `Run is already ${existing.status}. Only DRAFT runs can be approved.` };
+  }
+
+  await db
+    .update(payrollRuns)
+    .set({
+      status:     "APPROVED",
+      approvedBy: user.id,
+      approvedAt: new Date(),
+    })
+    .where(eq(payrollRuns.id, runId));
+
+  revalidatePath("/hr/payroll");
+  revalidatePath(`/hr/payroll/${runId}`);
+  return { success: true };
+}
