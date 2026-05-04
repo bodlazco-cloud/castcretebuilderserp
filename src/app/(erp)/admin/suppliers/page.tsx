@@ -55,7 +55,7 @@ export default async function SuppliersPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["Name", "Preferred For (Materials)", "Status", "Added"].map((h, i) => (
+                  {["Name", "Preferred For (Materials)", "Status", "Added", ""].map((h, i) => (
                     <th key={i} style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                   ))}
                 </tr>
@@ -76,6 +76,9 @@ export default async function SuppliersPage() {
                       </td>
                       <td style={{ padding: "0.65rem 1rem", color: "#6b7280", fontSize: "0.82rem" }}>
                         {new Date(r.createdAt).toLocaleDateString("en-PH")}
+                      </td>
+                      <td style={{ padding: "0.65rem 1rem", textAlign: "right" }}>
+                        <a href={`/admin/suppliers/${r.id}`} style={{ color: ACCENT, textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>Edit →</a>
                       </td>
                     </tr>
                   );

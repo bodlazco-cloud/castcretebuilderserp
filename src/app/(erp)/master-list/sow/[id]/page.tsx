@@ -71,10 +71,16 @@ export default async function SowDetailPage({ params }: { params: Promise<{ id: 
               }}>{activity.isActive ? "Active" : "Inactive"}</span>
             </div>
           </div>
-          <a href={`/planning/bom/new?activityDefId=${id}`} style={{
-            padding: "0.5rem 1rem", borderRadius: "6px", background: "#1a56db",
-            color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
-          }}>+ Add BOM Entry</a>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <a href={`/master-list/sow/${id}/edit`} style={{
+              padding: "0.5rem 1rem", borderRadius: "6px", background: "#6366f1",
+              color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
+            }}>Edit</a>
+            <a href={`/planning/bom/new?activityDefId=${id}`} style={{
+              padding: "0.5rem 1rem", borderRadius: "6px", background: "#1a56db",
+              color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
+            }}>+ Add BOM Entry</a>
+          </div>
         </div>
 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>

@@ -4,6 +4,7 @@ import { subcontractors, taskAssignments, projects } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
+import { EditSubconForm } from "./EditSubconForm";
 
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" };
 const VALUE: React.CSSProperties = { fontSize: "0.95rem", color: "#111827", fontWeight: 500 };
@@ -75,6 +76,21 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
               }}>{sub.isActive ? "Active" : "Inactive"}</span>
             </div>
           </div>
+        </div>
+
+        <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
+          <h2 style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Actions</h2>
+          <EditSubconForm
+            id={sub.id}
+            initial={{
+              code: sub.code,
+              name: sub.name,
+              tradeTypes: sub.tradeTypes as ("STRUCTURAL" | "ARCHITECTURAL" | "BOTH")[],
+              defaultMaxActiveUnits: sub.defaultMaxActiveUnits,
+              manpowerBenchmark: Number(sub.manpowerBenchmark),
+            }}
+            isActive={sub.isActive}
+          />
         </div>
 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>

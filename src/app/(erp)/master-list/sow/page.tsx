@@ -66,7 +66,10 @@ export default async function SowPage() {
                         }}>{r.isActive ? "Active" : "Inactive"}</span>
                       </td>
                       <td style={{ padding: "0.65rem 1rem", textAlign: "right" }}>
-                        <a href={`/master-list/sow/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                        <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+                          <a href={`/master-list/sow/${r.id}/edit`} style={{ color: "#6b7280", textDecoration: "none", fontSize: "0.8rem" }}>Edit</a>
+                          <a href={`/master-list/sow/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                        </div>
                       </td>
                     </tr>
                   ))}

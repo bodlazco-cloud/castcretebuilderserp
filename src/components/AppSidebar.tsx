@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   HardHat, Building2, Package, Factory,
-  Truck, ShieldCheck, Wallet, BookOpen, Settings,
+  Truck, ShieldCheck, Wallet, Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -50,6 +50,7 @@ const NAV: NavSection[] = [
       { label: "Site Registry",        href: "/construction/sites" },
       { label: "NTP Issuance",         href: "/construction/ntp" },
       { label: "Daily Progress",       href: "/construction/daily-progress" },
+      { label: "Activity Progress",    href: "/construction/activity-progress" },
       { label: "Manpower Logs",        href: "/construction/manpower-logs" },
       { label: "Reports",              isDivider: true },
       { label: "Site Profitability",   href: "/construction/reports/site-profitability-report" },
@@ -132,20 +133,24 @@ const NAV: NavSection[] = [
     ],
   },
   {
-    title: "Master List",
-    icon: BookOpen,
-    items: [
-      { label: "Construction Phases",  href: "/master-list/construction-phases" },
-      { label: "Material List",        href: "/master-list/materials" },
-      { label: "Vendors",              href: "/master-list/vendors" },
-      { label: "Subcontractors",       href: "/master-list/subcontractors" },
-      { label: "Developers",           href: "/master-list/developers" },
-    ],
-  },
-  {
-    title: "Admin Settings",
+    title: "Administration",
     icon: Settings,
     items: [
+      { label: "Overview",              href: "/admin" },
+      { label: "Master Lists",          isGroup: true },
+      { label: "Materials & Pricing",   href: "/admin/materials" },
+      { label: "Suppliers",             href: "/admin/suppliers" },
+      { label: "Subcontractors",        href: "/master-list/subcontractors" },
+      { label: "Developers",            href: "/master-list/developers" },
+      { label: "Projects",              href: "/master-list/projects" },
+      { label: "Scope of Work",         href: "/master-list/sow" },
+      { label: "Construction Phases",   href: "/master-list/construction-phases" },
+      { label: "Activity Definitions",  isGroup: true },
+      { label: "Activity Defs",         href: "/admin/activity-defs" },
+      { label: "Milestone Defs",        href: "/admin/milestone-defs" },
+      { label: "BOM Standards",         href: "/admin/bom-standards" },
+      { label: "Developer Rate Cards",  href: "/admin/rate-cards" },
+      { label: "System",                isDivider: true },
       { label: "User Permissions",      href: "/admin/users" },
       { label: "System Logs",           href: "/admin/system-logs" },
       { label: "Global Configurations", href: "/admin/global-config" },

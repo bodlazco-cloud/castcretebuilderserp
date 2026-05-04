@@ -1,6 +1,6 @@
 import {
   pgTable, uuid, varchar, numeric, integer, boolean,
-  timestamp, date, text,
+  timestamp, date, text, unique,
 } from "drizzle-orm/pg-core";
 import { users } from "./core";
 import { projects } from "./projects";   // still needed for developerRateCards
@@ -82,6 +82,18 @@ export const milestoneDefinitions = pgTable("milestone_definitions", {
   isActive:        boolean("is_active").notNull().default(true),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const projectActivityProgress = pgTable("project_activity_progress", {
+  id:            uuid("id").primaryKey().defaultRandom(),
+  projectId:     uuid("project_id").notNull().references(() => projects.id),
+  activityDefId: uuid("activity_def_id").notNull().references(() => activityDefinitions.id),
+  completionPct: numeric("completion_pct", { precision: 5, scale: 2 }).notNull().default("0"),
+  notes:         text("notes"),
+  updatedBy:     uuid("updated_by").references(() => users.id),
+  updatedAt:     timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  uniqProjectActivity: unique("uq_project_activity_progress").on(t.projectId, t.activityDefId),
+}));
 
 export const developerRateCards = pgTable("developer_rate_cards", {
   id:              uuid("id").primaryKey().defaultRandom(),

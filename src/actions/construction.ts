@@ -5,7 +5,7 @@ import {
   projects, taskAssignments, subcontractors,
   subcontractorCapacityMatrix, workAccomplishedReports,
   milestoneDocuments, unitMilestones, dailyProgressEntries,
-  unitActivities,
+  unitActivities, projectActivityProgress,
 } from "@/db/schema";
 import { eq, and, count, sql, ne } from "drizzle-orm";
 import { z } from "zod";
@@ -427,4 +427,41 @@ export async function updateMilestoneProgress(
 
   revalidatePath("/construction");
   return { success: true };
+}
+
+// ─── Activity Progress (per-project % completion) ──────────────────────────
+
+export async function bulkUpdateActivityProgress(input: {
+  projectId: string;
+  updates: { activityDefId: string; completionPct: number; notes?: string }[];
+}): Promise<{ success: boolean; error?: string; saved: number }> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated.", saved: 0 };
+  if (!input.updates.length) return { success: true, saved: 0 };
+
+  for (const u of input.updates) {
+    await db
+      .insert(projectActivityProgress)
+      .values({
+        projectId:     input.projectId,
+        activityDefId: u.activityDefId,
+        completionPct: String(Math.min(100, Math.max(0, u.completionPct))),
+        notes:         u.notes || null,
+        updatedBy:     user.id,
+        updatedAt:     new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [projectActivityProgress.projectId, projectActivityProgress.activityDefId],
+        set: {
+          completionPct: String(Math.min(100, Math.max(0, u.completionPct))),
+          notes:         u.notes || null,
+          updatedBy:     user.id,
+          updatedAt:     new Date(),
+        },
+      });
+  }
+
+  revalidatePath("/construction/activity-progress");
+  revalidatePath("/master-list/sow");
+  return { success: true, saved: input.updates.length };
 }

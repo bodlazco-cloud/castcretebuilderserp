@@ -5,6 +5,7 @@ import { eq, desc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { MaterialActions } from "./MaterialActions";
+import { EditMaterialForm } from "./EditMaterialForm";
 
 const ACCENT = "#dc2626";
 
@@ -14,20 +15,27 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
 
   const [mat] = await db
     .select({
-      id:           materials.id,
-      code:         materials.code,
-      name:         materials.name,
-      unit:         materials.unit,
-      category:     materials.category,
-      adminPrice:   materials.adminPrice,
-      priceVersion: materials.priceVersion,
-      isActive:     materials.isActive,
-      createdAt:    materials.createdAt,
-      supplierName: suppliers.name,
+      id:                  materials.id,
+      code:                materials.code,
+      name:                materials.name,
+      unit:                materials.unit,
+      category:            materials.category,
+      adminPrice:          materials.adminPrice,
+      priceVersion:        materials.priceVersion,
+      isActive:            materials.isActive,
+      createdAt:           materials.createdAt,
+      supplierName:        suppliers.name,
+      preferredSupplierId: materials.preferredSupplierId,
     })
     .from(materials)
     .leftJoin(suppliers, eq(materials.preferredSupplierId, suppliers.id))
     .where(eq(materials.id, id));
+
+  const supplierList = await db
+    .select({ id: suppliers.id, name: suppliers.name })
+    .from(suppliers)
+    .where(eq(suppliers.isActive, true))
+    .orderBy(suppliers.name);
 
   if (!mat) notFound();
 
@@ -79,9 +87,19 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
           </div>
         </div>
 
+        {/* Edit details */}
+        <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
+          <h2 style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Edit Details</h2>
+          <EditMaterialForm
+            id={mat.id}
+            initial={{ code: mat.code, name: mat.name, unit: mat.unit, category: mat.category, preferredSupplierId: mat.preferredSupplierId ?? undefined }}
+            suppliers={supplierList.map((s) => ({ id: String(s.id), name: String(s.name) }))}
+          />
+        </div>
+
         {/* Actions */}
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
-          <h2 style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Actions</h2>
+          <h2 style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Price & Status</h2>
           <MaterialActions id={mat.id} isActive={mat.isActive} />
         </div>
 
