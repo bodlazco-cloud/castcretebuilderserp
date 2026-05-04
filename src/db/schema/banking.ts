@@ -101,3 +101,50 @@ export const loanPayments = pgTable("loan_payments", {
   recordedBy:       uuid("recorded_by").notNull().references(() => users.id),
   createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── Bank Reconciliation ──────────────────────────────────────────────────────
+
+export const bankStatementImports = pgTable("bank_statement_imports", {
+  id:             uuid("id").primaryKey().defaultRandom(),
+  bankAccountId:  uuid("bank_account_id").notNull().references(() => bankAccounts.id),
+  bankFormat:     varchar("bank_format", { length: 20 }).notNull(),   // BDO | BPI | METROBANK | GENERIC
+  fileName:       varchar("file_name", { length: 255 }),
+  periodStart:    date("period_start").notNull(),
+  periodEnd:      date("period_end").notNull(),
+  openingBalance: numeric("opening_balance", { precision: 15, scale: 2 }).notNull(),
+  closingBalance: numeric("closing_balance", { precision: 15, scale: 2 }).notNull(),
+  lineCount:      integer("line_count").notNull(),
+  status:         varchar("status", { length: 20 }).notNull().default("PENDING"),  // PENDING | FINALIZED
+  importedBy:     uuid("imported_by").notNull().references(() => users.id),
+  createdAt:      timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const bankStatementLines = pgTable("bank_statement_lines", {
+  id:              uuid("id").primaryKey().defaultRandom(),
+  importId:        uuid("import_id").notNull().references(() => bankStatementImports.id),
+  bankAccountId:   uuid("bank_account_id").notNull().references(() => bankAccounts.id),
+  transactionDate: date("transaction_date").notNull(),
+  valueDate:       date("value_date"),
+  description:     text("description").notNull(),
+  referenceNumber: varchar("reference_number", { length: 100 }),
+  debitAmount:     numeric("debit_amount",  { precision: 15, scale: 2 }).notNull().default("0"),
+  creditAmount:    numeric("credit_amount", { precision: 15, scale: 2 }).notNull().default("0"),
+  runningBalance:  numeric("running_balance", { precision: 15, scale: 2 }),
+  isMatched:       boolean("is_matched").notNull().default(false),
+  createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const bankReconciliationItems = pgTable("bank_reconciliation_items", {
+  id:                uuid("id").primaryKey().defaultRandom(),
+  importId:          uuid("import_id").notNull().references(() => bankStatementImports.id),
+  statementLineId:   uuid("statement_line_id").references(() => bankStatementLines.id),  // null = book-only
+  erpTransactionId:  uuid("erp_transaction_id").references(() => bankTransactions.id),   // null = statement-only
+  matchType:         varchar("match_type", { length: 20 }).notNull(),  // MATCHED | STATEMENT_ONLY | BOOK_ONLY
+  statementAmount:   numeric("statement_amount", { precision: 15, scale: 2 }),
+  erpAmount:         numeric("erp_amount",        { precision: 15, scale: 2 }),
+  variance:          numeric("variance",          { precision: 15, scale: 2 }),
+  matchedBy:         uuid("matched_by").references(() => users.id),
+  matchedAt:         timestamp("matched_at", { withTimezone: true }),
+  actionNote:        text("action_note"),
+  createdAt:         timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
