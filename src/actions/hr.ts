@@ -396,6 +396,70 @@ export async function approvePayrollRun(
   return { success: true };
 }
 
+// ─── Generate Bank CMS Disbursement Export ────────────────────────────────────
+// Produces a CSV suitable for upload to Philippine bank CMS portals (BDO, BPI,
+// Metrobank, et al.). Only APPROVED runs may be exported. Employees without
+// bank account details are skipped and counted in the result.
+const BankExportSchema = z.object({ runId: z.string().uuid() });
+
+export type BankExportResult =
+  | { success: true;  csv: string; filename: string; totalRows: number; skipped: number }
+  | { success: false; error: string };
+
+export async function generatePayrollBankExport(
+  input: z.infer<typeof BankExportSchema>,
+): Promise<BankExportResult> {
+  const parsed = BankExportSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { runId } = parsed.data;
+
+  const [run] = await db
+    .select({ status: payrollRuns.status, periodEnd: payrollRuns.periodEnd })
+    .from(payrollRuns)
+    .where(eq(payrollRuns.id, runId))
+    .limit(1);
+
+  if (!run) return { success: false, error: "Payroll run not found." };
+  if (run.status !== "APPROVED") {
+    return { success: false, error: "Only APPROVED runs can be exported for bank disbursement." };
+  }
+
+  const lineItems = await db
+    .select({
+      netPay:            payrollLineItems.netPay,
+      bankName:          employees.bankName,
+      bankAccountNumber: employees.bankAccountNumber,
+      bankAccountName:   employees.bankAccountName,
+    })
+    .from(payrollLineItems)
+    .innerJoin(employees, eq(payrollLineItems.employeeId, employees.id))
+    .where(eq(payrollLineItems.payrollRunId, runId));
+
+  const reference = `PAYROLL_${run.periodEnd}`;
+  const csvRows: string[] = ["ACCOUNT_NUMBER,ACCOUNT_NAME,BANK,AMOUNT,REFERENCE"];
+  let skipped = 0;
+
+  for (const item of lineItems) {
+    if (!item.bankAccountNumber || !item.bankAccountName) { skipped++; continue; }
+    const amount = Number(item.netPay).toFixed(2);
+    const bank   = (item.bankName ?? "").replace(/,/g, " ");
+    const name   = item.bankAccountName.replace(/,/g, " ");
+    csvRows.push(`${item.bankAccountNumber},${name},${bank},${amount},${reference}`);
+  }
+
+  return {
+    success:   true,
+    csv:       csvRows.join("\r\n"),
+    filename:  `bank_disbursement_${run.periodEnd}_${Date.now()}.csv`,
+    totalRows: csvRows.length - 1,
+    skipped,
+  };
+}
+
 // ─── Reject / Return Payroll Run ──────────────────────────────────────────────
 const RejectPayrollSchema = z.object({
   runId: z.string().uuid(),
