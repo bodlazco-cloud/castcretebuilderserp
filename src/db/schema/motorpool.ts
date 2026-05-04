@@ -17,6 +17,7 @@ export const equipment = pgTable("equipment", {
   year:                         integer("year"),
   purchaseValue:                numeric("purchase_value", { precision: 15, scale: 2 }),
   dailyRentalRate:              numeric("daily_rental_rate", { precision: 15, scale: 2 }).notNull(),
+  internalHourlyRate:           numeric("internal_hourly_rate", { precision: 12, scale: 2 }).notNull().default("0"),
   fuelStandardLitersPerHour:    numeric("fuel_standard_liters_per_hour", { precision: 8, scale: 4 }).notNull(),
   totalEngineHours:             numeric("total_engine_hours", { precision: 10, scale: 2 }).notNull().default("0"),
   status:                       varchar("status", { length: 20 }).notNull().default("AVAILABLE"),
@@ -106,4 +107,21 @@ export const fixOrFlipAssessments = pgTable("fix_or_flip_assessments", {
   isTriggered:                        boolean("is_triggered").notNull().default(false),
   assessedBy:                         uuid("assessed_by").references(() => users.id),
   createdAt:                          timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const fleetInternalBilling = pgTable("fleet_internal_billing", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  equipmentId:  uuid("equipment_id").notNull().references(() => equipment.id),
+  projectId:    uuid("project_id").notNull().references(() => projects.id),
+  billingDate:  date("billing_date").notNull(),
+  hoursUsed:    numeric("hours_used", { precision: 5, scale: 2 }).notNull(),
+  // Snapshot of equipment.internalHourlyRate at billing time — immutable after insert.
+  // Server action fetches this from equipment; callers never supply it directly.
+  rateSnapshot: numeric("rate_snapshot", { precision: 12, scale: 2 }).notNull(),
+  totalCharge:  numeric("total_charge", { precision: 12, scale: 2 }).notNull(),
+  status:       varchar("status", { length: 20 }).notNull().default("PENDING"),
+  certifiedBy:  uuid("certified_by").references(() => users.id),
+  certifiedAt:  timestamp("certified_at", { withTimezone: true }),
+  createdBy:    uuid("created_by").notNull().references(() => users.id),
+  createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
