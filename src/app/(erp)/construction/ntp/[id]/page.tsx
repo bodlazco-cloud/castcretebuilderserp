@@ -7,14 +7,17 @@ import {
 import { eq, desc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
+import { NtpApprovalActions } from "./NtpApprovalActions";
 
 const ACCENT = "#057a55";
 
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  DRAFT:     { bg: "#f3f4f6", color: "#6b7280" },
-  ACTIVE:    { bg: "#dcfce7", color: "#166534" },
-  COMPLETED: { bg: "#eff6ff", color: "#1e40af" },
-  CANCELLED: { bg: "#fef2f2", color: "#b91c1c" },
+  DRAFT:          { bg: "#f3f4f6", color: "#6b7280" },
+  PENDING_REVIEW: { bg: "#fefce8", color: "#713f12" },
+  BOD_APPROVED:   { bg: "#ede9fe", color: "#6d28d9" },
+  ACTIVE:         { bg: "#dcfce7", color: "#166534" },
+  COMPLETED:      { bg: "#eff6ff", color: "#1e40af" },
+  CANCELLED:      { bg: "#fef2f2", color: "#b91c1c" },
 };
 
 const FIELD: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "0.2rem" };
@@ -120,6 +123,9 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
             }}>Submit WAR</a>
           </div>
         </div>
+
+        {/* Planning Review Gate */}
+        {ntp.status === "PENDING_REVIEW" && <NtpApprovalActions ntpId={ntp.id} />}
 
         {/* Details */}
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>

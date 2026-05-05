@@ -5,9 +5,11 @@ import {
   projects, taskAssignments, subcontractors,
   subcontractorCapacityMatrix, workAccomplishedReports,
   milestoneDocuments, unitMilestones, dailyProgressEntries,
-  unitActivities, projectActivityProgress,
+  unitActivities, projectActivityProgress, projectUnits,
+  bomStandards, activityDefinitions,
 } from "@/db/schema";
 import { eq, and, count, sql, ne } from "drizzle-orm";
+import { autoGeneratePurchaseRequisition } from "@/actions/procurement";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { notifyWarSubmitted } from "@/lib/notifications";
@@ -114,7 +116,7 @@ export async function issueTaskAssignment(
     };
   }
 
-  // ── All gates passed: create the Task Assignment ──────────────────────────
+  // ── All gates passed: create the Task Assignment (PENDING_REVIEW for Planning) ──
   const [newAssignment] = await db
     .insert(taskAssignments)
     .values({
@@ -125,7 +127,7 @@ export async function issueTaskAssignment(
       workType: workType as any,
       startDate,
       endDate,
-      status: "ACTIVE",
+      status: "PENDING_REVIEW",
       capacityCheckPassed: true,
       capacityCheckedAt: new Date(),
       capacityCheckedBy: issuedBy,
@@ -134,6 +136,7 @@ export async function issueTaskAssignment(
     .returning({ id: taskAssignments.id });
 
   revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/construction/ntp");
   return { success: true, taskAssignmentId: newAssignment.id };
 }
 
@@ -464,4 +467,113 @@ export async function bulkUpdateActivityProgress(input: {
   revalidatePath("/construction/activity-progress");
   revalidatePath("/master-list/sow");
   return { success: true, saved: input.updates.length };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLANNING REVIEW GATE
+// Operations submits NTP → PENDING_REVIEW.
+// Planning reviews resource needs, then approves → ACTIVE + auto-creates PRs.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type ApproveNtpResult =
+  | { success: true; prsCreated: number }
+  | { success: false; error: string };
+
+export async function approveNtp(ntpId: string): Promise<ApproveNtpResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  // ── Load the NTP ──────────────────────────────────────────────────────────
+  const [ntp] = await db
+    .select({
+      id:        taskAssignments.id,
+      status:    taskAssignments.status,
+      projectId: taskAssignments.projectId,
+      unitId:    taskAssignments.unitId,
+      category:  taskAssignments.category,
+    })
+    .from(taskAssignments)
+    .where(eq(taskAssignments.id, ntpId))
+    .limit(1);
+
+  if (!ntp) return { success: false, error: "NTP not found." };
+  if (ntp.status !== "PENDING_REVIEW") {
+    return { success: false, error: `NTP is in status '${ntp.status}'. Only PENDING_REVIEW NTPs can be approved.` };
+  }
+
+  // ── Activate the NTP ──────────────────────────────────────────────────────
+  await db
+    .update(taskAssignments)
+    .set({ status: "ACTIVE" })
+    .where(eq(taskAssignments.id, ntpId));
+
+  // ── Load unit model to match BOM standards ────────────────────────────────
+  const [unit] = await db
+    .select({ unitModel: projectUnits.unitModel })
+    .from(projectUnits)
+    .where(eq(projectUnits.id, ntp.unitId))
+    .limit(1);
+
+  const unitModel = unit?.unitModel ?? "";
+
+  // ── Find all active activity defs matching this NTP's category + unit model ─
+  const activityDefIds = await db
+    .selectDistinct({ activityDefId: bomStandards.activityDefId })
+    .from(bomStandards)
+    .innerJoin(activityDefinitions, eq(activityDefinitions.id, bomStandards.activityDefId))
+    .where(
+      and(
+        eq(bomStandards.unitModel, unitModel),
+        eq(bomStandards.isActive, true),
+        eq(activityDefinitions.category, ntp.category as any),
+        eq(activityDefinitions.isActive, true),
+      ),
+    );
+
+  // ── Auto-generate one PR per activity definition ──────────────────────────
+  let prsCreated = 0;
+  for (const { activityDefId } of activityDefIds) {
+    const result = await autoGeneratePurchaseRequisition({
+      projectId:        ntp.projectId,
+      unitId:           ntp.unitId,
+      activityDefId,
+      taskAssignmentId: ntp.id,
+      requestedBy:      user.id,
+    });
+    if (result.success) prsCreated++;
+  }
+
+  revalidatePath("/construction/ntp");
+  revalidatePath(`/construction/ntp/${ntpId}`);
+  revalidatePath("/planning/resource-forecasting");
+  return { success: true, prsCreated };
+}
+
+export type RejectNtpResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function rejectNtp(ntpId: string, reason?: string): Promise<RejectNtpResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const [ntp] = await db
+    .select({ status: taskAssignments.status })
+    .from(taskAssignments)
+    .where(eq(taskAssignments.id, ntpId))
+    .limit(1);
+
+  if (!ntp) return { success: false, error: "NTP not found." };
+  if (ntp.status !== "PENDING_REVIEW") {
+    return { success: false, error: `NTP is in status '${ntp.status}'. Only PENDING_REVIEW NTPs can be rejected.` };
+  }
+
+  await db
+    .update(taskAssignments)
+    .set({ status: "DRAFT" })
+    .where(eq(taskAssignments.id, ntpId));
+
+  revalidatePath("/construction/ntp");
+  revalidatePath(`/construction/ntp/${ntpId}`);
+  return { success: true };
 }

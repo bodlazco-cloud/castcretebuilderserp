@@ -63,9 +63,9 @@ export const bankTransactionTypeEnum = pgEnum("bank_transaction_type", ["DEBIT",
 
 export const punchListStatusEnum = pgEnum("punch_list_status", ["OPEN", "IN_PROGRESS", "CLOSED"]);
 
-// NTP lifecycle: DRAFT → BOD_APPROVED → ACTIVE (triggers resource forecast) → COMPLETED
+// NTP lifecycle: DRAFT → PENDING_REVIEW (Planning) → ACTIVE (triggers resource forecast + auto-PR) → COMPLETED
 export const ntpStatusEnum = pgEnum("ntp_status", [
-  "DRAFT", "BOD_APPROVED", "ACTIVE", "COMPLETED",
+  "DRAFT", "PENDING_REVIEW", "BOD_APPROVED", "ACTIVE", "COMPLETED",
 ]);
 
 // Resource forecast lifecycle driven by the Chain of Necessity

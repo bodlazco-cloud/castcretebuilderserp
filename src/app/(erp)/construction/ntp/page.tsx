@@ -7,10 +7,12 @@ import { getAuthUser } from "@/lib/supabase-server";
 const ACCENT = "#057a55";
 
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  DRAFT:     { bg: "#f3f4f6", color: "#6b7280" },
-  ACTIVE:    { bg: "#dcfce7", color: "#166534" },
-  COMPLETED: { bg: "#eff6ff", color: "#1e40af" },
-  CANCELLED: { bg: "#fef2f2", color: "#b91c1c" },
+  DRAFT:          { bg: "#f3f4f6", color: "#6b7280" },
+  PENDING_REVIEW: { bg: "#fefce8", color: "#713f12" },
+  BOD_APPROVED:   { bg: "#ede9fe", color: "#6d28d9" },
+  ACTIVE:         { bg: "#dcfce7", color: "#166534" },
+  COMPLETED:      { bg: "#eff6ff", color: "#1e40af" },
+  CANCELLED:      { bg: "#fef2f2", color: "#b91c1c" },
 };
 
 export default async function NtpRegisterPage() {
@@ -57,7 +59,7 @@ export default async function NtpRegisterPage() {
         {/* Status filter summary */}
         {rows.length > 0 && (
           <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
-            {["ACTIVE", "DRAFT", "COMPLETED", "CANCELLED"].map((s) => {
+            {["PENDING_REVIEW", "ACTIVE", "DRAFT", "COMPLETED", "CANCELLED"].map((s) => {
               const count = rows.filter((r) => r.status === s).length;
               if (count === 0) return null;
               const st = STATUS_STYLE[s] ?? { bg: "#f3f4f6", color: "#6b7280" };
