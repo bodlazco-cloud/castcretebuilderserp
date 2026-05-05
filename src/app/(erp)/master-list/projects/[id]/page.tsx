@@ -4,7 +4,7 @@ import { projects, developers, blocks, projectUnits } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
-import { ApproveProjectButton, AddBlockForm, AddUnitForm } from "./ProjectActions";
+import { ApproveProjectButton, AddBlockForm, EditBlockForm, DeleteBlockButton, AddUnitForm, UnitRow } from "./ProjectActions";
 
 const FIELD: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "0.2rem" };
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" };
@@ -58,7 +58,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   const unitRows = blockRows.length > 0
     ? await db
-        .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, status: projectUnits.status })
+        .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, status: projectUnits.status, contractPrice: projectUnits.contractPrice })
         .from(projectUnits)
         .where(eq(projectUnits.projectId, id))
         .orderBy(projectUnits.unitCode)
@@ -66,12 +66,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   const sc = STATUS_STYLE[project.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
   const isApproved = project.status === "ACTIVE" && !!project.bodApprovedAt;
-
-  const UNIT_STATUS: Record<string, { bg: string; color: string }> = {
-    PENDING:     { bg: "#f3f4f6", color: "#6b7280" },
-    IN_PROGRESS: { bg: "#eff6ff", color: "#1e40af" },
-    COMPLETED:   { bg: "#dcfce7", color: "#166534" },
-  };
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -164,35 +158,33 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 const blockUnits = unitRows.filter((u) => u.blockId === block.id);
                 return (
                   <div key={block.id} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                    <div style={{ padding: "0.75rem 1rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ padding: "0.75rem 1rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                       <div>
                         <span style={{ fontWeight: 700, color: "#111827", fontSize: "0.9rem" }}>{block.blockName}</span>
                         <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#6b7280" }}>{blockUnits.length}/{block.totalLots} lots</span>
+                      </div>
+                      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
+                        <EditBlockForm blockId={block.id} initialName={block.blockName} initialLots={block.totalLots} />
+                        <DeleteBlockButton blockId={block.id} />
                       </div>
                     </div>
                     {blockUnits.length > 0 && (
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                         <thead>
                           <tr>
-                            {["Lot #", "Unit Code", "Model", "Status"].map((h, i) => (
+                            {["Lot #", "Unit Code", "Model", "Status", ""].map((h, i) => (
                               <th key={i} style={{ padding: "0.5rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #f3f4f6", fontSize: "0.78rem" }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {blockUnits.map((u) => {
-                            const us = UNIT_STATUS[u.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
-                            return (
-                              <tr key={u.id} style={{ borderBottom: "1px solid #f9fafb" }}>
-                                <td style={{ padding: "0.5rem 0.9rem", color: "#6b7280" }}>{u.lotNumber}</td>
-                                <td style={{ padding: "0.5rem 0.9rem", fontFamily: "monospace", fontSize: "0.82rem", fontWeight: 600, color: "#374151" }}>{u.unitCode}</td>
-                                <td style={{ padding: "0.5rem 0.9rem", color: "#374151" }}>{u.unitModel}</td>
-                                <td style={{ padding: "0.5rem 0.9rem" }}>
-                                  <span style={{ display: "inline-block", padding: "0.15rem 0.5rem", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: us.bg, color: us.color }}>{u.status}</span>
-                                </td>
-                              </tr>
-                            );
-                          })}
+                          {blockUnits.map((u) => (
+                            <UnitRow
+                              key={u.id}
+                              unit={{ id: u.id, blockId: u.blockId, lotNumber: u.lotNumber, unitCode: u.unitCode, unitModel: u.unitModel, status: u.status, contractPrice: u.contractPrice }}
+                              blockOptions={blockRows.map((b) => ({ id: b.id, blockName: b.blockName }))}
+                            />
+                          ))}
                         </tbody>
                       </table>
                     )}

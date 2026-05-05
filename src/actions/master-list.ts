@@ -5,7 +5,7 @@ import {
   developers, projects, materials, suppliers,
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
@@ -446,4 +446,72 @@ export async function createProjectUnit(input: z.infer<typeof ProjectUnitSchema>
 
   revalidatePath(`/master-list/projects/${d.projectId}`);
   return { success: true, id: row.id };
+}
+
+// ─── Block Update / Delete ─────────────────────────────────────────────────
+
+export async function updateBlock(
+  id: string,
+  input: { blockName: string; totalLots: number },
+): Promise<MutationResult> {
+  if (!input.blockName?.trim()) return { success: false, error: "Block name is required." };
+  if (!Number.isInteger(input.totalLots) || input.totalLots < 1) return { success: false, error: "Total lots must be a positive integer." };
+
+  const [block] = await db.select({ projectId: blocks.projectId }).from(blocks).where(eq(blocks.id, id));
+  if (!block) return { success: false, error: "Block not found." };
+
+  await db.update(blocks).set({ blockName: input.blockName.trim(), totalLots: input.totalLots }).where(eq(blocks.id, id));
+  revalidatePath(`/master-list/projects/${block.projectId}`);
+  return { success: true, id };
+}
+
+export async function deleteBlock(id: string): Promise<{ success: boolean; error?: string }> {
+  const [block] = await db.select({ projectId: blocks.projectId }).from(blocks).where(eq(blocks.id, id));
+  if (!block) return { success: false, error: "Block not found." };
+
+  const [{ n }] = await db.select({ n: count() }).from(projectUnits).where(eq(projectUnits.blockId, id));
+  if (Number(n) > 0) return { success: false, error: `Cannot delete: ${n} unit(s) exist in this block. Remove units first.` };
+
+  await db.delete(blocks).where(eq(blocks.id, id));
+  revalidatePath(`/master-list/projects/${block.projectId}`);
+  return { success: true };
+}
+
+// ─── Project Unit Update / Delete ──────────────────────────────────────────
+
+export async function updateProjectUnit(
+  id: string,
+  input: { blockId: string; lotNumber: string; unitCode: string; unitModel: string; contractPrice?: string },
+): Promise<MutationResult> {
+  if (!input.lotNumber?.trim() || !input.unitCode?.trim() || !input.unitModel?.trim()) {
+    return { success: false, error: "Lot number, unit code, and unit model are required." };
+  }
+
+  const [unit] = await db.select({ projectId: projectUnits.projectId }).from(projectUnits).where(eq(projectUnits.id, id));
+  if (!unit) return { success: false, error: "Unit not found." };
+
+  await db.update(projectUnits).set({
+    blockId:       input.blockId,
+    lotNumber:     input.lotNumber.trim(),
+    unitCode:      input.unitCode.trim(),
+    unitModel:     input.unitModel.trim(),
+    contractPrice: input.contractPrice?.trim() ? input.contractPrice.trim() : null,
+  }).where(eq(projectUnits.id, id));
+
+  revalidatePath(`/master-list/projects/${unit.projectId}`);
+  return { success: true, id };
+}
+
+export async function deleteProjectUnit(id: string): Promise<{ success: boolean; error?: string }> {
+  const [unit] = await db
+    .select({ projectId: projectUnits.projectId, status: projectUnits.status })
+    .from(projectUnits)
+    .where(eq(projectUnits.id, id));
+
+  if (!unit) return { success: false, error: "Unit not found." };
+  if (unit.status !== "PENDING") return { success: false, error: `Cannot delete: unit status is "${unit.status}". Only PENDING units can be deleted.` };
+
+  await db.delete(projectUnits).where(eq(projectUnits.id, id));
+  revalidatePath(`/master-list/projects/${unit.projectId}`);
+  return { success: true };
 }
