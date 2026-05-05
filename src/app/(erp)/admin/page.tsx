@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { users, materials, suppliers, activityDefinitions, milestoneDefinitions, bomStandards, developerRateCards } from "@/db/schema";
+import { users, materials, suppliers, activityDefinitions, milestoneDefinitions, bomStandards, developerRateCards, subconRateCards } from "@/db/schema";
 import { count, eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 
@@ -14,7 +14,7 @@ export default async function AdminPage() {
     matCount, activeMats,
     supplierCount, activeSuppliers,
     actCount, activeDefs,
-    milestoneCount, bomCount, rateCount,
+    milestoneCount, bomCount, rateCount, subconRateCount,
   ] = await Promise.all([
     db.select({ n: count() }).from(users),
     db.select({ n: count() }).from(users).where(eq(users.isActive, true)),
@@ -27,6 +27,7 @@ export default async function AdminPage() {
     db.select({ n: count() }).from(milestoneDefinitions),
     db.select({ n: count() }).from(bomStandards).where(eq(bomStandards.isActive, true)),
     db.select({ n: count() }).from(developerRateCards).where(eq(developerRateCards.isActive, true)),
+    db.select({ n: count() }).from(subconRateCards).where(eq(subconRateCards.isActive, true)),
   ]);
 
   const items = [
@@ -78,6 +79,13 @@ export default async function AdminPage() {
       desc:  "Gross rates per unit with retention, DP recoupment, and tax",
       stat:  `${rateCount[0]?.n ?? 0} active rates`,
       color: "#0f766e",
+    },
+    {
+      label: "Subcontractor Rate Cards",
+      href:  "/admin/subcon-rate-cards",
+      desc:  "Per-unit rates for subcontractors by project and activity",
+      stat:  `${subconRateCount[0]?.n ?? 0} active rates`,
+      color: "#6366f1",
     },
   ];
 

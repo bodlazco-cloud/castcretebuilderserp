@@ -40,14 +40,25 @@ export default async function RateCardsPage() {
           <a href="/admin" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>← Administration</a>
         </div>
 
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Developer Rate Cards</h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-            Gross rate per unit per activity, with retention, DP recoupment, and tax rates.
-          </p>
-          <p style={{ margin: "0.25rem 0 0", color: "#6b7280", fontSize: "0.9rem" }}>
-            {active} active · {rows.length} total
-          </p>
+        <div style={{ marginBottom: "1.5rem", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Developer Rate Cards</h1>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
+              Gross rate per unit per activity, with retention, DP recoupment, and tax rates.
+            </p>
+            <p style={{ margin: "0.25rem 0 0", color: "#6b7280", fontSize: "0.9rem" }}>
+              {active} active · {rows.length} total
+            </p>
+          </div>
+          <a href="/admin/rate-cards/new" style={{
+            display: "inline-flex", alignItems: "center", gap: "0.35rem",
+            padding: "0.6rem 1.2rem", borderRadius: "6px",
+            background: ACCENT, color: "#fff",
+            fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
+            whiteSpace: "nowrap",
+          }}>
+            + New Rate Card
+          </a>
         </div>
 
         {rows.length === 0 ? (
@@ -60,7 +71,7 @@ export default async function RateCardsPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "900px" }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["Project", "Activity", "Gross Rate/Unit", "Retention", "DP Recoup", "Tax", "Net Rate", "Ver", "Status"].map((h, i) => (
+                    {["Project", "Activity", "Gross Rate/Unit", "Retention", "DP Recoup", "Tax", "Net Rate", "Ver", "Status", ""].map((h, i) => (
                       <th key={i} style={{ padding: "0.75rem 1rem", textAlign: [2, 3, 4, 5, 6].includes(i) ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                     ))}
                   </tr>
@@ -91,6 +102,11 @@ export default async function RateCardsPage() {
                           <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "0.15rem 0.4rem", borderRadius: "4px", background: r.isActive ? "#f0fdf4" : "#f3f4f6", color: r.isActive ? "#057a55" : "#9ca3af" }}>
                             {r.isActive ? "ACTIVE" : "INACTIVE"}
                           </span>
+                        </td>
+                        <td style={{ padding: "0.65rem 1rem" }}>
+                          <a href={`/admin/rate-cards/${r.id}`} style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap" }}>
+                            Edit →
+                          </a>
                         </td>
                       </tr>
                     );

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateSupplier, toggleSupplierActive } from "@/actions/master-list";
+import { updateSupplier, toggleSupplierActive, deleteSupplier } from "@/actions/master-list";
 
 const inputStyle: React.CSSProperties = {
   display: "block", width: "100%", padding: "0.5rem 0.75rem",
@@ -22,8 +22,11 @@ export function EditSupplierForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isToggling, startToggle] = useTransition();
+  const [isDeleting, startDelete] = useTransition();
   const [name, setName] = useState(initialName);
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [saved, setSaved] = useState(false);
 
   function handleSubmit(e: React.FormEvent) {
@@ -83,6 +86,34 @@ export function EditSupplierForm({
         }}>
           {isToggling ? "…" : isActive ? "Deactivate Supplier" : "Reactivate Supplier"}
         </button>
+      </div>
+
+      <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "1rem" }}>
+        <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "#374151", marginBottom: "0.5rem" }}>Danger Zone</div>
+        {deleteError && <div style={{ marginBottom: "0.5rem", padding: "0.5rem 0.75rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.8rem" }}>{deleteError}</div>}
+        {confirmDelete ? (
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <span style={{ fontSize: "0.8rem", color: "#b91c1c", fontWeight: 600 }}>Permanently delete this supplier?</span>
+            <button onClick={() => startDelete(async () => {
+              const result = await deleteSupplier(id);
+              if (result.success) router.push("/admin/suppliers");
+              else { setDeleteError(result.error ?? "Delete failed."); setConfirmDelete(false); }
+            })} disabled={isDeleting} style={{
+              padding: "0.4rem 0.85rem", borderRadius: "6px", background: "#dc2626", color: "#fff",
+              border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer",
+            }}>{isDeleting ? "Deleting…" : "Yes, Delete"}</button>
+            <button onClick={() => setConfirmDelete(false)} style={{
+              padding: "0.4rem 0.75rem", borderRadius: "6px", background: "#f3f4f6",
+              border: "1px solid #d1d5db", color: "#374151", fontSize: "0.8rem", cursor: "pointer",
+            }}>Cancel</button>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmDelete(true)} style={{
+            padding: "0.5rem 1rem", borderRadius: "6px", background: "#fef2f2",
+            color: "#b91c1c", border: "1px solid #fecaca", fontSize: "0.8rem",
+            fontWeight: 600, cursor: "pointer",
+          }}>Delete Supplier</button>
+        )}
       </div>
     </div>
   );

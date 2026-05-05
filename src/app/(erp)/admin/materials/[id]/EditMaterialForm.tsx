@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateMaterial } from "@/actions/master-list";
+import { updateMaterial, deleteMaterial } from "@/actions/master-list";
 
 const inputStyle: React.CSSProperties = {
   display: "block", width: "100%", padding: "0.5rem 0.75rem",
@@ -23,7 +23,10 @@ export function EditMaterialForm({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isDeleting, startDelete] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [open, setOpen] = useState(false);
 
   const [code, setCode]   = useState(initial.code);
@@ -46,15 +49,43 @@ export function EditMaterialForm({
     });
   }
 
+  function handleDelete() {
+    startDelete(async () => {
+      const result = await deleteMaterial(id);
+      if (result.success) {
+        router.push("/admin/materials");
+      } else {
+        setDeleteError(result.error ?? "Delete failed.");
+        setConfirmDelete(false);
+      }
+    });
+  }
+
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} style={{
-        padding: "0.5rem 1rem", borderRadius: "6px", background: "#f3f4f6",
-        color: "#374151", border: "1px solid #d1d5db", fontSize: "0.8rem",
-        fontWeight: 600, cursor: "pointer",
-      }}>
-        Edit Details
-      </button>
+      <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}>
+        <button onClick={() => setOpen(true)} style={{
+          padding: "0.5rem 1rem", borderRadius: "6px", background: "#f3f4f6",
+          color: "#374151", border: "1px solid #d1d5db", fontSize: "0.8rem",
+          fontWeight: 600, cursor: "pointer",
+        }}>
+          Edit Details
+        </button>
+        {deleteError && <span style={{ fontSize: "0.78rem", color: "#b91c1c" }}>{deleteError} <button onClick={() => setDeleteError(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}>✕</button></span>}
+        {confirmDelete ? (
+          <span style={{ display: "inline-flex", gap: "0.4rem", alignItems: "center" }}>
+            <span style={{ fontSize: "0.8rem", color: "#b91c1c", fontWeight: 600 }}>Permanently delete this material?</span>
+            <button onClick={handleDelete} disabled={isDeleting} style={{ padding: "0.4rem 0.85rem", borderRadius: "6px", background: "#dc2626", color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}>{isDeleting ? "Deleting…" : "Yes, Delete"}</button>
+            <button onClick={() => setConfirmDelete(false)} style={{ padding: "0.4rem 0.75rem", borderRadius: "6px", background: "#f3f4f6", border: "1px solid #d1d5db", color: "#374151", fontSize: "0.8rem", cursor: "pointer" }}>Cancel</button>
+          </span>
+        ) : (
+          <button onClick={() => setConfirmDelete(true)} style={{
+            padding: "0.5rem 1rem", borderRadius: "6px", background: "#fef2f2",
+            color: "#b91c1c", border: "1px solid #fecaca", fontSize: "0.8rem",
+            fontWeight: 600, cursor: "pointer",
+          }}>Delete Material</button>
+        )}
+      </div>
     );
   }
 

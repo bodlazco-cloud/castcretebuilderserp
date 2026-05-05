@@ -4,6 +4,7 @@ import { db } from "@/db";
 import {
   developers, projects, materials, suppliers,
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
+  developerRateCards, materialPriceHistory, subconRateCards,
 } from "@/db/schema";
 import { eq, count } from "drizzle-orm";
 import { z } from "zod";
@@ -513,5 +514,171 @@ export async function deleteProjectUnit(id: string): Promise<{ success: boolean;
 
   await db.delete(projectUnits).where(eq(projectUnits.id, id));
   revalidatePath(`/master-list/projects/${unit.projectId}`);
+  return { success: true };
+}
+
+// ─── Developer Rate Cards ───────────────────────────────────────────────────
+
+const RateCardSchema = z.object({
+  projectId:        z.string().uuid(),
+  activityDefId:    z.string().uuid(),
+  grossRatePerUnit: z.number().positive(),
+  retentionPct:     z.number().min(0).max(1),
+  dpRecoupmentPct:  z.number().min(0).max(1),
+  taxPct:           z.number().min(0).max(1),
+});
+
+export async function createDeveloperRateCard(
+  input: z.infer<typeof RateCardSchema>,
+): Promise<MutationResult> {
+  const parsed = RateCardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const { projectId, activityDefId, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
+
+  const [row] = await db
+    .insert(developerRateCards)
+    .values({
+      projectId,
+      activityDefId,
+      grossRatePerUnit: String(grossRatePerUnit),
+      retentionPct:     String(retentionPct),
+      dpRecoupmentPct:  String(dpRecoupmentPct),
+      taxPct:           String(taxPct),
+    })
+    .returning({ id: developerRateCards.id });
+
+  revalidatePath("/admin/rate-cards");
+  return { success: true, id: row.id };
+}
+
+export async function updateDeveloperRateCard(
+  id: string,
+  input: z.infer<typeof RateCardSchema>,
+): Promise<MutationResult> {
+  const parsed = RateCardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const { projectId, activityDefId, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
+
+  await db
+    .update(developerRateCards)
+    .set({
+      projectId,
+      activityDefId,
+      grossRatePerUnit: String(grossRatePerUnit),
+      retentionPct:     String(retentionPct),
+      dpRecoupmentPct:  String(dpRecoupmentPct),
+      taxPct:           String(taxPct),
+    })
+    .where(eq(developerRateCards.id, id));
+
+  revalidatePath("/admin/rate-cards");
+  return { success: true, id };
+}
+
+export async function toggleDeveloperRateCardActive(
+  id: string,
+  isActive: boolean,
+): Promise<{ success: boolean }> {
+  await db.update(developerRateCards).set({ isActive }).where(eq(developerRateCards.id, id));
+  revalidatePath("/admin/rate-cards");
+  return { success: true };
+}
+
+// ─── Material Delete ────────────────────────────────────────────────────────
+
+export async function deleteMaterial(id: string): Promise<{ success: boolean; error?: string }> {
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(materialPriceHistory)
+    .where(eq(materialPriceHistory.materialId, id));
+
+  if (Number(n) > 0) {
+    return { success: false, error: `Cannot delete: ${n} price history record(s) exist. Deactivate instead.` };
+  }
+
+  await db.delete(materials).where(eq(materials.id, id));
+  revalidatePath("/admin/materials");
+  revalidatePath("/master-list/materials");
+  return { success: true };
+}
+
+// ─── Supplier Delete ────────────────────────────────────────────────────────
+
+export async function deleteSupplier(id: string): Promise<{ success: boolean; error?: string }> {
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(materials)
+    .where(eq(materials.preferredSupplierId, id));
+
+  if (Number(n) > 0) {
+    return { success: false, error: `Cannot delete: ${n} material(s) use this supplier. Reassign them first.` };
+  }
+
+  await db.delete(suppliers).where(eq(suppliers.id, id));
+  revalidatePath("/admin/suppliers");
+  return { success: true };
+}
+
+// ─── Subcontractor Rate Cards ───────────────────────────────────────────────
+
+const SubconRateCardSchema = z.object({
+  subconId:      z.string().uuid(),
+  projectId:     z.string().uuid(),
+  activityDefId: z.string().uuid(),
+  ratePerUnit:   z.number().positive(),
+  retentionPct:  z.number().min(0).max(1),
+});
+
+export async function createSubconRateCard(
+  input: z.infer<typeof SubconRateCardSchema>,
+): Promise<MutationResult> {
+  const parsed = SubconRateCardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db
+    .insert(subconRateCards)
+    .values({
+      subconId:      d.subconId,
+      projectId:     d.projectId,
+      activityDefId: d.activityDefId,
+      ratePerUnit:   String(d.ratePerUnit),
+      retentionPct:  String(d.retentionPct),
+    })
+    .returning({ id: subconRateCards.id });
+
+  revalidatePath("/admin/subcon-rate-cards");
+  return { success: true, id: row.id };
+}
+
+export async function updateSubconRateCard(
+  id: string,
+  input: z.infer<typeof SubconRateCardSchema>,
+): Promise<MutationResult> {
+  const parsed = SubconRateCardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  await db.update(subconRateCards).set({
+    subconId:      d.subconId,
+    projectId:     d.projectId,
+    activityDefId: d.activityDefId,
+    ratePerUnit:   String(d.ratePerUnit),
+    retentionPct:  String(d.retentionPct),
+  }).where(eq(subconRateCards.id, id));
+
+  revalidatePath("/admin/subcon-rate-cards");
+  revalidatePath(`/admin/subcon-rate-cards/${id}`);
+  return { success: true, id };
+}
+
+export async function toggleSubconRateCardActive(
+  id: string,
+  isActive: boolean,
+): Promise<{ success: boolean }> {
+  await db.update(subconRateCards).set({ isActive }).where(eq(subconRateCards.id, id));
+  revalidatePath("/admin/subcon-rate-cards");
   return { success: true };
 }
