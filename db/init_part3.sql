@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════
--- PART 3: Triggers, functions, and views from legacy migrations
+-- PART 3: Triggers, functions, and views
 -- ════════════════════════════════════════════════════════════════
 
 -- ── Trigger: Auto-set requires_dual_auth on POs > 50,000 ─────────
@@ -63,33 +63,6 @@ DROP TRIGGER IF EXISTS trg_resource_forecasts_updated_at ON resource_forecasts;
 CREATE TRIGGER trg_resource_forecasts_updated_at
     BEFORE UPDATE ON resource_forecasts
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
-
--- ── Trigger: Internal rental billing ─────────────────────────────
-CREATE OR REPLACE FUNCTION log_internal_rental_billing()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO financial_ledger (
-        project_id, unit_id, category, amount,
-        description, transaction_type, reference_id, reference_type
-    )
-    SELECT
-        NEW.project_id,
-        NEW.unit_id,
-        'EQUIPMENT',
-        (NEW.hours_used * e.internal_hourly_rate),
-        'Internal equipment rental: ' || e.code || ' x ' || NEW.hours_used || ' hrs',
-        'OUTFLOW',
-        NEW.id,
-        'EQUIPMENT_LOG'
-    FROM equipment e WHERE e.id = NEW.equipment_id;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_internal_rental_billing ON equipment_usage_logs;
-CREATE TRIGGER trg_internal_rental_billing
-    AFTER INSERT ON equipment_usage_logs
-    FOR EACH ROW EXECUTE FUNCTION log_internal_rental_billing();
 
 -- ── View: virtual_inventory_ledger ────────────────────────────────
 CREATE OR REPLACE VIEW virtual_inventory_ledger AS
