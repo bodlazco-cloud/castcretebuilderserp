@@ -362,7 +362,7 @@ export async function getProjectBomForecast(projectId: string): Promise<BomForec
     .select({
       materialId:    materials.id,
       materialName:  materials.name,
-      uom:           materials.uom,
+      uom:           materials.unit,
       totalNeeded:   sum(bomStandards.quantityPerUnit),
       unitRate:      materials.adminPrice,
     })
@@ -376,7 +376,7 @@ export async function getProjectBomForecast(projectId: string): Promise<BomForec
         eq(materials.isActive, true),
       ),
     )
-    .groupBy(materials.id, materials.name, materials.uom, materials.adminPrice)
+    .groupBy(materials.id, materials.name, materials.unit, materials.adminPrice)
     .orderBy(desc(sum(bomStandards.quantityPerUnit)));
 
   return rows.map((r) => {

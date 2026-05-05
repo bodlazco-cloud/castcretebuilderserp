@@ -151,7 +151,7 @@ export default async function MilestoneDetailPage({ params }: { params: Promise<
             <p style={{ margin: "0 0 1rem", fontSize: "0.82rem", color: "#6b7280" }}>
               Confirm that this milestone has been physically inspected and all supporting documents are in order.
             </p>
-            <MilestoneVerifyButton milestoneId={milestone.id} />
+            <MilestoneVerifyButton milestoneId={milestone.id} unitId={String(milestone.unitId ?? "")} />
           </div>
         )}
 

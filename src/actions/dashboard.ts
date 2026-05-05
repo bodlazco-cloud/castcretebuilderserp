@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface SiteProfitabilityRow {
+interface SiteProfitabilityRow extends Record<string, unknown> {
   unit_id:                string;
   unit_code:              string;
   unit_model:             string;

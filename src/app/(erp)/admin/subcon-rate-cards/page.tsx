@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { subconRateCards, subcontractors, projects, activityDefinitions } from "@/db/schema";
+import { subcontractorRateCards, subcontractors, projects, activityDefinitions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 
@@ -11,21 +11,21 @@ export default async function SubconRateCardsPage() {
 
   const rows = await db
     .select({
-      id:           subconRateCards.id,
-      ratePerUnit:  subconRateCards.ratePerUnit,
-      retentionPct: subconRateCards.retentionPct,
-      version:      subconRateCards.version,
-      isActive:     subconRateCards.isActive,
+      id:           subcontractorRateCards.id,
+      ratePerUnit:  subcontractorRateCards.ratePerUnit,
+      retentionPct: subcontractorRateCards.retentionPct,
+      version:      subcontractorRateCards.version,
+      isActive:     subcontractorRateCards.isActive,
       subconName:   subcontractors.name,
       subconCode:   subcontractors.code,
       projName:     projects.name,
       actCode:      activityDefinitions.activityCode,
       actName:      activityDefinitions.activityName,
     })
-    .from(subconRateCards)
-    .leftJoin(subcontractors,      eq(subconRateCards.subconId,      subcontractors.id))
-    .leftJoin(projects,            eq(subconRateCards.projectId,     projects.id))
-    .leftJoin(activityDefinitions, eq(subconRateCards.activityDefId, activityDefinitions.id))
+    .from(subcontractorRateCards)
+    .leftJoin(subcontractors,      eq(subcontractorRateCards.subconId,      subcontractors.id))
+    .leftJoin(projects,            eq(subcontractorRateCards.projectId,     projects.id))
+    .leftJoin(activityDefinitions, eq(subcontractorRateCards.activityDefId, activityDefinitions.id))
     .orderBy(subcontractors.name, projects.name);
 
   const active = rows.filter((r) => r.isActive).length;

@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { subconRateCards, subcontractors, projects, activityDefinitions } from "@/db/schema";
+import { subcontractorRateCards, subcontractors, projects, activityDefinitions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
@@ -14,24 +14,24 @@ export default async function SubconRateCardDetailPage({ params }: { params: Pro
 
   const [card] = await db
     .select({
-      id:           subconRateCards.id,
-      subconId:     subconRateCards.subconId,
-      projectId:    subconRateCards.projectId,
-      activityDefId: subconRateCards.activityDefId,
-      ratePerUnit:  subconRateCards.ratePerUnit,
-      retentionPct: subconRateCards.retentionPct,
-      version:      subconRateCards.version,
-      isActive:     subconRateCards.isActive,
+      id:           subcontractorRateCards.id,
+      subconId:     subcontractorRateCards.subconId,
+      projectId:    subcontractorRateCards.projectId,
+      activityDefId: subcontractorRateCards.activityDefId,
+      ratePerUnit:  subcontractorRateCards.ratePerUnit,
+      retentionPct: subcontractorRateCards.retentionPct,
+      version:      subcontractorRateCards.version,
+      isActive:     subcontractorRateCards.isActive,
       subconName:   subcontractors.name,
       projName:     projects.name,
       actCode:      activityDefinitions.activityCode,
       actName:      activityDefinitions.activityName,
     })
-    .from(subconRateCards)
-    .leftJoin(subcontractors,      eq(subconRateCards.subconId,      subcontractors.id))
-    .leftJoin(projects,            eq(subconRateCards.projectId,     projects.id))
-    .leftJoin(activityDefinitions, eq(subconRateCards.activityDefId, activityDefinitions.id))
-    .where(eq(subconRateCards.id, id));
+    .from(subcontractorRateCards)
+    .leftJoin(subcontractors,      eq(subcontractorRateCards.subconId,      subcontractors.id))
+    .leftJoin(projects,            eq(subcontractorRateCards.projectId,     projects.id))
+    .leftJoin(activityDefinitions, eq(subcontractorRateCards.activityDefId, activityDefinitions.id))
+    .where(eq(subcontractorRateCards.id, id));
 
   if (!card) notFound();
 

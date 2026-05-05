@@ -20,7 +20,7 @@ export function ReleaseActions({
       if (res.success) {
         setResult({ ok: true, message: "Released" });
       } else {
-        setResult({ ok: false, message: res.error });
+        setResult({ ok: false, message: res.error ?? "Failed." });
       }
     });
   }

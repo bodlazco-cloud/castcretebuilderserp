@@ -51,7 +51,7 @@ export async function verifyWar(warId: string): Promise<SimpleResult> {
 // auditor_id is NOT accepted from the client; identity comes from getAuthUser().
 
 const VerifyMilestoneSchema = z.object({
-  ntpId:       z.string().uuid(),
+  ntpId:       z.string().uuid().optional(),
   unitId:      z.string().uuid(),
   auditStatus: z.enum(["VERIFIED", "REJECTED"]),
   remarks:     z.string().max(2000).optional(),
@@ -73,10 +73,12 @@ export async function verifyMilestone(
     .select()
     .from(workAccomplishedReports)
     .where(
-      and(
-        eq(workAccomplishedReports.taskAssignmentId, ntpId),
-        eq(workAccomplishedReports.unitId, unitId),
-      ),
+      ntpId
+        ? and(
+            eq(workAccomplishedReports.taskAssignmentId, ntpId),
+            eq(workAccomplishedReports.unitId, unitId),
+          )
+        : eq(workAccomplishedReports.unitId, unitId),
     )
     .limit(1);
 
@@ -104,11 +106,13 @@ export async function verifyMilestone(
       .where(eq(unitMilestones.id, war.unitMilestoneId));
 
     // Look up subconId from the task assignment
-    const [ntp] = await db
-      .select({ subconId: taskAssignments.subconId })
-      .from(taskAssignments)
-      .where(eq(taskAssignments.id, ntpId))
-      .limit(1);
+    const [ntp] = ntpId
+      ? await db
+          .select({ subconId: taskAssignments.subconId })
+          .from(taskAssignments)
+          .where(eq(taskAssignments.id, ntpId))
+          .limit(1)
+      : [];
 
     if (ntp?.subconId) {
       // generate_subcon_billable equivalent: create a DRAFT payable for Finance

@@ -4,7 +4,7 @@ import { db } from "@/db";
 import {
   developers, projects, materials, suppliers,
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
-  developerRateCards, materialPriceHistory, subconRateCards,
+  developerRateCards, materialPriceHistory, subcontractorRateCards,
 } from "@/db/schema";
 import { eq, count } from "drizzle-orm";
 import { z } from "zod";
@@ -639,7 +639,7 @@ export async function createSubconRateCard(
 
   const d = parsed.data;
   const [row] = await db
-    .insert(subconRateCards)
+    .insert(subcontractorRateCards)
     .values({
       subconId:      d.subconId,
       projectId:     d.projectId,
@@ -647,7 +647,7 @@ export async function createSubconRateCard(
       ratePerUnit:   String(d.ratePerUnit),
       retentionPct:  String(d.retentionPct),
     })
-    .returning({ id: subconRateCards.id });
+    .returning({ id: subcontractorRateCards.id });
 
   revalidatePath("/admin/subcon-rate-cards");
   return { success: true, id: row.id };
@@ -661,13 +661,13 @@ export async function updateSubconRateCard(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const d = parsed.data;
-  await db.update(subconRateCards).set({
+  await db.update(subcontractorRateCards).set({
     subconId:      d.subconId,
     projectId:     d.projectId,
     activityDefId: d.activityDefId,
     ratePerUnit:   String(d.ratePerUnit),
     retentionPct:  String(d.retentionPct),
-  }).where(eq(subconRateCards.id, id));
+  }).where(eq(subcontractorRateCards.id, id));
 
   revalidatePath("/admin/subcon-rate-cards");
   revalidatePath(`/admin/subcon-rate-cards/${id}`);
@@ -678,7 +678,7 @@ export async function toggleSubconRateCardActive(
   id: string,
   isActive: boolean,
 ): Promise<{ success: boolean }> {
-  await db.update(subconRateCards).set({ isActive }).where(eq(subconRateCards.id, id));
+  await db.update(subcontractorRateCards).set({ isActive }).where(eq(subcontractorRateCards.id, id));
   revalidatePath("/admin/subcon-rate-cards");
   return { success: true };
 }

@@ -7,6 +7,7 @@ import {
   manualVouchers, bankAccounts, paymentRequests,
 } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
 import {
   notifyInvoiceSubmitted, notifyInvoiceCollected,

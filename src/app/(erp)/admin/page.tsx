@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { users, materials, suppliers, activityDefinitions, milestoneDefinitions, bomStandards, developerRateCards, subconRateCards } from "@/db/schema";
+import { users, materials, suppliers, activityDefinitions, milestoneDefinitions, bomStandards, developerRateCards, subcontractorRateCards } from "@/db/schema";
 import { count, eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 
@@ -27,7 +27,7 @@ export default async function AdminPage() {
     db.select({ n: count() }).from(milestoneDefinitions),
     db.select({ n: count() }).from(bomStandards).where(eq(bomStandards.isActive, true)),
     db.select({ n: count() }).from(developerRateCards).where(eq(developerRateCards.isActive, true)),
-    db.select({ n: count() }).from(subconRateCards).where(eq(subconRateCards.isActive, true)),
+    db.select({ n: count() }).from(subcontractorRateCards).where(eq(subcontractorRateCards.isActive, true)),
   ]);
 
   const items = [

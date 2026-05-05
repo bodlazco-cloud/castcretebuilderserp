@@ -1,6 +1,6 @@
 import {
   pgTable, uuid, varchar, numeric, integer,
-  timestamp, date, text,
+  timestamp, date, text, boolean,
 } from "drizzle-orm/pg-core";
 import { users, costCenters } from "./core";
 import { projects } from "./projects";
