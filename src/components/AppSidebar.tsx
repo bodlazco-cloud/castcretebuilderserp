@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   HardHat, Building2, Package, Factory,
-  Truck, ShieldCheck, Wallet, Settings,
+  Truck, ShieldCheck, Wallet, Settings, BookOpen,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -139,26 +139,33 @@ const NAV: NavSection[] = [
     ],
   },
   {
+    title: "Master List",
+    icon: BookOpen,
+    items: [
+      { label: "Overview",                  href: "/master-list" },
+      { label: "Parties",                   isGroup: true },
+      { label: "Projects / Sites",          href: "/master-list/projects" },
+      { label: "Subcontractors",            href: "/master-list/subcontractors" },
+      { label: "Developers",                href: "/master-list/developers" },
+      { label: "Suppliers / Vendors",       href: "/admin/suppliers" },
+      { label: "Materials & Costing",       isGroup: true },
+      { label: "Materials & Pricing",       href: "/admin/materials" },
+      { label: "Cost Centers",              href: "/admin/cost-centers" },
+      { label: "Work Standards",            isGroup: true },
+      { label: "Scope of Work",             href: "/admin/activity-defs" },
+      { label: "Milestone Defs",            href: "/admin/milestone-defs" },
+      { label: "BOM Standards",             href: "/admin/bom-standards" },
+      { label: "Rate Cards",                isGroup: true },
+      { label: "Developer Rate Cards",      href: "/admin/rate-cards" },
+      { label: "Subcontractor Rate Cards",  href: "/admin/subcon-rate-cards" },
+    ],
+  },
+  {
     title: "Administration",
     icon: Settings,
     items: [
-      { label: "Overview",              href: "/admin" },
-      { label: "Master Lists",          isGroup: true },
-      { label: "Materials & Pricing",   href: "/admin/materials" },
-      { label: "Suppliers / Vendors",   href: "/admin/suppliers" },
-      { label: "Subcontractors",        href: "/master-list/subcontractors" },
-      { label: "Developers",            href: "/master-list/developers" },
-      { label: "Projects / Sites",      href: "/master-list/projects" },
-      { label: "Cost Centers",          href: "/admin/cost-centers" },
-      { label: "Work Definitions",      isGroup: true },
-      { label: "Scope of Work",         href: "/admin/activity-defs" },
-      { label: "Milestone Defs",        href: "/admin/milestone-defs" },
-      { label: "BOM Standards",         href: "/admin/bom-standards" },
-      { label: "Rate Cards",            isGroup: true },
-      { label: "Developer Rate Cards",      href: "/admin/rate-cards" },
-      { label: "Subcontractor Rate Cards",  href: "/admin/subcon-rate-cards" },
+      { label: "User Management",       href: "/admin/users" },
       { label: "System",                isDivider: true },
-      { label: "User Permissions",      href: "/admin/users" },
       { label: "System Logs",           href: "/admin/system-logs" },
       { label: "Global Configurations", href: "/admin/global-config" },
     ],
@@ -168,7 +175,7 @@ const NAV: NavSection[] = [
 // Overview-only pages: exact match required for active highlight
 const OVERVIEW_HREFS = new Set([
   "/planning", "/construction", "/procurement", "/batching",
-  "/motorpool", "/audit", "/finance", "/master-list", "/admin",
+  "/motorpool", "/audit", "/finance", "/master-list",
 ]);
 
 function Chevron({ open }: { open: boolean }) {
