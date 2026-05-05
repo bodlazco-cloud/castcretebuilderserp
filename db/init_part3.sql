@@ -64,13 +64,3 @@ CREATE TRIGGER trg_resource_forecasts_updated_at
     BEFORE UPDATE ON resource_forecasts
     FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
--- ── View: virtual_inventory_ledger ────────────────────────────────
-CREATE OR REPLACE VIEW virtual_inventory_ledger AS
-SELECT
-    il.material_id,
-    il.project_id,
-    SUM(il.quantity_remaining) AS quantity_on_hand,
-    AVG(il.unit_price)         AS avg_unit_price,
-    MAX(il.received_at)        AS last_received
-FROM inventory_ledger il
-GROUP BY il.material_id, il.project_id;
