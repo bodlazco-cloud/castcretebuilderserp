@@ -5,6 +5,7 @@ import {
   developers, projects, materials, suppliers,
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
   developerRateCards, materialPriceHistory, subcontractorRateCards,
+  bomStandards, costCenters, materialSuppliers,
 } from "@/db/schema";
 import { eq, count } from "drizzle-orm";
 import { z } from "zod";
@@ -680,5 +681,167 @@ export async function toggleSubconRateCardActive(
 ): Promise<{ success: boolean }> {
   await db.update(subcontractorRateCards).set({ isActive }).where(eq(subcontractorRateCards.id, id));
   revalidatePath("/admin/subcon-rate-cards");
+  return { success: true };
+}
+
+// ─── Activity Definition — delete ──────────────────────────────────────────
+
+export async function deleteActivityDefinition(id: string): Promise<{ success: boolean; error?: string }> {
+  const [uses] = await db.select({ n: count() }).from(bomStandards).where(eq(bomStandards.activityDefId, id));
+  if ((uses?.n ?? 0) > 0) return { success: false, error: "Cannot delete: activity is referenced by BOM standards." };
+  await db.delete(activityDefinitions).where(eq(activityDefinitions.id, id));
+  revalidatePath("/admin/activity-defs");
+  return { success: true };
+}
+
+// ─── Milestone Definition — delete ─────────────────────────────────────────
+
+export async function deleteMilestoneDefinition(id: string): Promise<{ success: boolean; error?: string }> {
+  await db.delete(milestoneDefinitions).where(eq(milestoneDefinitions.id, id));
+  revalidatePath("/admin/milestone-defs");
+  return { success: true };
+}
+
+// ─── BOM Standards CRUD ────────────────────────────────────────────────────
+
+const BomStandardSchema = z.object({
+  activityDefId:   z.string().uuid(),
+  unitModel:       z.string().min(1).max(50),
+  unitType:        z.enum(["BEG", "REG", "END"]),
+  materialId:      z.string().uuid(),
+  quantityPerUnit: z.number().positive(),
+  baseRatePhp:     z.number().positive().optional(),
+});
+
+export async function createBomStandard(input: z.infer<typeof BomStandardSchema>): Promise<MutationResult> {
+  const parsed = BomStandardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  const [row] = await db.insert(bomStandards).values({
+    activityDefId:   d.activityDefId,
+    unitModel:       d.unitModel,
+    unitType:        d.unitType,
+    materialId:      d.materialId,
+    quantityPerUnit: String(d.quantityPerUnit),
+    baseRatePhp:     d.baseRatePhp != null ? String(d.baseRatePhp) : null,
+  }).returning({ id: bomStandards.id });
+  revalidatePath("/admin/bom-standards");
+  return { success: true, id: row.id };
+}
+
+export async function updateBomStandard(id: string, input: z.infer<typeof BomStandardSchema>): Promise<MutationResult> {
+  const parsed = BomStandardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(bomStandards).set({
+    activityDefId:   d.activityDefId,
+    unitModel:       d.unitModel,
+    unitType:        d.unitType,
+    materialId:      d.materialId,
+    quantityPerUnit: String(d.quantityPerUnit),
+    baseRatePhp:     d.baseRatePhp != null ? String(d.baseRatePhp) : null,
+  }).where(eq(bomStandards.id, id));
+  revalidatePath("/admin/bom-standards");
+  revalidatePath(`/admin/bom-standards/${id}`);
+  return { success: true, id };
+}
+
+export async function toggleBomStandardActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(bomStandards).set({ isActive }).where(eq(bomStandards.id, id));
+  revalidatePath("/admin/bom-standards");
+  return { success: true };
+}
+
+export async function deleteBomStandard(id: string): Promise<{ success: boolean; error?: string }> {
+  await db.delete(bomStandards).where(eq(bomStandards.id, id));
+  revalidatePath("/admin/bom-standards");
+  return { success: true };
+}
+
+// ─── Cost Centers CRUD ─────────────────────────────────────────────────────
+
+const CostCenterSchema = z.object({
+  code:    z.string().min(1).max(50),
+  name:    z.string().min(1).max(100),
+  deptId:  z.string().uuid(),
+  type:    z.enum(["PROJECT", "BATCHING", "FLEET", "HQ"]),
+});
+
+export async function createCostCenter(input: z.infer<typeof CostCenterSchema>): Promise<MutationResult> {
+  const parsed = CostCenterSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  const [row] = await db.insert(costCenters).values({
+    code: d.code, name: d.name, deptId: d.deptId, type: d.type,
+  }).returning({ id: costCenters.id });
+  revalidatePath("/admin/cost-centers");
+  return { success: true, id: row.id };
+}
+
+export async function updateCostCenter(id: string, input: z.infer<typeof CostCenterSchema>): Promise<MutationResult> {
+  const parsed = CostCenterSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(costCenters).set({ code: d.code, name: d.name, deptId: d.deptId, type: d.type }).where(eq(costCenters.id, id));
+  revalidatePath("/admin/cost-centers");
+  revalidatePath(`/admin/cost-centers/${id}`);
+  return { success: true, id };
+}
+
+export async function toggleCostCenterActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(costCenters).set({ isActive }).where(eq(costCenters.id, id));
+  revalidatePath("/admin/cost-centers");
+  return { success: true };
+}
+
+export async function deleteCostCenter(id: string): Promise<{ success: boolean; error?: string }> {
+  await db.delete(costCenters).where(eq(costCenters.id, id));
+  revalidatePath("/admin/cost-centers");
+  return { success: true };
+}
+
+// ─── Material Suppliers (many-to-many) ────────────────────────────────────
+
+export async function setMaterialSupplier(
+  materialId: string,
+  supplierId: string,
+  isPreferred: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  const [existing] = await db.select({ id: materialSuppliers.id })
+    .from(materialSuppliers)
+    .where(eq(materialSuppliers.materialId, materialId))
+    .limit(1);
+
+  // When setting as preferred, clear existing preferred
+  if (isPreferred) {
+    await db.update(materialSuppliers).set({ isPreferred: false })
+      .where(eq(materialSuppliers.materialId, materialId));
+  }
+
+  const [exists] = await db.select({ id: materialSuppliers.id })
+    .from(materialSuppliers)
+    .where(eq(materialSuppliers.materialId, materialId))
+    .limit(1);
+
+  // Check if this specific pair already exists
+  const allLinks = await db.select({ id: materialSuppliers.id, supplierId: materialSuppliers.supplierId })
+    .from(materialSuppliers)
+    .where(eq(materialSuppliers.materialId, materialId));
+
+  const link = allLinks.find((r) => r.supplierId === supplierId);
+
+  if (link) {
+    await db.update(materialSuppliers).set({ isPreferred }).where(eq(materialSuppliers.id, link.id));
+  } else {
+    await db.insert(materialSuppliers).values({ materialId, supplierId, isPreferred });
+  }
+
+  revalidatePath(`/admin/materials/${materialId}`);
+  return { success: true };
+}
+
+export async function removeMaterialSupplier(id: string, materialId: string): Promise<{ success: boolean }> {
+  await db.delete(materialSuppliers).where(eq(materialSuppliers.id, id));
+  revalidatePath(`/admin/materials/${materialId}`);
   return { success: true };
 }

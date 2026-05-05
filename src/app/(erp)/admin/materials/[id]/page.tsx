@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { materials, materialPriceHistory, suppliers } from "@/db/schema";
+import { materials, materialPriceHistory, suppliers, materialSuppliers } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { MaterialActions } from "./MaterialActions";
 import { EditMaterialForm } from "./EditMaterialForm";
+import { MaterialSuppliersPanel } from "./MaterialSuppliersPanel";
 
 const ACCENT = "#dc2626";
 
@@ -36,6 +37,18 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
     .from(suppliers)
     .where(eq(suppliers.isActive, true))
     .orderBy(suppliers.name);
+
+  const linkedSuppliers = await db
+    .select({
+      id:          materialSuppliers.id,
+      supplierId:  materialSuppliers.supplierId,
+      supplierName: suppliers.name,
+      isPreferred: materialSuppliers.isPreferred,
+    })
+    .from(materialSuppliers)
+    .leftJoin(suppliers, eq(materialSuppliers.supplierId, suppliers.id))
+    .where(eq(materialSuppliers.materialId, id))
+    .orderBy(materialSuppliers.isPreferred);
 
   if (!mat) notFound();
 
@@ -94,6 +107,19 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
             id={mat.id}
             initial={{ code: mat.code, name: mat.name, unit: mat.unit, category: mat.category, preferredSupplierId: mat.preferredSupplierId ?? undefined }}
             suppliers={supplierList.map((s) => ({ id: String(s.id), name: String(s.name) }))}
+          />
+        </div>
+
+        {/* Suppliers */}
+        <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
+          <h2 style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Suppliers</h2>
+          <p style={{ margin: "0 0 1rem", fontSize: "0.82rem", color: "#6b7280" }}>
+            Link one or more suppliers. Mark the preferred one to auto-select on PO creation.
+          </p>
+          <MaterialSuppliersPanel
+            materialId={mat.id}
+            linked={linkedSuppliers.map((s) => ({ id: String(s.id), supplierId: String(s.supplierId), supplierName: String(s.supplierName ?? ""), isPreferred: s.isPreferred }))}
+            allSuppliers={supplierList.map((s) => ({ id: String(s.id), name: String(s.name) }))}
           />
         </div>
 

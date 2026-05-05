@@ -30,6 +30,14 @@ export const materials = pgTable("materials", {
   createdAt:           timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const materialSuppliers = pgTable("material_suppliers", {
+  id:          uuid("id").primaryKey().defaultRandom(),
+  materialId:  uuid("material_id").notNull().references(() => materials.id, { onDelete: "cascade" }),
+  supplierId:  uuid("supplier_id").notNull().references(() => suppliers.id, { onDelete: "cascade" }),
+  isPreferred: boolean("is_preferred").notNull().default(false),
+  createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [unique().on(t.materialId, t.supplierId)]);
+
 export const materialPriceHistory = pgTable("material_price_history", {
   id:           uuid("id").primaryKey().defaultRandom(),
   materialId:   uuid("material_id").notNull().references(() => materials.id),

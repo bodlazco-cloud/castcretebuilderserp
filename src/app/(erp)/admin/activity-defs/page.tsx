@@ -41,9 +41,12 @@ export default async function ActivityDefsPage() {
           <a href="/admin" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>← Administration</a>
         </div>
 
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Activity Definitions</h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>{active} active · {rows.length} total</p>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.5rem" }}>
+          <div>
+            <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Scope of Work — Activity Definitions</h1>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>{active} active · {rows.length} total · generic across all sites</p>
+          </div>
+          <a href="/admin/activity-defs/new" style={{ padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#dc2626", color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none" }}>+ New Activity</a>
         </div>
 
         {rows.length === 0 ? (
@@ -56,8 +59,8 @@ export default async function ActivityDefsPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "900px" }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["#", "Scope", "Activity", "Category", "Duration", "Weight %", "Status"].map((h, i) => (
-                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: i >= 4 ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                    {["#", "Scope", "Activity", "Category", "Duration", "Weight %", "Status", ""].map((h, i) => (
+                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: i >= 4 && i <= 6 ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -84,6 +87,9 @@ export default async function ActivityDefsPage() {
                           <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "0.15rem 0.4rem", borderRadius: "4px", background: r.isActive ? "#f0fdf4" : "#f3f4f6", color: r.isActive ? "#057a55" : "#9ca3af" }}>
                             {r.isActive ? "ACTIVE" : "INACTIVE"}
                           </span>
+                        </td>
+                        <td style={{ padding: "0.65rem 1rem", textAlign: "right" }}>
+                          <a href={`/admin/activity-defs/${r.id}`} style={{ color: ACCENT, textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>Edit →</a>
                         </td>
                       </tr>
                     );
