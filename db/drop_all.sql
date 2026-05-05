@@ -47,13 +47,17 @@ BEGIN
   END LOOP;
 END $$;
 
--- Drop all functions
+-- Drop all functions (excluding extension-owned ones like pg_trgm)
 DO $$ DECLARE
   r RECORD;
 BEGIN
-  FOR r IN SELECT proname, oidvectortypes(proargtypes) AS argtypes
-           FROM pg_proc
-           WHERE pronamespace = 'public'::regnamespace
+  FOR r IN SELECT p.proname, oidvectortypes(p.proargtypes) AS argtypes
+           FROM pg_proc p
+           WHERE p.pronamespace = 'public'::regnamespace
+             AND NOT EXISTS (
+               SELECT 1 FROM pg_depend d
+               WHERE d.objid = p.oid AND d.deptype = 'e'
+             )
   LOOP
     EXECUTE 'DROP FUNCTION IF EXISTS ' || quote_ident(r.proname) ||
             '(' || r.argtypes || ') CASCADE';
