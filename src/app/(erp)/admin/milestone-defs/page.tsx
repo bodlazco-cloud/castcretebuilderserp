@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { milestoneDefinitions, projects, activityDefinitions } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { AddMilestoneDefForm } from "./AddMilestoneDefForm";
 
@@ -19,8 +19,17 @@ const CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
 export default async function MilestoneDefsPage() {
   await getAuthUser();
 
-  const [rows, projectRows, sowRows] = await Promise.all([
-    db
+  type MilestoneRow = {
+    id: string; name: string; scopeCode: string | null; scopeName: string | null;
+    category: string; sequenceOrder: number | null; triggersBilling: boolean;
+    weightPct: string | number; isActive: boolean; projName: string | null;
+  };
+
+  let rows: MilestoneRow[] = [];
+  let needsMigration = false;
+
+  try {
+    rows = await db
       .select({
         id:              milestoneDefinitions.id,
         name:            milestoneDefinitions.name,
@@ -35,7 +44,32 @@ export default async function MilestoneDefsPage() {
       })
       .from(milestoneDefinitions)
       .leftJoin(projects, eq(milestoneDefinitions.projectId, projects.id))
-      .orderBy(projects.name, milestoneDefinitions.sequenceOrder),
+      .orderBy(projects.name, milestoneDefinitions.sequenceOrder);
+  } catch {
+    needsMigration = true;
+    const raw = await db.execute(sql`
+      SELECT md.id, md.name, NULL::text AS scope_code, NULL::text AS scope_name,
+             md.category, md.sequence_order, md.triggers_billing, md.weight_pct, md.is_active,
+             p.name AS proj_name
+      FROM milestone_definitions md
+      LEFT JOIN projects p ON p.id = md.project_id
+      ORDER BY p.name, md.sequence_order
+    `);
+    rows = (raw.rows as Record<string, unknown>[]).map((r) => ({
+      id:              r.id as string,
+      name:            r.name as string,
+      scopeCode:       null,
+      scopeName:       null,
+      category:        r.category as string,
+      sequenceOrder:   r.sequence_order as number | null,
+      triggersBilling: r.triggers_billing as boolean,
+      weightPct:       r.weight_pct as string,
+      isActive:        r.is_active as boolean,
+      projName:        r.proj_name as string | null,
+    }));
+  }
+
+  const [projectRows, sowRows] = await Promise.all([
     db.select({ id: projects.id, name: projects.name })
       .from(projects)
       .orderBy(projects.name),
@@ -78,6 +112,12 @@ export default async function MilestoneDefsPage() {
           </div>
           <AddMilestoneDefForm projects={projectRows} scopes={dedupedScopes} />
         </div>
+
+        {needsMigration && (
+          <div style={{ padding: "0.85rem 1rem", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "6px", fontSize: "0.875rem", color: "#92400e", marginBottom: "1.5rem" }}>
+            <strong>Migration needed:</strong> Run migration 014 in Supabase SQL editor to enable Scope of Work linking on milestones. SOW columns are shown as — until then.
+          </div>
+        )}
 
         {rows.length === 0 ? (
           <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>

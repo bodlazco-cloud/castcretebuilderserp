@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { standardMixes, mixDesigns, projects, projectUnits } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { AddStandardMixForm } from "./AddStandardMixForm";
 
@@ -16,26 +16,41 @@ const UNIT_TYPE_COLORS: Record<string, { bg: string; color: string }> = {
 export default async function MixDesignsPage() {
   await getAuthUser();
 
-  const [mixes, mixDesignRows, projectRows, unitModelRows] = await Promise.all([
-    db
+  type MixRow = {
+    id: string; unitModel: string; unitType: string; volumeM3: string | null;
+    description: string | null; isActive: boolean; createdAt: Date | string;
+    projName: string | null; projId: string | null; mixCode: string | null;
+    mixName: string | null; cementBags: string | null;
+  };
+
+  let mixes: MixRow[] = [];
+  let needsMigration = false;
+
+  try {
+    mixes = await db
       .select({
-        id:             standardMixes.id,
-        unitModel:      standardMixes.unitModel,
-        unitType:       standardMixes.unitType,
-        volumeM3:       standardMixes.volumePerUnitM3,
-        description:    standardMixes.description,
-        isActive:       standardMixes.isActive,
-        createdAt:      standardMixes.createdAt,
-        projName:       projects.name,
-        projId:         projects.id,
-        mixCode:        mixDesigns.code,
-        mixName:        mixDesigns.name,
-        cementBags:     mixDesigns.cementBagsPerM3,
+        id:          standardMixes.id,
+        unitModel:   standardMixes.unitModel,
+        unitType:    standardMixes.unitType,
+        volumeM3:    standardMixes.volumePerUnitM3,
+        description: standardMixes.description,
+        isActive:    standardMixes.isActive,
+        createdAt:   standardMixes.createdAt,
+        projName:    projects.name,
+        projId:      projects.id,
+        mixCode:     mixDesigns.code,
+        mixName:     mixDesigns.name,
+        cementBags:  mixDesigns.cementBagsPerM3,
       })
       .from(standardMixes)
       .leftJoin(projects, eq(standardMixes.projectId, projects.id))
       .leftJoin(mixDesigns, eq(standardMixes.mixDesignId, mixDesigns.id))
-      .orderBy(projects.name, standardMixes.unitModel, standardMixes.unitType),
+      .orderBy(projects.name, standardMixes.unitModel, standardMixes.unitType);
+  } catch {
+    needsMigration = true;
+  }
+
+  const [mixDesignRows, projectRows, unitModelRowsRaw] = await Promise.all([
     db.select({ id: mixDesigns.id, code: mixDesigns.code, name: mixDesigns.name })
       .from(mixDesigns)
       .where(eq(mixDesigns.isActive, true))
@@ -43,19 +58,13 @@ export default async function MixDesignsPage() {
     db.select({ id: projects.id, name: projects.name })
       .from(projects)
       .orderBy(projects.name),
-    db.select({ projectId: projectUnits.projectId, unitModel: projectUnits.unitModel })
-      .from(projectUnits)
-      .orderBy(projectUnits.unitModel),
+    db.execute(sql`SELECT DISTINCT project_id, unit_model FROM project_units ORDER BY unit_model`),
   ]);
 
-  // Deduplicate unit models per project
-  const seenUnitModels = new Set<string>();
-  const dedupedUnitModels = unitModelRows.filter((u) => {
-    const key = `${u.projectId}::${u.unitModel}`;
-    if (seenUnitModels.has(key)) return false;
-    seenUnitModels.add(key);
-    return true;
-  });
+  const unitModelRows = (unitModelRowsRaw.rows as { project_id: string; unit_model: string }[])
+    .map((r) => ({ projectId: r.project_id, unitModel: r.unit_model }));
+
+  const dedupedUnitModels = unitModelRows;
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -73,6 +82,12 @@ export default async function MixDesignsPage() {
           </div>
           <AddStandardMixForm projects={projectRows} mixDesigns={mixDesignRows} unitModels={dedupedUnitModels} />
         </div>
+
+        {needsMigration && (
+          <div style={{ padding: "0.85rem 1rem", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: "6px", fontSize: "0.875rem", color: "#92400e", marginBottom: "1.5rem" }}>
+            <strong>Migration needed:</strong> Run migration 014 in Supabase SQL editor to enable the Standard Mixes table. Standard mix data cannot be saved until the migration is applied.
+          </div>
+        )}
 
         {mixes.length === 0 ? (
           <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>

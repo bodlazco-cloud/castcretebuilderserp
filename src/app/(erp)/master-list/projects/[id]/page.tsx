@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { projects, developers, activityDefinitions, blocks, projectUnits } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { ApproveProjectButton, AddBlockForm, AddUnitForm } from "./ProjectActions";
@@ -63,13 +63,31 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       .orderBy(blocks.blockName),
   ]);
 
-  const unitRows = blockRows.length > 0
-    ? await db
+  let unitRows: { id: string; blockId: string | null; unitCode: string; lotNumber: string | null; unitModel: string | null; unitType: string | null; status: string }[] = [];
+  if (blockRows.length > 0) {
+    try {
+      unitRows = await db
         .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, unitType: projectUnits.unitType, status: projectUnits.status })
         .from(projectUnits)
         .where(eq(projectUnits.projectId, id))
-        .orderBy(projectUnits.unitCode)
-    : [];
+        .orderBy(projectUnits.unitCode);
+    } catch {
+      // unit_type column may not exist yet if migration 014 hasn't been run
+      const rows = await db.execute(sql`
+        SELECT id, block_id, unit_code, lot_number, unit_model, NULL::text AS unit_type, status
+        FROM project_units WHERE project_id = ${id} ORDER BY unit_code
+      `);
+      unitRows = (rows.rows as Record<string, unknown>[]).map((r) => ({
+        id:        r.id as string,
+        blockId:   r.block_id as string | null,
+        unitCode:  r.unit_code as string,
+        lotNumber: r.lot_number as string | null,
+        unitModel: r.unit_model as string | null,
+        unitType:  null,
+        status:    r.status as string,
+      }));
+    }
+  }
 
   const sc = STATUS_STYLE[project.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
   const isApproved = project.status === "ACTIVE" && !!project.bodApprovedAt;
