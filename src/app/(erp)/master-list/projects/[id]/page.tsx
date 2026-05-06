@@ -172,7 +172,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                         <thead>
                           <tr>
-                            {["Lot #", "Unit Code", "Model", "Status", ""].map((h, i) => (
+                            {["Lot #", "Unit Code", "Model", "Type", "Status", ""].map((h, i) => (
                               <th key={i} style={{ padding: "0.5rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #f3f4f6", fontSize: "0.78rem" }}>{h}</th>
                             ))}
                           </tr>
@@ -181,7 +181,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                           {blockUnits.map((u) => (
                             <UnitRow
                               key={u.id}
-                              unit={{ id: u.id, blockId: u.blockId, lotNumber: u.lotNumber, unitCode: u.unitCode, unitModel: u.unitModel, status: u.status, contractPrice: u.contractPrice }}
+                              unit={{ id: u.id, blockId: u.blockId ?? "", lotNumber: u.lotNumber, unitCode: u.unitCode, unitModel: u.unitModel, unitType: u.unitType ?? "MID", status: u.status, contractPrice: u.contractPrice }}
                               blockOptions={blockRows.map((b) => ({ id: b.id, blockName: b.blockName }))}
                             />
                           ))}
