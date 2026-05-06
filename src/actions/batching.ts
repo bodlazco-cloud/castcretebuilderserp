@@ -188,7 +188,7 @@ export async function receiveConcreteDelivery(
 const StandardMixSchema = z.object({
   projectId:        z.string().uuid(),
   unitModel:        z.string().min(1).max(50),
-  unitType:         z.enum(["BEG", "REG", "END"]),
+  unitType:         z.enum(["BEG", "MID", "END", "SHOP"]),
   mixDesignId:      z.string().uuid().optional(),
   volumePerUnitM3:  z.number().positive().optional(),
   description:      z.string().max(500).optional(),

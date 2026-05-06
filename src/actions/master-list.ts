@@ -4,10 +4,13 @@ import { db } from "@/db";
 import {
   developers, projects, materials, suppliers,
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
+  developerRateCards, materialPriceHistory, subcontractorRateCards,
+  bomStandards, costCenters, materialSuppliers,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { getAuthUser } from "@/lib/supabase-server";
 
 // ─── Developers ────────────────────────────────────────────────────────────
 
@@ -188,8 +191,7 @@ export async function toggleSubconActive(id: string, isActive: boolean): Promise
 // ─── Activity Definitions (SOW) ────────────────────────────────────────────
 
 const ActivityDefSchema = z.object({
-  projectId:            z.string().uuid(),
-  category:             z.enum(["SLAB", "STRUCTURAL", "SPECIALTY_WORKS", "MEPF", "ARCHITECTURAL", "TURNOVER"]),
+  category:             z.enum(["STRUCTURAL", "ARCHITECTURAL", "TURNOVER"]),
   scopeCode:            z.string().min(1).max(100),
   scopeName:            z.string().min(1).max(150),
   activityCode:         z.string().min(1).max(100),
@@ -209,7 +211,6 @@ export async function createActivityDefinition(
   const [row] = await db
     .insert(activityDefinitions)
     .values({
-      projectId:            d.projectId,
       category:             d.category,
       scopeCode:            d.scopeCode,
       scopeName:            d.scopeName,
@@ -225,18 +226,182 @@ export async function createActivityDefinition(
   return { success: true, id: row.id };
 }
 
+export async function updateActivityDefinition(
+  id: string,
+  input: z.infer<typeof ActivityDefSchema>,
+): Promise<MutationResult> {
+  const parsed = ActivityDefSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  await db.update(activityDefinitions).set({
+    category:             d.category,
+    scopeCode:            d.scopeCode,
+    scopeName:            d.scopeName,
+    activityCode:         d.activityCode,
+    activityName:         d.activityName,
+    standardDurationDays: d.standardDurationDays,
+    weightInScopePct:     String(d.weightInScopePct),
+    sequenceOrder:        d.sequenceOrder,
+  }).where(eq(activityDefinitions.id, id));
+
+  revalidatePath("/master-list/sow");
+  revalidatePath(`/master-list/sow/${id}`);
+  revalidatePath("/admin/activity-defs");
+  return { success: true, id };
+}
+
+export async function toggleActivityDefinitionActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(activityDefinitions).set({ isActive }).where(eq(activityDefinitions.id, id));
+  revalidatePath("/master-list/sow");
+  revalidatePath(`/master-list/sow/${id}`);
+  revalidatePath("/admin/activity-defs");
+  return { success: true };
+}
+
+// ─── Milestone Definitions ─────────────────────────────────────────────────
+
+const MilestoneDefSchema = z.object({
+  name:            z.string().min(1).max(150),
+  category:        z.enum(["STRUCTURAL", "ARCHITECTURAL", "TURNOVER"]),
+  sequenceOrder:   z.number().int().min(1),
+  triggersBilling: z.boolean(),
+  weightPct:       z.number().min(0).max(100),
+});
+
+export async function createMilestoneDefinition(
+  input: z.infer<typeof MilestoneDefSchema>,
+): Promise<MutationResult> {
+  const parsed = MilestoneDefSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db.insert(milestoneDefinitions).values({
+    name:            d.name,
+    category:        d.category,
+    sequenceOrder:   d.sequenceOrder,
+    triggersBilling: d.triggersBilling,
+    weightPct:       String(d.weightPct),
+  }).returning({ id: milestoneDefinitions.id });
+
+  revalidatePath("/admin/milestone-defs");
+  return { success: true, id: row.id };
+}
+
+export async function updateMilestoneDefinition(
+  id: string,
+  input: z.infer<typeof MilestoneDefSchema>,
+): Promise<MutationResult> {
+  const parsed = MilestoneDefSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  await db.update(milestoneDefinitions).set({
+    name:            d.name,
+    category:        d.category,
+    sequenceOrder:   d.sequenceOrder,
+    triggersBilling: d.triggersBilling,
+    weightPct:       String(d.weightPct),
+  }).where(eq(milestoneDefinitions.id, id));
+
+  revalidatePath("/admin/milestone-defs");
+  revalidatePath(`/admin/milestone-defs/${id}`);
+  return { success: true, id };
+}
+
+export async function toggleMilestoneDefinitionActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(milestoneDefinitions).set({ isActive }).where(eq(milestoneDefinitions.id, id));
+  revalidatePath("/admin/milestone-defs");
+  return { success: true };
+}
+
+// ─── Material Update (full fields) ─────────────────────────────────────────
+
+const UpdateMaterialSchema = z.object({
+  code:                z.string().min(1).max(50),
+  name:                z.string().min(1).max(150),
+  unit:                z.string().min(1).max(30),
+  category:            z.string().min(1).max(50),
+  preferredSupplierId: z.string().uuid().optional(),
+});
+
+export async function updateMaterial(
+  id: string,
+  input: z.infer<typeof UpdateMaterialSchema>,
+): Promise<MutationResult> {
+  const parsed = UpdateMaterialSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  await db.update(materials).set({
+    code:                d.code,
+    name:                d.name,
+    unit:                d.unit,
+    category:            d.category,
+    preferredSupplierId: d.preferredSupplierId || null,
+  }).where(eq(materials.id, id));
+
+  revalidatePath("/admin/materials");
+  revalidatePath(`/admin/materials/${id}`);
+  revalidatePath("/master-list/materials");
+  return { success: true, id };
+}
+
+// ─── Supplier Update ───────────────────────────────────────────────────────
+
+export async function updateSupplier(
+  id: string,
+  input: { name: string },
+): Promise<MutationResult> {
+  if (!input.name?.trim()) return { success: false, error: "Name is required." };
+  await db.update(suppliers).set({ name: input.name.trim() }).where(eq(suppliers.id, id));
+  revalidatePath("/admin/suppliers");
+  revalidatePath(`/admin/suppliers/${id}`);
+  revalidatePath("/master-list/vendors");
+  return { success: true, id };
+}
+
+// ─── Subcontractor Update ──────────────────────────────────────────────────
+
+export async function updateSubcontractor(
+  id: string,
+  input: z.infer<typeof SubconSchema>,
+): Promise<MutationResult> {
+  const parsed = SubconSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  await db.update(subcontractors).set({
+    code:                  d.code,
+    name:                  d.name,
+    tradeTypes:            d.tradeTypes,
+    defaultMaxActiveUnits: d.defaultMaxActiveUnits,
+    manpowerBenchmark:     String(d.manpowerBenchmark),
+  }).where(eq(subcontractors.id, id));
+
+  revalidatePath("/master-list/subcontractors");
+  revalidatePath(`/master-list/subcontractors/${id}`);
+  return { success: true, id };
+}
+
 // ─── Project BOD Approval ──────────────────────────────────────────────────
 
 export async function approveProject(id: string): Promise<{ success: boolean; error?: string }> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
   const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, id));
   if (!project) return { success: false, error: "Project not found." };
 
   await db.update(projects).set({
-    status: "ACTIVE",
+    status:        "ACTIVE",
     bodApprovedAt: new Date(),
+    bodApprovedBy: user.id,
   }).where(eq(projects.id, id));
 
   revalidatePath(`/master-list/projects/${id}`);
+  revalidatePath("/planning");
+  revalidatePath("/main-dashboard");
   return { success: true };
 }
 
@@ -269,7 +434,7 @@ const ProjectUnitSchema = z.object({
   lotNumber: z.string().min(1).max(20),
   unitCode:  z.string().min(1).max(50),
   unitModel: z.string().min(1).max(50),
-  unitType:  z.enum(["BEG", "REG", "END"]).default("REG"),
+  unitType:  z.enum(["BEG", "MID", "END", "SHOP"]).default("MID"),
 });
 
 export async function createProjectUnit(input: z.infer<typeof ProjectUnitSchema>): Promise<MutationResult> {
@@ -286,40 +451,399 @@ export async function createProjectUnit(input: z.infer<typeof ProjectUnitSchema>
   return { success: true, id: row.id };
 }
 
-// ─── Milestone Definitions ─────────────────────────────────────────────────
+// ─── Block Update / Delete ─────────────────────────────────────────────────
 
-const MilestoneDefSchema = z.object({
-  projectId:       z.string().uuid(),
-  scopeCode:       z.string().max(100).optional(),
-  scopeName:       z.string().max(150).optional(),
-  name:            z.string().min(1).max(150),
-  category:        z.enum(["SLAB", "STRUCTURAL", "SPECIALTY_WORKS", "MEPF", "ARCHITECTURAL", "TURNOVER"]),
-  sequenceOrder:   z.number().int().min(1),
-  triggersBilling: z.boolean().default(false),
-  weightPct:       z.number().min(0).max(100),
+export async function updateBlock(
+  id: string,
+  input: { blockName: string; totalLots: number },
+): Promise<MutationResult> {
+  if (!input.blockName?.trim()) return { success: false, error: "Block name is required." };
+  if (!Number.isInteger(input.totalLots) || input.totalLots < 1) return { success: false, error: "Total lots must be a positive integer." };
+
+  const [block] = await db.select({ projectId: blocks.projectId }).from(blocks).where(eq(blocks.id, id));
+  if (!block) return { success: false, error: "Block not found." };
+
+  await db.update(blocks).set({ blockName: input.blockName.trim(), totalLots: input.totalLots }).where(eq(blocks.id, id));
+  revalidatePath(`/master-list/projects/${block.projectId}`);
+  return { success: true, id };
+}
+
+export async function deleteBlock(id: string): Promise<{ success: boolean; error?: string }> {
+  const [block] = await db.select({ projectId: blocks.projectId }).from(blocks).where(eq(blocks.id, id));
+  if (!block) return { success: false, error: "Block not found." };
+
+  const [{ n }] = await db.select({ n: count() }).from(projectUnits).where(eq(projectUnits.blockId, id));
+  if (Number(n) > 0) return { success: false, error: `Cannot delete: ${n} unit(s) exist in this block. Remove units first.` };
+
+  await db.delete(blocks).where(eq(blocks.id, id));
+  revalidatePath(`/master-list/projects/${block.projectId}`);
+  return { success: true };
+}
+
+// ─── Project Unit Update / Delete ──────────────────────────────────────────
+
+export async function updateProjectUnit(
+  id: string,
+  input: { blockId: string; lotNumber: string; unitCode: string; unitModel: string; unitType: "BEG" | "MID" | "END" | "SHOP"; contractPrice?: string },
+): Promise<MutationResult> {
+  if (!input.lotNumber?.trim() || !input.unitCode?.trim() || !input.unitModel?.trim()) {
+    return { success: false, error: "Lot number, unit code, and unit model are required." };
+  }
+
+  const [unit] = await db.select({ projectId: projectUnits.projectId }).from(projectUnits).where(eq(projectUnits.id, id));
+  if (!unit) return { success: false, error: "Unit not found." };
+
+  await db.update(projectUnits).set({
+    blockId:       input.blockId,
+    lotNumber:     input.lotNumber.trim(),
+    unitCode:      input.unitCode.trim(),
+    unitModel:     input.unitModel.trim(),
+    unitType:      input.unitType,
+    contractPrice: input.contractPrice?.trim() ? input.contractPrice.trim() : null,
+  }).where(eq(projectUnits.id, id));
+
+  revalidatePath(`/master-list/projects/${unit.projectId}`);
+  return { success: true, id };
+}
+
+export async function deleteProjectUnit(id: string): Promise<{ success: boolean; error?: string }> {
+  const [unit] = await db
+    .select({ projectId: projectUnits.projectId, status: projectUnits.status })
+    .from(projectUnits)
+    .where(eq(projectUnits.id, id));
+
+  if (!unit) return { success: false, error: "Unit not found." };
+  if (unit.status !== "PENDING") return { success: false, error: `Cannot delete: unit status is "${unit.status}". Only PENDING units can be deleted.` };
+
+  await db.delete(projectUnits).where(eq(projectUnits.id, id));
+  revalidatePath(`/master-list/projects/${unit.projectId}`);
+  return { success: true };
+}
+
+// ─── Developer Rate Cards ───────────────────────────────────────────────────
+
+const RateCardSchema = z.object({
+  projectId:        z.string().uuid(),
+  activityDefId:    z.string().uuid(),
+  grossRatePerUnit: z.number().positive(),
+  retentionPct:     z.number().min(0).max(1),
+  dpRecoupmentPct:  z.number().min(0).max(1),
+  taxPct:           z.number().min(0).max(1),
 });
 
-export async function createMilestoneDefinition(
-  input: z.infer<typeof MilestoneDefSchema>,
+export async function createDeveloperRateCard(
+  input: z.infer<typeof RateCardSchema>,
 ): Promise<MutationResult> {
-  const parsed = MilestoneDefSchema.safeParse(input);
+  const parsed = RateCardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const { projectId, activityDefId, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
+
+  const [row] = await db
+    .insert(developerRateCards)
+    .values({
+      projectId,
+      activityDefId,
+      grossRatePerUnit: String(grossRatePerUnit),
+      retentionPct:     String(retentionPct),
+      dpRecoupmentPct:  String(dpRecoupmentPct),
+      taxPct:           String(taxPct),
+    })
+    .returning({ id: developerRateCards.id });
+
+  revalidatePath("/admin/rate-cards");
+  return { success: true, id: row.id };
+}
+
+export async function updateDeveloperRateCard(
+  id: string,
+  input: z.infer<typeof RateCardSchema>,
+): Promise<MutationResult> {
+  const parsed = RateCardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const { projectId, activityDefId, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
+
+  await db
+    .update(developerRateCards)
+    .set({
+      projectId,
+      activityDefId,
+      grossRatePerUnit: String(grossRatePerUnit),
+      retentionPct:     String(retentionPct),
+      dpRecoupmentPct:  String(dpRecoupmentPct),
+      taxPct:           String(taxPct),
+    })
+    .where(eq(developerRateCards.id, id));
+
+  revalidatePath("/admin/rate-cards");
+  return { success: true, id };
+}
+
+export async function toggleDeveloperRateCardActive(
+  id: string,
+  isActive: boolean,
+): Promise<{ success: boolean }> {
+  await db.update(developerRateCards).set({ isActive }).where(eq(developerRateCards.id, id));
+  revalidatePath("/admin/rate-cards");
+  return { success: true };
+}
+
+// ─── Material Delete ────────────────────────────────────────────────────────
+
+export async function deleteMaterial(id: string): Promise<{ success: boolean; error?: string }> {
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(materialPriceHistory)
+    .where(eq(materialPriceHistory.materialId, id));
+
+  if (Number(n) > 0) {
+    return { success: false, error: `Cannot delete: ${n} price history record(s) exist. Deactivate instead.` };
+  }
+
+  await db.delete(materials).where(eq(materials.id, id));
+  revalidatePath("/admin/materials");
+  revalidatePath("/master-list/materials");
+  return { success: true };
+}
+
+// ─── Supplier Delete ────────────────────────────────────────────────────────
+
+export async function deleteSupplier(id: string): Promise<{ success: boolean; error?: string }> {
+  const [{ n }] = await db
+    .select({ n: count() })
+    .from(materials)
+    .where(eq(materials.preferredSupplierId, id));
+
+  if (Number(n) > 0) {
+    return { success: false, error: `Cannot delete: ${n} material(s) use this supplier. Reassign them first.` };
+  }
+
+  await db.delete(suppliers).where(eq(suppliers.id, id));
+  revalidatePath("/admin/suppliers");
+  return { success: true };
+}
+
+// ─── Subcontractor Rate Cards ───────────────────────────────────────────────
+
+const SubconRateCardSchema = z.object({
+  subconId:      z.string().uuid(),
+  projectId:     z.string().uuid(),
+  activityDefId: z.string().uuid(),
+  ratePerUnit:   z.number().positive(),
+  retentionPct:  z.number().min(0).max(1),
+});
+
+export async function createSubconRateCard(
+  input: z.infer<typeof SubconRateCardSchema>,
+): Promise<MutationResult> {
+  const parsed = SubconRateCardSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const d = parsed.data;
   const [row] = await db
-    .insert(milestoneDefinitions)
+    .insert(subcontractorRateCards)
     .values({
-      projectId:       d.projectId,
-      scopeCode:       d.scopeCode ?? null,
-      scopeName:       d.scopeName ?? null,
-      name:            d.name,
-      category:        d.category,
-      sequenceOrder:   d.sequenceOrder,
-      triggersBilling: d.triggersBilling,
-      weightPct:       String(d.weightPct),
+      subconId:      d.subconId,
+      projectId:     d.projectId,
+      activityDefId: d.activityDefId,
+      ratePerUnit:   String(d.ratePerUnit),
+      retentionPct:  String(d.retentionPct),
     })
-    .returning({ id: milestoneDefinitions.id });
+    .returning({ id: subcontractorRateCards.id });
 
-  revalidatePath("/admin/milestone-defs");
+  revalidatePath("/admin/subcon-rate-cards");
   return { success: true, id: row.id };
+}
+
+export async function updateSubconRateCard(
+  id: string,
+  input: z.infer<typeof SubconRateCardSchema>,
+): Promise<MutationResult> {
+  const parsed = SubconRateCardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  await db.update(subcontractorRateCards).set({
+    subconId:      d.subconId,
+    projectId:     d.projectId,
+    activityDefId: d.activityDefId,
+    ratePerUnit:   String(d.ratePerUnit),
+    retentionPct:  String(d.retentionPct),
+  }).where(eq(subcontractorRateCards.id, id));
+
+  revalidatePath("/admin/subcon-rate-cards");
+  revalidatePath(`/admin/subcon-rate-cards/${id}`);
+  return { success: true, id };
+}
+
+export async function toggleSubconRateCardActive(
+  id: string,
+  isActive: boolean,
+): Promise<{ success: boolean }> {
+  await db.update(subcontractorRateCards).set({ isActive }).where(eq(subcontractorRateCards.id, id));
+  revalidatePath("/admin/subcon-rate-cards");
+  return { success: true };
+}
+
+// ─── Activity Definition — delete ──────────────────────────────────────────
+
+export async function deleteActivityDefinition(id: string): Promise<{ success: boolean; error?: string }> {
+  const [uses] = await db.select({ n: count() }).from(bomStandards).where(eq(bomStandards.activityDefId, id));
+  if ((uses?.n ?? 0) > 0) return { success: false, error: "Cannot delete: activity is referenced by BOM standards." };
+  await db.delete(activityDefinitions).where(eq(activityDefinitions.id, id));
+  revalidatePath("/admin/activity-defs");
+  return { success: true };
+}
+
+// ─── Milestone Definition — delete ─────────────────────────────────────────
+
+export async function deleteMilestoneDefinition(id: string): Promise<{ success: boolean; error?: string }> {
+  await db.delete(milestoneDefinitions).where(eq(milestoneDefinitions.id, id));
+  revalidatePath("/admin/milestone-defs");
+  return { success: true };
+}
+
+// ─── BOM Standards CRUD ────────────────────────────────────────────────────
+
+const BomStandardSchema = z.object({
+  activityDefId:   z.string().uuid(),
+  unitModel:       z.string().min(1).max(50),
+  unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
+  materialId:      z.string().uuid(),
+  quantityPerUnit: z.number().positive(),
+  baseRatePhp:     z.number().positive().optional(),
+});
+
+export async function createBomStandard(input: z.infer<typeof BomStandardSchema>): Promise<MutationResult> {
+  const parsed = BomStandardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  const [row] = await db.insert(bomStandards).values({
+    activityDefId:   d.activityDefId,
+    unitModel:       d.unitModel,
+    unitType:        d.unitType,
+    materialId:      d.materialId,
+    quantityPerUnit: String(d.quantityPerUnit),
+    baseRatePhp:     d.baseRatePhp != null ? String(d.baseRatePhp) : null,
+  }).returning({ id: bomStandards.id });
+  revalidatePath("/admin/bom-standards");
+  return { success: true, id: row.id };
+}
+
+export async function updateBomStandard(id: string, input: z.infer<typeof BomStandardSchema>): Promise<MutationResult> {
+  const parsed = BomStandardSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(bomStandards).set({
+    activityDefId:   d.activityDefId,
+    unitModel:       d.unitModel,
+    unitType:        d.unitType,
+    materialId:      d.materialId,
+    quantityPerUnit: String(d.quantityPerUnit),
+    baseRatePhp:     d.baseRatePhp != null ? String(d.baseRatePhp) : null,
+  }).where(eq(bomStandards.id, id));
+  revalidatePath("/admin/bom-standards");
+  revalidatePath(`/admin/bom-standards/${id}`);
+  return { success: true, id };
+}
+
+export async function toggleBomStandardActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(bomStandards).set({ isActive }).where(eq(bomStandards.id, id));
+  revalidatePath("/admin/bom-standards");
+  return { success: true };
+}
+
+export async function deleteBomStandard(id: string): Promise<{ success: boolean; error?: string }> {
+  await db.delete(bomStandards).where(eq(bomStandards.id, id));
+  revalidatePath("/admin/bom-standards");
+  return { success: true };
+}
+
+// ─── Cost Centers CRUD ─────────────────────────────────────────────────────
+
+const CostCenterSchema = z.object({
+  code:    z.string().min(1).max(50),
+  name:    z.string().min(1).max(100),
+  deptId:  z.string().uuid(),
+  type:    z.enum(["PROJECT", "BATCHING", "FLEET", "HQ"]),
+});
+
+export async function createCostCenter(input: z.infer<typeof CostCenterSchema>): Promise<MutationResult> {
+  const parsed = CostCenterSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  const [row] = await db.insert(costCenters).values({
+    code: d.code, name: d.name, deptId: d.deptId, type: d.type,
+  }).returning({ id: costCenters.id });
+  revalidatePath("/admin/cost-centers");
+  return { success: true, id: row.id };
+}
+
+export async function updateCostCenter(id: string, input: z.infer<typeof CostCenterSchema>): Promise<MutationResult> {
+  const parsed = CostCenterSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(costCenters).set({ code: d.code, name: d.name, deptId: d.deptId, type: d.type }).where(eq(costCenters.id, id));
+  revalidatePath("/admin/cost-centers");
+  revalidatePath(`/admin/cost-centers/${id}`);
+  return { success: true, id };
+}
+
+export async function toggleCostCenterActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(costCenters).set({ isActive }).where(eq(costCenters.id, id));
+  revalidatePath("/admin/cost-centers");
+  return { success: true };
+}
+
+export async function deleteCostCenter(id: string): Promise<{ success: boolean; error?: string }> {
+  await db.delete(costCenters).where(eq(costCenters.id, id));
+  revalidatePath("/admin/cost-centers");
+  return { success: true };
+}
+
+// ─── Material Suppliers (many-to-many) ────────────────────────────────────
+
+export async function setMaterialSupplier(
+  materialId: string,
+  supplierId: string,
+  isPreferred: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  const [existing] = await db.select({ id: materialSuppliers.id })
+    .from(materialSuppliers)
+    .where(eq(materialSuppliers.materialId, materialId))
+    .limit(1);
+
+  // When setting as preferred, clear existing preferred
+  if (isPreferred) {
+    await db.update(materialSuppliers).set({ isPreferred: false })
+      .where(eq(materialSuppliers.materialId, materialId));
+  }
+
+  const [exists] = await db.select({ id: materialSuppliers.id })
+    .from(materialSuppliers)
+    .where(eq(materialSuppliers.materialId, materialId))
+    .limit(1);
+
+  // Check if this specific pair already exists
+  const allLinks = await db.select({ id: materialSuppliers.id, supplierId: materialSuppliers.supplierId })
+    .from(materialSuppliers)
+    .where(eq(materialSuppliers.materialId, materialId));
+
+  const link = allLinks.find((r) => r.supplierId === supplierId);
+
+  if (link) {
+    await db.update(materialSuppliers).set({ isPreferred }).where(eq(materialSuppliers.id, link.id));
+  } else {
+    await db.insert(materialSuppliers).values({ materialId, supplierId, isPreferred });
+  }
+
+  revalidatePath(`/admin/materials/${materialId}`);
+  return { success: true };
+}
+
+export async function removeMaterialSupplier(id: string, materialId: string): Promise<{ success: boolean }> {
+  await db.delete(materialSuppliers).where(eq(materialSuppliers.id, id));
+  revalidatePath(`/admin/materials/${materialId}`);
+  return { success: true };
 }

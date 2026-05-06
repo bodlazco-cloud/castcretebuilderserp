@@ -14,10 +14,28 @@ export const projectUnits = pgTable("project_units", {
   lotNumber:       varchar("lot_number", { length: 20 }).notNull(),
   unitCode:        varchar("unit_code", { length: 50 }).notNull().unique(),
   unitModel:       varchar("unit_model", { length: 50 }).notNull(),
-  unitType:        unitTypeEnum("unit_type").notNull().default("REG"),
+  unitType:        unitTypeEnum("unit_type").notNull().default("MID"),
+  contractPrice:   numeric("contract_price", { precision: 15, scale: 2 }),
   currentCategory: workCategoryEnum("current_category").notNull().default("STRUCTURAL"),
   status:          varchar("status", { length: 30 }).notNull().default("PENDING"),
+  turnedOverAt:    timestamp("turned_over_at", { withTimezone: true }),
+  turnoverCost:    numeric("turnover_cost", { precision: 15, scale: 2 }),  // CIP cost captured at turnover
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Records each architectural turnover event — the moment CIP becomes COGS
+// and Deferred Revenue becomes Recognized Revenue.
+export const unitTurnovers = pgTable("unit_turnovers", {
+  id:               uuid("id").primaryKey().defaultRandom(),
+  unitId:           uuid("unit_id").notNull().references(() => projectUnits.id),
+  projectId:        uuid("project_id").notNull().references(() => projects.id),
+  turnoverDate:     date("turnover_date").notNull(),
+  cipCost:          numeric("cip_cost",          { precision: 15, scale: 2 }).notNull(),  // COGS booked
+  contractPrice:    numeric("contract_price",    { precision: 15, scale: 2 }).notNull(),  // Revenue snapshot
+  unitCode:         varchar("unit_code",         { length: 50 }).notNull(),               // denormalized for reports
+  notes:            text("notes"),
+  recordedBy:       uuid("recorded_by").notNull().references(() => users.id),
+  createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const unitMilestones = pgTable("unit_milestones", {

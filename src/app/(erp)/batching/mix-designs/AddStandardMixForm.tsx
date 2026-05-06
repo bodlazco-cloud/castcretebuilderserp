@@ -29,7 +29,7 @@ export function AddStandardMixForm({ projects, mixDesigns, unitModels }: {
 
   const [projectId,       setProjectId]       = useState("");
   const [unitModel,       setUnitModel]       = useState("");
-  const [unitType,        setUnitType]        = useState<"BEG" | "REG" | "END">("REG");
+  const [unitType,        setUnitType]        = useState<"BEG" | "MID" | "END" | "SHOP">("MID");
   const [mixDesignId,     setMixDesignId]     = useState("");
   const [volumePerUnit,   setVolumePerUnit]   = useState("");
   const [description,     setDescription]     = useState("");
@@ -39,7 +39,7 @@ export function AddStandardMixForm({ projects, mixDesigns, unitModels }: {
   );
 
   function reset() {
-    setProjectId(""); setUnitModel(""); setUnitType("REG");
+    setProjectId(""); setUnitModel(""); setUnitType("MID");
     setMixDesignId(""); setVolumePerUnit(""); setDescription(""); setError(null);
   }
 
@@ -125,8 +125,9 @@ export function AddStandardMixForm({ projects, mixDesigns, unitModels }: {
               <span style={labelStyle}>Unit Type *</span>
               <select required value={unitType} onChange={(e) => setUnitType(e.target.value as typeof unitType)} style={inputStyle}>
                 <option value="BEG">BEG — Beginning</option>
-                <option value="REG">REG — Regular</option>
+                <option value="MID">MID — Middle</option>
                 <option value="END">END — End</option>
+                <option value="SHOP">SHOP — Shop / Retail</option>
               </select>
             </label>
           </div>

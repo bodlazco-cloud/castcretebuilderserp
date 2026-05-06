@@ -8,16 +8,20 @@ ALTER TYPE work_category ADD VALUE IF NOT EXISTS 'SLAB';
 ALTER TYPE work_category ADD VALUE IF NOT EXISTS 'SPECIALTY_WORKS';
 ALTER TYPE work_category ADD VALUE IF NOT EXISTS 'MEPF';
 
--- 2. Add unit_type column to project_units
-ALTER TABLE project_units
-  ADD COLUMN IF NOT EXISTS unit_type unit_type NOT NULL DEFAULT 'REG';
+-- 2. Expand unit_type enum with MID and SHOP (BEG/END already exist)
+ALTER TYPE unit_type ADD VALUE IF NOT EXISTS 'MID';
+ALTER TYPE unit_type ADD VALUE IF NOT EXISTS 'SHOP';
 
--- 3. Add scope columns to milestone_definitions (SOW link, non-FK / denormalised)
+-- 3. Add unit_type column to project_units (default MID)
+ALTER TABLE project_units
+  ADD COLUMN IF NOT EXISTS unit_type unit_type NOT NULL DEFAULT 'MID';
+
+-- 4. Add scope columns to milestone_definitions (SOW link, non-FK / denormalised)
 ALTER TABLE milestone_definitions
   ADD COLUMN IF NOT EXISTS scope_code VARCHAR(100),
   ADD COLUMN IF NOT EXISTS scope_name VARCHAR(150);
 
--- 4. Standard concrete mixes table
+-- 5. Standard concrete mixes table
 CREATE TABLE IF NOT EXISTS standard_mixes (
   id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id        UUID        NOT NULL REFERENCES projects(id),

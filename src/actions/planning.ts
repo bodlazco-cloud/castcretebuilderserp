@@ -15,7 +15,7 @@ const BomLineSchema = z.object({
 const SaveBomSchema = z.object({
   activityDefId: z.string().uuid(),
   unitModel:     z.string().min(1).max(50),
-  unitType:      z.enum(["BEG", "REG", "END"]),
+  unitType:      z.enum(["BEG", "MID", "END", "SHOP"]),
   items:         z.array(BomLineSchema).min(1, "At least one material line is required"),
 });
 
@@ -74,7 +74,7 @@ const CreateCoSchema = z.object({
   activityDefId: z.string().uuid().optional(),
   bomStandardId: z.string().uuid().optional(),
   unitModel:    z.string().max(50).optional(),
-  unitType:     z.enum(["BEG", "REG", "END"]).optional(),
+  unitType:     z.enum(["BEG", "MID", "END", "SHOP"]).optional(),
   materialId:   z.string().uuid().optional(),
   changeType:   z.enum(["ADD", "MODIFY", "REMOVE"]),
   oldQuantity:  z.number().positive().optional(),

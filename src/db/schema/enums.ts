@@ -15,7 +15,7 @@ export const approvalStatusEnum = pgEnum("approval_status", [
 ]);
 
 export const workCategoryEnum = pgEnum("work_category", [
-  "SLAB", "STRUCTURAL", "SPECIALTY_WORKS", "MEPF", "ARCHITECTURAL", "TURNOVER",
+  "STRUCTURAL", "ARCHITECTURAL", "TURNOVER",
 ]);
 
 export const tradeTypeEnum = pgEnum("trade_type", [
@@ -53,12 +53,32 @@ export const milestoneDocTypeEnum = pgEnum("milestone_doc_type", [
   "OSM_ACKNOWLEDGMENT", "SUBCON_BILLING_INVOICE", "QUALITY_CLEARANCE",
 ]);
 
-export const unitTypeEnum = pgEnum("unit_type", ["BEG", "REG", "END"]);
+export const unitTypeEnum = pgEnum("unit_type", ["BEG", "MID", "END", "SHOP"]);
 
 export const changeOrderTypeEnum = pgEnum("change_order_type", ["ADD", "MODIFY", "REMOVE"]);
 
-export const payrollStatusEnum = pgEnum("payroll_status", ["DRAFT", "PROCESSING", "APPROVED", "RELEASED"]);
+export const payrollStatusEnum = pgEnum("payroll_status", ["DRAFT", "PROCESSING", "APPROVED", "RELEASED", "REJECTED"]);
 
 export const bankTransactionTypeEnum = pgEnum("bank_transaction_type", ["DEBIT", "CREDIT"]);
 
 export const punchListStatusEnum = pgEnum("punch_list_status", ["OPEN", "IN_PROGRESS", "CLOSED"]);
+
+// NTP lifecycle: DRAFT → PENDING_REVIEW (Planning) → ACTIVE (triggers resource forecast + auto-PR) → COMPLETED
+export const ntpStatusEnum = pgEnum("ntp_status", [
+  "DRAFT", "PENDING_REVIEW", "BOD_APPROVED", "ACTIVE", "COMPLETED",
+]);
+
+// Resource forecast lifecycle driven by the Chain of Necessity
+export const resourceForecastStatusEnum = pgEnum("resource_forecast_status", [
+  "PENDING_PR", "PR_CREATED", "PO_ISSUED", "ISSUED",
+]);
+
+// Explicit payment flow for Finance module (DRAFT → PREPARED → RELEASED)
+export const paymentFlowStatusEnum = pgEnum("payment_flow_status", [
+  "DRAFT", "PREPARED", "RELEASED",
+]);
+
+// Full audit trail for all stock movements
+export const materialMovementTypeEnum = pgEnum("material_movement_type", [
+  "RECEIPT", "ISSUANCE", "TRANSFER", "ADJUSTMENT",
+]);

@@ -45,7 +45,7 @@ export function NewCoForm({
         projectId:        fd.get("projectId") as string,
         activityDefId:    (fd.get("activityDefId") as string) || undefined,
         unitModel:        (fd.get("unitModel") as string) || undefined,
-        unitType:         ((fd.get("unitType") as string) || undefined) as "BEG" | "REG" | "END" | undefined,
+        unitType:         ((fd.get("unitType") as string) || undefined) as "BEG" | "MID" | "END" | "SHOP" | undefined,
         materialId:       (fd.get("materialId") as string) || undefined,
         changeType:       changeType,
         oldQuantity:      oldQ ? Number(oldQ) : undefined,
@@ -132,8 +132,9 @@ export function NewCoForm({
           <select name="unitType" style={inputStyle}>
             <option value="">Not specific</option>
             <option value="BEG">BEG — Beginning</option>
-            <option value="REG">REG — Regular</option>
+            <option value="MID">MID — Middle</option>
             <option value="END">END — End</option>
+            <option value="SHOP">SHOP — Shop / Retail</option>
           </select>
         </label>
       </div>

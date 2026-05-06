@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { projects, developers, activityDefinitions, blocks, projectUnits } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { projects, developers, blocks, projectUnits } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
-import { ApproveProjectButton, AddBlockForm, AddUnitForm } from "./ProjectActions";
+import { ApproveProjectButton, AddBlockForm, EditBlockForm, DeleteBlockButton, AddUnitForm, UnitRow } from "./ProjectActions";
 
 const FIELD: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "0.2rem" };
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" };
@@ -50,53 +50,22 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   if (!project) notFound();
 
-  const [scopeRows, blockRows] = await Promise.all([
-    db
-      .select({ id: activityDefinitions.id, activityCode: activityDefinitions.activityCode, scopeName: activityDefinitions.scopeName, category: activityDefinitions.category, sequenceOrder: activityDefinitions.sequenceOrder, isActive: activityDefinitions.isActive })
-      .from(activityDefinitions)
-      .where(eq(activityDefinitions.projectId, id))
-      .orderBy(activityDefinitions.sequenceOrder),
-    db
-      .select({ id: blocks.id, blockName: blocks.blockName, totalLots: blocks.totalLots })
-      .from(blocks)
-      .where(eq(blocks.projectId, id))
-      .orderBy(blocks.blockName),
-  ]);
+  const blockRows = await db
+    .select({ id: blocks.id, blockName: blocks.blockName, totalLots: blocks.totalLots })
+    .from(blocks)
+    .where(eq(blocks.projectId, id))
+    .orderBy(blocks.blockName);
 
-  let unitRows: { id: string; blockId: string | null; unitCode: string; lotNumber: string | null; unitModel: string | null; unitType: string | null; status: string }[] = [];
-  if (blockRows.length > 0) {
-    try {
-      unitRows = await db
-        .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, unitType: projectUnits.unitType, status: projectUnits.status })
+  const unitRows = blockRows.length > 0
+    ? await db
+        .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, unitType: projectUnits.unitType, status: projectUnits.status, contractPrice: projectUnits.contractPrice })
         .from(projectUnits)
         .where(eq(projectUnits.projectId, id))
-        .orderBy(projectUnits.unitCode);
-    } catch {
-      // unit_type column may not exist yet if migration 014 hasn't been run
-      const rows = await db.execute(sql`
-        SELECT id, block_id, unit_code, lot_number, unit_model, NULL::text AS unit_type, status
-        FROM project_units WHERE project_id = ${id} ORDER BY unit_code
-      `);
-      unitRows = (rows.rows as Record<string, unknown>[]).map((r) => ({
-        id:        r.id as string,
-        blockId:   r.block_id as string | null,
-        unitCode:  r.unit_code as string,
-        lotNumber: r.lot_number as string | null,
-        unitModel: r.unit_model as string | null,
-        unitType:  null,
-        status:    r.status as string,
-      }));
-    }
-  }
+        .orderBy(projectUnits.unitCode)
+    : [];
 
   const sc = STATUS_STYLE[project.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
   const isApproved = project.status === "ACTIVE" && !!project.bodApprovedAt;
-
-  const UNIT_STATUS: Record<string, { bg: string; color: string }> = {
-    PENDING:     { bg: "#f3f4f6", color: "#6b7280" },
-    IN_PROGRESS: { bg: "#eff6ff", color: "#1e40af" },
-    COMPLETED:   { bg: "#dcfce7", color: "#166534" },
-  };
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -121,10 +90,10 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </div>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             {!isApproved && <ApproveProjectButton projectId={id} />}
-            <a href={`/master-list/sow/new?projectId=${id}`} style={{
+            <a href="/master-list/sow" style={{
               padding: "0.5rem 1rem", borderRadius: "6px", background: "#6366f1",
               color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
-            }}>+ Add Scope</a>
+            }}>Scope of Work →</a>
             <a href={`/construction/ntp`} style={{
               padding: "0.5rem 1rem", borderRadius: "6px", background: "#057a55",
               color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
@@ -189,38 +158,33 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                 const blockUnits = unitRows.filter((u) => u.blockId === block.id);
                 return (
                   <div key={block.id} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                    <div style={{ padding: "0.75rem 1rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ padding: "0.75rem 1rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                       <div>
                         <span style={{ fontWeight: 700, color: "#111827", fontSize: "0.9rem" }}>{block.blockName}</span>
                         <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#6b7280" }}>{blockUnits.length}/{block.totalLots} lots</span>
+                      </div>
+                      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
+                        <EditBlockForm blockId={block.id} initialName={block.blockName} initialLots={block.totalLots} />
+                        <DeleteBlockButton blockId={block.id} />
                       </div>
                     </div>
                     {blockUnits.length > 0 && (
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                         <thead>
                           <tr>
-                            {["Lot #", "Unit Code", "Model", "Type", "Status"].map((h, i) => (
+                            {["Lot #", "Unit Code", "Model", "Status", ""].map((h, i) => (
                               <th key={i} style={{ padding: "0.5rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #f3f4f6", fontSize: "0.78rem" }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {blockUnits.map((u) => {
-                            const us = UNIT_STATUS[u.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
-                            return (
-                              <tr key={u.id} style={{ borderBottom: "1px solid #f9fafb" }}>
-                                <td style={{ padding: "0.5rem 0.9rem", color: "#6b7280" }}>{u.lotNumber}</td>
-                                <td style={{ padding: "0.5rem 0.9rem", fontFamily: "monospace", fontSize: "0.82rem", fontWeight: 600, color: "#374151" }}>{u.unitCode}</td>
-                                <td style={{ padding: "0.5rem 0.9rem", color: "#374151" }}>{u.unitModel}</td>
-                                <td style={{ padding: "0.5rem 0.9rem" }}>
-                                  <span style={{ display: "inline-block", padding: "0.15rem 0.4rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, background: "#eff6ff", color: "#1e40af" }}>{u.unitType}</span>
-                                </td>
-                                <td style={{ padding: "0.5rem 0.9rem" }}>
-                                  <span style={{ display: "inline-block", padding: "0.15rem 0.5rem", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: us.bg, color: us.color }}>{u.status}</span>
-                                </td>
-                              </tr>
-                            );
-                          })}
+                          {blockUnits.map((u) => (
+                            <UnitRow
+                              key={u.id}
+                              unit={{ id: u.id, blockId: u.blockId, lotNumber: u.lotNumber, unitCode: u.unitCode, unitModel: u.unitModel, status: u.status, contractPrice: u.contractPrice }}
+                              blockOptions={blockRows.map((b) => ({ id: b.id, blockName: b.blockName }))}
+                            />
+                          ))}
                         </tbody>
                       </table>
                     )}
@@ -235,43 +199,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         </div>
 
         {/* Scope of Work */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h2 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 700, color: "#374151" }}>Scope of Work ({scopeRows.length})</h2>
-          {scopeRows.length === 0 ? (
-            <div style={{ padding: "1.5rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af", fontSize: "0.875rem" }}>
-              No scope of work defined. <a href={`/master-list/sow/new?projectId=${id}`} style={{ color: "#6366f1" }}>Add one →</a>
-            </div>
-          ) : (
-            <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-                <thead>
-                  <tr style={{ background: "#f9fafb" }}>
-                    {["#", "Activity Code", "Scope Name", "Category", "Status", ""].map((h, i) => (
-                      <th key={i} style={{ padding: "0.6rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {scopeRows.map((s) => (
-                    <tr key={s.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "0.6rem 0.9rem", color: "#9ca3af", fontSize: "0.8rem" }}>{s.sequenceOrder}</td>
-                      <td style={{ padding: "0.6rem 0.9rem", fontFamily: "monospace", fontSize: "0.82rem", color: "#374151" }}>{s.activityCode}</td>
-                      <td style={{ padding: "0.6rem 0.9rem", fontWeight: 500, color: "#111827" }}>{s.scopeName}</td>
-                      <td style={{ padding: "0.6rem 0.9rem", color: "#6b7280", fontSize: "0.82rem" }}>{s.category}</td>
-                      <td style={{ padding: "0.6rem 0.9rem" }}>
-                        <span style={{ display: "inline-block", padding: "0.15rem 0.5rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: s.isActive ? "#dcfce7" : "#f3f4f6", color: s.isActive ? "#166534" : "#6b7280" }}>
-                          {s.isActive ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                      <td style={{ padding: "0.6rem 0.9rem", textAlign: "right" }}>
-                        <a href={`/master-list/sow/${s.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <div style={{ padding: "1rem 1.25rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#374151" }}>Scope of Work</div>
+            <div style={{ fontSize: "0.82rem", color: "#6b7280", marginTop: "0.15rem" }}>Activity definitions are system-wide. Link to BOM entries for cost planning.</div>
+          </div>
+          <a href="/master-list/sow" style={{ padding: "0.45rem 0.9rem", borderRadius: "6px", background: "#6366f1", color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none" }}>
+            View Scope of Work →
+          </a>
         </div>
       </div>
     </main>

@@ -19,9 +19,10 @@ const labelStyle: React.CSSProperties = {
 };
 
 const UNIT_TYPES = [
-  { value: "BEG", label: "BEG — Beginning Unit" },
-  { value: "REG", label: "REG — Regular Unit" },
-  { value: "END", label: "END — End Unit" },
+  { value: "BEG",  label: "BEG — Beginning Unit" },
+  { value: "MID",  label: "MID — Middle Unit" },
+  { value: "END",  label: "END — End Unit" },
+  { value: "SHOP", label: "SHOP — Shop / Retail Unit" },
 ];
 
 type LineItem = { materialId: string; qty: string; unitPrice: string; preferredSupplierId: string };
@@ -92,7 +93,7 @@ export function BomEntryForm({ projects, sowItems, unitModels, materials, vendor
       const result = await saveBomEntries({
         activityDefId: selectedActivity,
         unitModel,
-        unitType: unitType as "BEG" | "REG" | "END",
+        unitType: unitType as "BEG" | "MID" | "END" | "SHOP",
         items,
       });
       if (result.success) {
