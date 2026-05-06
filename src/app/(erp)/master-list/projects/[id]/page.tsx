@@ -58,7 +58,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   const unitRows = blockRows.length > 0
     ? await db
-        .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, status: projectUnits.status, contractPrice: projectUnits.contractPrice })
+        .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, unitType: projectUnits.unitType, status: projectUnits.status, contractPrice: projectUnits.contractPrice })
         .from(projectUnits)
         .where(eq(projectUnits.projectId, id))
         .orderBy(projectUnits.unitCode)

@@ -53,7 +53,7 @@ export const milestoneDocTypeEnum = pgEnum("milestone_doc_type", [
   "OSM_ACKNOWLEDGMENT", "SUBCON_BILLING_INVOICE", "QUALITY_CLEARANCE",
 ]);
 
-export const unitTypeEnum = pgEnum("unit_type", ["BEG", "REG", "END"]);
+export const unitTypeEnum = pgEnum("unit_type", ["BEG", "MID", "END", "SHOP"]);
 
 export const changeOrderTypeEnum = pgEnum("change_order_type", ["ADD", "MODIFY", "REMOVE"]);
 

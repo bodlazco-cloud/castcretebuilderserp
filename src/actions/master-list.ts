@@ -434,6 +434,7 @@ const ProjectUnitSchema = z.object({
   lotNumber: z.string().min(1).max(20),
   unitCode:  z.string().min(1).max(50),
   unitModel: z.string().min(1).max(50),
+  unitType:  z.enum(["BEG", "MID", "END", "SHOP"]).default("MID"),
 });
 
 export async function createProjectUnit(input: z.infer<typeof ProjectUnitSchema>): Promise<MutationResult> {
@@ -443,7 +444,7 @@ export async function createProjectUnit(input: z.infer<typeof ProjectUnitSchema>
   const d = parsed.data;
   const [row] = await db
     .insert(projectUnits)
-    .values({ projectId: d.projectId, blockId: d.blockId, lotNumber: d.lotNumber, unitCode: d.unitCode, unitModel: d.unitModel })
+    .values({ projectId: d.projectId, blockId: d.blockId, lotNumber: d.lotNumber, unitCode: d.unitCode, unitModel: d.unitModel, unitType: d.unitType })
     .returning({ id: projectUnits.id });
 
   revalidatePath(`/master-list/projects/${d.projectId}`);
@@ -483,7 +484,7 @@ export async function deleteBlock(id: string): Promise<{ success: boolean; error
 
 export async function updateProjectUnit(
   id: string,
-  input: { blockId: string; lotNumber: string; unitCode: string; unitModel: string; contractPrice?: string },
+  input: { blockId: string; lotNumber: string; unitCode: string; unitModel: string; unitType: "BEG" | "MID" | "END" | "SHOP"; contractPrice?: string },
 ): Promise<MutationResult> {
   if (!input.lotNumber?.trim() || !input.unitCode?.trim() || !input.unitModel?.trim()) {
     return { success: false, error: "Lot number, unit code, and unit model are required." };
@@ -497,6 +498,7 @@ export async function updateProjectUnit(
     lotNumber:     input.lotNumber.trim(),
     unitCode:      input.unitCode.trim(),
     unitModel:     input.unitModel.trim(),
+    unitType:      input.unitType,
     contractPrice: input.contractPrice?.trim() ? input.contractPrice.trim() : null,
   }).where(eq(projectUnits.id, id));
 

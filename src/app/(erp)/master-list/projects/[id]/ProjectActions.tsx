@@ -217,16 +217,17 @@ export function AddUnitForm({ projectId, blockOptions }: {
   const [lotNumber, setLotNumber] = useState("");
   const [unitCode, setUnitCode] = useState("");
   const [unitModel, setUnitModel] = useState("");
+  const [unitType, setUnitType] = useState<"BEG" | "MID" | "END" | "SHOP">("MID");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     if (!blockId) { setError("Select a block first."); return; }
     startTransition(async () => {
-      const result = await createProjectUnit({ projectId, blockId, lotNumber, unitCode, unitModel });
+      const result = await createProjectUnit({ projectId, blockId, lotNumber, unitCode, unitModel, unitType });
       if (result.success) {
         setOpen(false);
-        setLotNumber(""); setUnitCode(""); setUnitModel("");
+        setLotNumber(""); setUnitCode(""); setUnitModel(""); setUnitType("MID");
         router.refresh();
       } else {
         setError(result.error ?? "Error");
@@ -267,6 +268,15 @@ export function AddUnitForm({ projectId, blockOptions }: {
         <input type="text" required value={unitModel} onChange={(e) => setUnitModel(e.target.value)}
           placeholder="Type A / 2BR" style={inputStyle} />
       </label>
+      <label style={{ flex: "0 0 100px" }}>
+        <span style={labelStyle}>Unit Type</span>
+        <select required value={unitType} onChange={(e) => setUnitType(e.target.value as "BEG" | "MID" | "END" | "SHOP")} style={inputStyle}>
+          <option value="BEG">BEG</option>
+          <option value="MID">MID</option>
+          <option value="END">END</option>
+          <option value="SHOP">SHOP</option>
+        </select>
+      </label>
       <div style={{ display: "flex", gap: "0.4rem" }}>
         <button type="submit" disabled={isPending} style={{
           padding: "0.5rem 0.9rem", borderRadius: "6px", background: "#6366f1",
@@ -291,7 +301,7 @@ const UNIT_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
 };
 
 export function UnitRow({ unit, blockOptions }: {
-  unit: { id: string; blockId: string; lotNumber: string; unitCode: string; unitModel: string; status: UnitStatus; contractPrice?: string | null };
+  unit: { id: string; blockId: string; lotNumber: string; unitCode: string; unitModel: string; unitType: string; status: UnitStatus; contractPrice?: string | null };
   blockOptions: { id: string; blockName: string }[];
 }) {
   const router = useRouter();
@@ -305,6 +315,7 @@ export function UnitRow({ unit, blockOptions }: {
   const [lotNumber, setLotNumber] = useState(unit.lotNumber);
   const [unitCode, setUnitCode] = useState(unit.unitCode);
   const [unitModel, setUnitModel] = useState(unit.unitModel);
+  const [unitType, setUnitType] = useState<"BEG" | "MID" | "END" | "SHOP">((unit.unitType as "BEG" | "MID" | "END" | "SHOP") ?? "MID");
   const [contractPrice, setContractPrice] = useState(unit.contractPrice ?? "");
 
   const us = UNIT_STATUS_STYLE[unit.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
@@ -313,7 +324,7 @@ export function UnitRow({ unit, blockOptions }: {
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result = await updateProjectUnit(unit.id, { blockId, lotNumber, unitCode, unitModel, contractPrice: contractPrice || undefined });
+      const result = await updateProjectUnit(unit.id, { blockId, lotNumber, unitCode, unitModel, unitType, contractPrice: contractPrice || undefined });
       if (result.success) { setEditing(false); router.refresh(); }
       else setError(result.error ?? "Error");
     });
@@ -330,7 +341,7 @@ export function UnitRow({ unit, blockOptions }: {
   if (editing) {
     return (
       <tr style={{ borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
-        <td colSpan={5} style={{ padding: "0.6rem 0.9rem" }}>
+        <td colSpan={6} style={{ padding: "0.6rem 0.9rem" }}>
           <form onSubmit={handleSave} style={{ display: "flex", gap: "0.4rem", alignItems: "flex-end", flexWrap: "wrap" }}>
             {error && <div style={{ width: "100%", fontSize: "0.78rem", color: "#b91c1c" }}>{error}</div>}
             <label style={{ flex: "0 0 100px" }}>
@@ -350,6 +361,15 @@ export function UnitRow({ unit, blockOptions }: {
             <label style={{ flex: "1 1 100px" }}>
               <span style={labelStyle}>Model</span>
               <input type="text" required value={unitModel} onChange={(e) => setUnitModel(e.target.value)} style={inputStyle} />
+            </label>
+            <label style={{ flex: "0 0 90px" }}>
+              <span style={labelStyle}>Unit Type</span>
+              <select value={unitType} onChange={(e) => setUnitType(e.target.value as "BEG" | "MID" | "END" | "SHOP")} style={inputStyle}>
+                <option value="BEG">BEG</option>
+                <option value="MID">MID</option>
+                <option value="END">END</option>
+                <option value="SHOP">SHOP</option>
+              </select>
             </label>
             <label style={{ flex: "0 0 120px" }}>
               <span style={labelStyle}>Contract Price</span>
@@ -377,6 +397,9 @@ export function UnitRow({ unit, blockOptions }: {
       <td style={{ padding: "0.5rem 0.9rem", color: "#6b7280" }}>{unit.lotNumber}</td>
       <td style={{ padding: "0.5rem 0.9rem", fontFamily: "monospace", fontSize: "0.82rem", fontWeight: 600, color: "#374151" }}>{unit.unitCode}</td>
       <td style={{ padding: "0.5rem 0.9rem", color: "#374151" }}>{unit.unitModel}</td>
+      <td style={{ padding: "0.5rem 0.9rem" }}>
+        <span style={{ display: "inline-block", padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 700, background: "#f3f4f6", color: "#374151", fontFamily: "monospace" }}>{unit.unitType}</span>
+      </td>
       <td style={{ padding: "0.5rem 0.9rem" }}>
         <span style={{ display: "inline-block", padding: "0.15rem 0.5rem", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: us.bg, color: us.color }}>{unit.status}</span>
       </td>
