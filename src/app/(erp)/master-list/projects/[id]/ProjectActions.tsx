@@ -102,6 +102,12 @@ export function AddBlockForm({ projectId }: { projectId: string }) {
 
 // ─── Add Unit Form ──────────────────────────────────────────────────────────
 
+const UNIT_TYPE_OPTIONS = [
+  { value: "BEG", label: "BEG — Beginning" },
+  { value: "REG", label: "REG — Regular" },
+  { value: "END", label: "END — End" },
+];
+
 export function AddUnitForm({ projectId, blockOptions }: {
   projectId: string;
   blockOptions: { id: string; blockName: string }[];
@@ -114,16 +120,17 @@ export function AddUnitForm({ projectId, blockOptions }: {
   const [lotNumber, setLotNumber] = useState("");
   const [unitCode, setUnitCode] = useState("");
   const [unitModel, setUnitModel] = useState("");
+  const [unitType, setUnitType] = useState<"BEG" | "REG" | "END">("REG");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     if (!blockId) { setError("Select a block first."); return; }
     startTransition(async () => {
-      const result = await createProjectUnit({ projectId, blockId, lotNumber, unitCode, unitModel });
+      const result = await createProjectUnit({ projectId, blockId, lotNumber, unitCode, unitModel, unitType });
       if (result.success) {
         setOpen(false);
-        setLotNumber(""); setUnitCode(""); setUnitModel("");
+        setLotNumber(""); setUnitCode(""); setUnitModel(""); setUnitType("REG");
         router.refresh();
       } else {
         setError(result.error ?? "Error");
@@ -149,20 +156,26 @@ export function AddUnitForm({ projectId, blockOptions }: {
           {blockOptions.map((b) => <option key={b.id} value={b.id}>{b.blockName}</option>)}
         </select>
       </label>
-      <label style={{ flex: "0 0 80px" }}>
+      <label style={{ flex: "0 0 70px" }}>
         <span style={labelStyle}>Lot #</span>
         <input type="text" required value={lotNumber} onChange={(e) => setLotNumber(e.target.value)}
           placeholder="1" style={inputStyle} />
       </label>
-      <label style={{ flex: "0 0 120px" }}>
+      <label style={{ flex: "0 0 110px" }}>
         <span style={labelStyle}>Unit Code</span>
         <input type="text" required value={unitCode} onChange={(e) => setUnitCode(e.target.value)}
           placeholder="BLK-A-001" style={inputStyle} />
       </label>
-      <label style={{ flex: "1 1 120px" }}>
+      <label style={{ flex: "1 1 110px" }}>
         <span style={labelStyle}>Unit Model</span>
         <input type="text" required value={unitModel} onChange={(e) => setUnitModel(e.target.value)}
           placeholder="Type A / 2BR" style={inputStyle} />
+      </label>
+      <label style={{ flex: "0 0 140px" }}>
+        <span style={labelStyle}>Unit Type</span>
+        <select required value={unitType} onChange={(e) => setUnitType(e.target.value as typeof unitType)} style={inputStyle}>
+          {UNIT_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
       </label>
       <div style={{ display: "flex", gap: "0.4rem" }}>
         <button type="submit" disabled={isPending} style={{

@@ -4,7 +4,7 @@ import { db } from "@/db";
 import {
   batchingProductionLogs, concreteDeliveryNotes,
   concreteDeliveryReceipts, batchingInternalSales,
-  mixDesigns, inventoryStock, inventoryLedger,
+  mixDesigns, standardMixes, inventoryStock, inventoryLedger,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -181,4 +181,42 @@ export async function receiveConcreteDelivery(
     isFlagged: isDeliveryFlagged,
     varianceM3,
   };
+}
+
+// ─── Standard Mixes ───────────────────────────────────────────────────────────
+
+const StandardMixSchema = z.object({
+  projectId:        z.string().uuid(),
+  unitModel:        z.string().min(1).max(50),
+  unitType:         z.enum(["BEG", "REG", "END"]),
+  mixDesignId:      z.string().uuid().optional(),
+  volumePerUnitM3:  z.number().positive().optional(),
+  description:      z.string().max(500).optional(),
+});
+
+export type StandardMixResult =
+  | { success: true; id: string }
+  | { success: false; error: string };
+
+export async function createStandardMix(
+  input: z.infer<typeof StandardMixSchema>,
+): Promise<StandardMixResult> {
+  const parsed = StandardMixSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db
+    .insert(standardMixes)
+    .values({
+      projectId:       d.projectId,
+      unitModel:       d.unitModel,
+      unitType:        d.unitType,
+      mixDesignId:     d.mixDesignId ?? null,
+      volumePerUnitM3: d.volumePerUnitM3 != null ? String(d.volumePerUnitM3) : null,
+      description:     d.description ?? null,
+    })
+    .returning({ id: standardMixes.id });
+
+  revalidatePath("/batching/mix-designs");
+  return { success: true, id: row.id };
 }

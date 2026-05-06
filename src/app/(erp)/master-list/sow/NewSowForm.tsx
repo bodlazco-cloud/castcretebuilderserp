@@ -22,8 +22,9 @@ export function NewSowForm({ projects }: { projects: Project[] }) {
 
   const defaultProject = searchParams.get("projectId") ?? "";
 
+  type WorkCategory = "SLAB" | "STRUCTURAL" | "SPECIALTY_WORKS" | "MEPF" | "ARCHITECTURAL" | "TURNOVER";
   const [projectId, setProjectId]           = useState(defaultProject);
-  const [category, setCategory]             = useState<"STRUCTURAL" | "ARCHITECTURAL" | "TURNOVER">("STRUCTURAL");
+  const [category, setCategory]             = useState<WorkCategory>("STRUCTURAL");
   const [scopeCode, setScopeCode]           = useState("");
   const [scopeName, setScopeName]           = useState("");
   const [activityCode, setActivityCode]     = useState("");
@@ -74,8 +75,11 @@ export function NewSowForm({ projects }: { projects: Project[] }) {
         </label>
         <label>
           <span style={labelStyle}>Category *</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value as typeof category)} style={inputStyle}>
+          <select value={category} onChange={(e) => setCategory(e.target.value as WorkCategory)} style={inputStyle}>
+            <option value="SLAB">SLAB</option>
             <option value="STRUCTURAL">STRUCTURAL</option>
+            <option value="SPECIALTY_WORKS">SPECIALTY WORKS</option>
+            <option value="MEPF">MEPF</option>
             <option value="ARCHITECTURAL">ARCHITECTURAL</option>
             <option value="TURNOVER">TURNOVER</option>
           </select>

@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { bankAccounts, bankTransactions } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
+import { AddBankAccountForm } from "./AddBankAccountForm";
 
 const ACCENT = "#ff5a1f";
 
@@ -58,17 +59,20 @@ export default async function BankingPage() {
               {accounts.length} account{accounts.length !== 1 ? "s" : ""} · Total balance: {fmt(totalBalance)}
             </p>
           </div>
-          <a href="/finance/banking/new-transaction" style={{
-            padding: "0.55rem 1.1rem", borderRadius: "6px", background: ACCENT,
-            color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
-          }}>+ New Transaction</a>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <AddBankAccountForm />
+            <a href="/finance/banking/new-transaction" style={{
+              padding: "0.55rem 1.1rem", borderRadius: "6px", background: ACCENT,
+              color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
+            }}>+ New Transaction</a>
+          </div>
         </div>
 
         {/* Account cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
           {accounts.length === 0 ? (
             <div style={{ padding: "2rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", color: "#9ca3af", textAlign: "center", gridColumn: "1/-1" }}>
-              No bank accounts configured.
+              No bank accounts yet. Add one to get started.
             </div>
           ) : accounts.map((acc) => (
             <div key={acc.id} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.25rem 1.5rem", borderTop: `4px solid ${ACCENT}` }}>

@@ -5,7 +5,7 @@ import {
 import { users } from "./core";
 import { projects, blocks } from "./projects";
 import { activityDefinitions, milestoneDefinitions } from "./admin";
-import { workCategoryEnum, delayReasonEnum } from "./enums";
+import { workCategoryEnum, delayReasonEnum, unitTypeEnum } from "./enums";
 
 export const projectUnits = pgTable("project_units", {
   id:              uuid("id").primaryKey().defaultRandom(),
@@ -14,6 +14,7 @@ export const projectUnits = pgTable("project_units", {
   lotNumber:       varchar("lot_number", { length: 20 }).notNull(),
   unitCode:        varchar("unit_code", { length: 50 }).notNull().unique(),
   unitModel:       varchar("unit_model", { length: 50 }).notNull(),
+  unitType:        unitTypeEnum("unit_type").notNull().default("REG"),
   currentCategory: workCategoryEnum("current_category").notNull().default("STRUCTURAL"),
   status:          varchar("status", { length: 30 }).notNull().default("PENDING"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -15,7 +15,7 @@ export const approvalStatusEnum = pgEnum("approval_status", [
 ]);
 
 export const workCategoryEnum = pgEnum("work_category", [
-  "STRUCTURAL", "ARCHITECTURAL", "TURNOVER",
+  "SLAB", "STRUCTURAL", "SPECIALTY_WORKS", "MEPF", "ARCHITECTURAL", "TURNOVER",
 ]);
 
 export const tradeTypeEnum = pgEnum("trade_type", [

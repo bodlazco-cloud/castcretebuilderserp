@@ -3,7 +3,7 @@
 import { db } from "@/db";
 import {
   developers, projects, materials, suppliers,
-  subcontractors, activityDefinitions, blocks, projectUnits,
+  subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -189,7 +189,7 @@ export async function toggleSubconActive(id: string, isActive: boolean): Promise
 
 const ActivityDefSchema = z.object({
   projectId:            z.string().uuid(),
-  category:             z.enum(["STRUCTURAL", "ARCHITECTURAL", "TURNOVER"]),
+  category:             z.enum(["SLAB", "STRUCTURAL", "SPECIALTY_WORKS", "MEPF", "ARCHITECTURAL", "TURNOVER"]),
   scopeCode:            z.string().min(1).max(100),
   scopeName:            z.string().min(1).max(150),
   activityCode:         z.string().min(1).max(100),
@@ -269,6 +269,7 @@ const ProjectUnitSchema = z.object({
   lotNumber: z.string().min(1).max(20),
   unitCode:  z.string().min(1).max(50),
   unitModel: z.string().min(1).max(50),
+  unitType:  z.enum(["BEG", "REG", "END"]).default("REG"),
 });
 
 export async function createProjectUnit(input: z.infer<typeof ProjectUnitSchema>): Promise<MutationResult> {
@@ -278,9 +279,47 @@ export async function createProjectUnit(input: z.infer<typeof ProjectUnitSchema>
   const d = parsed.data;
   const [row] = await db
     .insert(projectUnits)
-    .values({ projectId: d.projectId, blockId: d.blockId, lotNumber: d.lotNumber, unitCode: d.unitCode, unitModel: d.unitModel })
+    .values({ projectId: d.projectId, blockId: d.blockId, lotNumber: d.lotNumber, unitCode: d.unitCode, unitModel: d.unitModel, unitType: d.unitType })
     .returning({ id: projectUnits.id });
 
   revalidatePath(`/master-list/projects/${d.projectId}`);
+  return { success: true, id: row.id };
+}
+
+// ─── Milestone Definitions ─────────────────────────────────────────────────
+
+const MilestoneDefSchema = z.object({
+  projectId:       z.string().uuid(),
+  scopeCode:       z.string().max(100).optional(),
+  scopeName:       z.string().max(150).optional(),
+  name:            z.string().min(1).max(150),
+  category:        z.enum(["SLAB", "STRUCTURAL", "SPECIALTY_WORKS", "MEPF", "ARCHITECTURAL", "TURNOVER"]),
+  sequenceOrder:   z.number().int().min(1),
+  triggersBilling: z.boolean().default(false),
+  weightPct:       z.number().min(0).max(100),
+});
+
+export async function createMilestoneDefinition(
+  input: z.infer<typeof MilestoneDefSchema>,
+): Promise<MutationResult> {
+  const parsed = MilestoneDefSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db
+    .insert(milestoneDefinitions)
+    .values({
+      projectId:       d.projectId,
+      scopeCode:       d.scopeCode ?? null,
+      scopeName:       d.scopeName ?? null,
+      name:            d.name,
+      category:        d.category,
+      sequenceOrder:   d.sequenceOrder,
+      triggersBilling: d.triggersBilling,
+      weightPct:       String(d.weightPct),
+    })
+    .returning({ id: milestoneDefinitions.id });
+
+  revalidatePath("/admin/milestone-defs");
   return { success: true, id: row.id };
 }

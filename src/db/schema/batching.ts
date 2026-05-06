@@ -4,6 +4,7 @@ import {
 import { users } from "./core";
 import { projects } from "./projects";
 import { projectUnits } from "./units";
+import { unitTypeEnum } from "./enums";
 
 export const mixDesigns = pgTable("mix_designs", {
   id:                  uuid("id").primaryKey().defaultRandom(),
@@ -58,6 +59,19 @@ export const concreteDeliveryReceipts = pgTable("concrete_delivery_receipts", {
   isDeliveryFlagged:   boolean("is_delivery_flagged").notNull().default(false),
   receivedBy:          uuid("received_by").notNull().references(() => users.id),
   receivedAt:          timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const standardMixes = pgTable("standard_mixes", {
+  id:                uuid("id").primaryKey().defaultRandom(),
+  projectId:         uuid("project_id").notNull().references(() => projects.id),
+  unitModel:         varchar("unit_model", { length: 50 }).notNull(),
+  unitType:          unitTypeEnum("unit_type").notNull(),
+  mixDesignId:       uuid("mix_design_id").references(() => mixDesigns.id),
+  volumePerUnitM3:   numeric("volume_per_unit_m3", { precision: 10, scale: 4 }),
+  description:       text("description"),
+  isActive:          boolean("is_active").notNull().default(true),
+  createdBy:         uuid("created_by").references(() => users.id),
+  createdAt:         timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const batchingInternalSales = pgTable("batching_internal_sales", {
