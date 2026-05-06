@@ -65,7 +65,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
 
   const unitRows = blockRows.length > 0
     ? await db
-        .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, status: projectUnits.status })
+        .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, unitType: projectUnits.unitType, status: projectUnits.status })
         .from(projectUnits)
         .where(eq(projectUnits.projectId, id))
         .orderBy(projectUnits.unitCode)
@@ -181,7 +181,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                         <thead>
                           <tr>
-                            {["Lot #", "Unit Code", "Model", "Status"].map((h, i) => (
+                            {["Lot #", "Unit Code", "Model", "Type", "Status"].map((h, i) => (
                               <th key={i} style={{ padding: "0.5rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #f3f4f6", fontSize: "0.78rem" }}>{h}</th>
                             ))}
                           </tr>
@@ -194,6 +194,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                                 <td style={{ padding: "0.5rem 0.9rem", color: "#6b7280" }}>{u.lotNumber}</td>
                                 <td style={{ padding: "0.5rem 0.9rem", fontFamily: "monospace", fontSize: "0.82rem", fontWeight: 600, color: "#374151" }}>{u.unitCode}</td>
                                 <td style={{ padding: "0.5rem 0.9rem", color: "#374151" }}>{u.unitModel}</td>
+                                <td style={{ padding: "0.5rem 0.9rem" }}>
+                                  <span style={{ display: "inline-block", padding: "0.15rem 0.4rem", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, background: "#eff6ff", color: "#1e40af" }}>{u.unitType}</span>
+                                </td>
                                 <td style={{ padding: "0.5rem 0.9rem" }}>
                                   <span style={{ display: "inline-block", padding: "0.15rem 0.5rem", borderRadius: "999px", fontSize: "0.7rem", fontWeight: 600, background: us.bg, color: us.color }}>{u.status}</span>
                                 </td>

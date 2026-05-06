@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import { saveBomEntries } from "@/actions/planning";
 
-type Project  = { id: string; name: string };
-type SowItem  = { id: string; projectId: string; scopeName: string; activityCode: string };
-type Material = { id: string; code: string; name: string; unit: string };
-type Vendor   = { id: string; name: string };
+type Project    = { id: string; name: string };
+type SowItem    = { id: string; projectId: string; scopeCode: string; scopeName: string; activityCode: string; activityName: string };
+type UnitModel  = { projectId: string; unitModel: string };
+type Material   = { id: string; code: string; name: string; unit: string };
+type Vendor     = { id: string; name: string };
 
 const ACCENT = "#1a56db";
 const inputStyle: React.CSSProperties = {
@@ -25,25 +26,35 @@ const UNIT_TYPES = [
 
 type LineItem = { materialId: string; qty: string; unitPrice: string; preferredSupplierId: string };
 
-export function BomEntryForm({ projects, sowItems, materials, vendors }: {
-  projects:  Project[];
-  sowItems:  SowItem[];
-  materials: Material[];
-  vendors:   Vendor[];
+export function BomEntryForm({ projects, sowItems, unitModels, materials, vendors }: {
+  projects:   Project[];
+  sowItems:   SowItem[];
+  unitModels: UnitModel[];
+  materials:  Material[];
+  vendors:    Vendor[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [error,   setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [selectedProject, setSelectedProject] = useState("");
-  const [selectedSow,     setSelectedSow]     = useState("");
-  const [unitModel,       setUnitModel]        = useState("");
-  const [unitType,        setUnitType]         = useState("");
+  const [selectedProject,  setSelectedProject]  = useState("");
+  const [selectedScope,    setSelectedScope]    = useState("");   // scopeCode
+  const [selectedActivity, setSelectedActivity] = useState("");   // activityDef id
+  const [unitModel,        setUnitModel]        = useState("");
+  const [unitType,         setUnitType]         = useState("");
   const [lines, setLines] = useState<LineItem[]>([
     { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" },
   ]);
 
-  const filteredSow = sowItems.filter((s) => s.projectId === selectedProject);
+  // Derived lists from selections
+  const projectSows = sowItems.filter((s) => s.projectId === selectedProject);
+  const distinctScopes = Array.from(
+    new Map(projectSows.map((s) => [s.scopeCode, { code: s.scopeCode, name: s.scopeName }])).values()
+  );
+  const scopeActivities = projectSows.filter((s) => s.scopeCode === selectedScope);
+  const projectUnitModels = Array.from(
+    new Set(unitModels.filter((u) => u.projectId === selectedProject).map((u) => u.unitModel))
+  );
 
   function addLine() {
     setLines((l) => [...l, { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" }]);
@@ -72,25 +83,23 @@ export function BomEntryForm({ projects, sowItems, materials, vendors }: {
         preferredSupplierId: l.preferredSupplierId || undefined,
       }));
 
-    if (!selectedSow || !unitModel || !unitType || items.length === 0) {
+    if (!selectedActivity || !unitModel || !unitType || items.length === 0) {
       setError("Please fill in all required fields and at least one material line.");
       return;
     }
 
     startTransition(async () => {
       const result = await saveBomEntries({
-        activityDefId: selectedSow,
+        activityDefId: selectedActivity,
         unitModel,
         unitType: unitType as "BEG" | "REG" | "END",
         items,
       });
       if (result.success) {
-        setSuccess(`Saved ${result.inserted} BOM line(s). Previous entries for this scope were versioned out. `);
+        setSuccess(`Saved ${result.inserted} BOM line(s). Previous entries for this scope were versioned out.`);
         setLines([{ materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" }]);
-        setSelectedProject("");
-        setSelectedSow("");
-        setUnitModel("");
-        setUnitType("");
+        setSelectedProject(""); setSelectedScope(""); setSelectedActivity("");
+        setUnitModel(""); setUnitType("");
       } else {
         setError(result.error);
       }
@@ -110,40 +119,67 @@ export function BomEntryForm({ projects, sowItems, materials, vendors }: {
         </div>
       )}
 
-      {/* Project + Scope */}
+      {/* Row 1: Project / Site */}
+      <label>
+        <span style={labelStyle}>Project / Site *</span>
+        <select required style={inputStyle} value={selectedProject}
+          onChange={(e) => {
+            setSelectedProject(e.target.value);
+            setSelectedScope(""); setSelectedActivity(""); setUnitModel("");
+          }}>
+          <option value="">Select project…</option>
+          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </label>
+
+      {/* Row 2: Scope of Work + Activity */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
         <label>
-          <span style={labelStyle}>Project / Site *</span>
-          <select required style={inputStyle} value={selectedProject}
-            onChange={(e) => { setSelectedProject(e.target.value); setSelectedSow(""); }}>
-            <option value="">Select project…</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          <span style={labelStyle}>Scope of Work *</span>
+          <select required style={inputStyle} value={selectedScope}
+            onChange={(e) => { setSelectedScope(e.target.value); setSelectedActivity(""); }}
+            disabled={!selectedProject}>
+            <option value="">Select scope…</option>
+            {distinctScopes.map((s) => (
+              <option key={s.code} value={s.code}>{s.name}</option>
+            ))}
           </select>
         </label>
         <label>
-          <span style={labelStyle}>Scope of Work *</span>
-          <select required style={inputStyle} value={selectedSow}
-            onChange={(e) => setSelectedSow(e.target.value)}
-            disabled={!selectedProject}>
-            <option value="">Select scope…</option>
-            {filteredSow.map((s) => (
-              <option key={s.id} value={s.id}>[{s.activityCode}] {s.scopeName}</option>
+          <span style={labelStyle}>Activity *</span>
+          <select required style={inputStyle} value={selectedActivity}
+            onChange={(e) => setSelectedActivity(e.target.value)}
+            disabled={!selectedScope}>
+            <option value="">Select activity…</option>
+            {scopeActivities.map((a) => (
+              <option key={a.id} value={a.id}>[{a.activityCode}] {a.activityName}</option>
             ))}
           </select>
         </label>
       </div>
 
-      {/* Unit Model (free-text, project-specific) + Unit Type */}
+      {/* Row 3: Unit Model + Unit Type */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Unit Model *</span>
-          <input
-            type="text" required placeholder="e.g. Type A, 2BR-Corner, Studio…"
-            style={inputStyle} value={unitModel}
-            onChange={(e) => setUnitModel(e.target.value)} />
-          <span style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.2rem", display: "block" }}>
-            Enter the unit model as defined for this project
-          </span>
+          {projectUnitModels.length > 0 ? (
+            <select required style={inputStyle} value={unitModel}
+              onChange={(e) => setUnitModel(e.target.value)}
+              disabled={!selectedProject}>
+              <option value="">Select unit model…</option>
+              {projectUnitModels.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          ) : (
+            <input
+              type="text" required placeholder="e.g. Type A, 2BR-Corner, Studio…"
+              style={inputStyle} value={unitModel}
+              onChange={(e) => setUnitModel(e.target.value)} />
+          )}
+          {selectedProject && projectUnitModels.length === 0 && (
+            <span style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: "0.2rem", display: "block" }}>
+              No units defined for this project yet — type a model name manually.
+            </span>
+          )}
         </label>
         <label>
           <span style={labelStyle}>Unit Type *</span>

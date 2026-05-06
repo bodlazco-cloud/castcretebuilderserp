@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/db";
-import { employees, dailyTimeRecords, leaveSchedules } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { employees, dailyTimeRecords, leaveSchedules, payrollRecords } from "@/db/schema";
+import { eq, and, gte, lte, sum } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
@@ -139,4 +139,119 @@ export async function recordLeaveRequest(
 
   revalidatePath("/hr");
   return { success: true, leaveId: leave.id };
+}
+
+// ─── Generate Payroll Run ─────────────────────────────────────────────────────
+
+const GeneratePayrollSchema = z.object({
+  periodStart: z.string().date(),
+  periodEnd:   z.string().date(),
+});
+
+export type GeneratePayrollResult =
+  | { success: true; created: number }
+  | { success: false; error: string };
+
+export async function generatePayrollRun(
+  input: z.infer<typeof GeneratePayrollSchema>,
+): Promise<GeneratePayrollResult> {
+  const parsed = GeneratePayrollSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid period dates." };
+  const { periodStart, periodEnd } = parsed.data;
+
+  if (periodEnd < periodStart) {
+    return { success: false, error: "Period end must be on or after period start." };
+  }
+
+  const activeEmployees = await db
+    .select({
+      id:                     employees.id,
+      costCenterId:           employees.costCenterId,
+      dailyRate:              employees.dailyRate,
+      sssContribution:        employees.sssContribution,
+      philhealthContribution: employees.philhealthContribution,
+      pagibigContribution:    employees.pagibigContribution,
+    })
+    .from(employees)
+    .where(eq(employees.isActive, true));
+
+  if (activeEmployees.length === 0) return { success: false, error: "No active employees found." };
+
+  let created = 0;
+  for (const emp of activeEmployees) {
+    const existing = await db
+      .select({ id: payrollRecords.id })
+      .from(payrollRecords)
+      .where(and(
+        eq(payrollRecords.employeeId, emp.id),
+        eq(payrollRecords.periodStart, periodStart),
+        eq(payrollRecords.periodEnd, periodEnd),
+      ))
+      .limit(1);
+    if (existing.length > 0) continue;
+
+    const dtrRows = await db
+      .select({ hoursWorked: dailyTimeRecords.hoursWorked, overtimeHours: dailyTimeRecords.overtimeHours })
+      .from(dailyTimeRecords)
+      .where(and(
+        eq(dailyTimeRecords.employeeId, emp.id),
+        gte(dailyTimeRecords.workDate, periodStart),
+        lte(dailyTimeRecords.workDate, periodEnd),
+      ));
+
+    const daysWorked = dtrRows.reduce((s, r) => {
+      const h = Number(r.hoursWorked ?? 0);
+      return s + (h >= 8 ? 1 : h / 8);
+    }, 0);
+    const otHours = dtrRows.reduce((s, r) => s + Number(r.overtimeHours ?? 0), 0);
+    const rate = Number(emp.dailyRate);
+    const grossPay = daysWorked * rate + otHours * (rate / 8) * 1.25;
+    const sss = Number(emp.sssContribution);
+    const ph = Number(emp.philhealthContribution);
+    const pagibig = Number(emp.pagibigContribution);
+    const netPay = grossPay - sss - ph - pagibig;
+
+    await db.insert(payrollRecords).values({
+      employeeId:          emp.id,
+      costCenterId:        emp.costCenterId,
+      periodStart,
+      periodEnd,
+      daysWorked:          String(Math.round(daysWorked * 100) / 100),
+      overtimeHours:       String(Math.round(otHours * 100) / 100),
+      grossPay:            String(Math.round(grossPay * 100) / 100),
+      sssDeduction:        String(sss),
+      philhealthDeduction: String(ph),
+      pagibigDeduction:    String(pagibig),
+      netPay:              String(Math.round(netPay * 100) / 100),
+      status:              "DRAFT",
+    });
+    created++;
+  }
+
+  revalidatePath("/hr/payroll");
+  return { success: true, created };
+}
+
+// ─── Approve / Release Payroll ────────────────────────────────────────────────
+
+export async function approvePayroll(id: string): Promise<{ success: boolean; error?: string }> {
+  const [rec] = await db.select({ id: payrollRecords.id, status: payrollRecords.status })
+    .from(payrollRecords).where(eq(payrollRecords.id, id));
+  if (!rec) return { success: false, error: "Record not found." };
+  if (rec.status !== "DRAFT") return { success: false, error: "Only DRAFT payrolls can be approved." };
+
+  await db.update(payrollRecords).set({ status: "APPROVED", approvedAt: new Date() }).where(eq(payrollRecords.id, id));
+  revalidatePath("/hr/payroll");
+  return { success: true };
+}
+
+export async function releasePayroll(id: string): Promise<{ success: boolean; error?: string }> {
+  const [rec] = await db.select({ id: payrollRecords.id, status: payrollRecords.status })
+    .from(payrollRecords).where(eq(payrollRecords.id, id));
+  if (!rec) return { success: false, error: "Record not found." };
+  if (rec.status !== "APPROVED") return { success: false, error: "Only APPROVED payrolls can be released." };
+
+  await db.update(payrollRecords).set({ status: "RELEASED", paidAt: new Date() }).where(eq(payrollRecords.id, id));
+  revalidatePath("/hr/payroll");
+  return { success: true };
 }

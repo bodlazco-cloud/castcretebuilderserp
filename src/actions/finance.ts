@@ -3,8 +3,10 @@
 import { db } from "@/db";
 import {
   invoices, payables, requestsForPayment,
-  bankTransactions, workAccomplishedReports,
+  bankAccounts, bankTransactions, workAccomplishedReports,
 } from "@/db/schema";
+import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import {
@@ -294,4 +296,43 @@ export async function finalApproveBankTxn(id: string): Promise<SimpleResult> {
     .where(eq(bankTransactions.id, id));
 
   return { success: true };
+}
+
+// ─── Bank Accounts ─────────────────────────────────────────────────────────
+
+const BankAccountSchema = z.object({
+  bankName:       z.string().min(1).max(100),
+  accountName:    z.string().min(1).max(150),
+  accountNumber:  z.string().min(1).max(50),
+  accountType:    z.enum(["CHECKING", "SAVINGS", "TIME_DEPOSIT", "PAYROLL"]),
+  currency:       z.string().min(1).max(10).default("PHP"),
+  openingBalance: z.number().min(0).default(0),
+});
+
+export type BankAccountResult =
+  | { success: true; id: string }
+  | { success: false; error: string };
+
+export async function createBankAccount(
+  input: z.infer<typeof BankAccountSchema>,
+): Promise<BankAccountResult> {
+  const parsed = BankAccountSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const d = parsed.data;
+  const [row] = await db
+    .insert(bankAccounts)
+    .values({
+      bankName:       d.bankName,
+      accountName:    d.accountName,
+      accountNumber:  d.accountNumber,
+      accountType:    d.accountType,
+      currency:       d.currency,
+      openingBalance: String(d.openingBalance),
+      currentBalance: String(d.openingBalance),
+    })
+    .returning({ id: bankAccounts.id });
+
+  revalidatePath("/finance/banking");
+  return { success: true, id: row.id };
 }

@@ -8,19 +8,27 @@ import { BomEntryForm } from "../BomEntryForm";
 export default async function NewBomEntryPage() {
   await getAuthUser();
 
-  const [projectRows, sowRows, materialRows, vendorRows] = await Promise.all([
+  const [projectRows, sowRows, unitModelRows, materialRows, vendorRows] = await Promise.all([
     db.select({ id: schema.projects.id, name: schema.projects.name })
       .from(schema.projects)
       .orderBy(schema.projects.name),
     db.select({
         id:           schema.activityDefinitions.id,
         projectId:    schema.activityDefinitions.projectId,
+        scopeCode:    schema.activityDefinitions.scopeCode,
         scopeName:    schema.activityDefinitions.scopeName,
         activityCode: schema.activityDefinitions.activityCode,
+        activityName: schema.activityDefinitions.activityName,
       })
       .from(schema.activityDefinitions)
       .where(eq(schema.activityDefinitions.isActive, true))
-      .orderBy(schema.activityDefinitions.scopeName, schema.activityDefinitions.sequenceOrder),
+      .orderBy(schema.activityDefinitions.scopeCode, schema.activityDefinitions.sequenceOrder),
+    db.select({
+        projectId: schema.projectUnits.projectId,
+        unitModel: schema.projectUnits.unitModel,
+      })
+      .from(schema.projectUnits)
+      .orderBy(schema.projectUnits.unitModel),
     db.select({ id: schema.materials.id, code: schema.materials.code, name: schema.materials.name, unit: schema.materials.unit })
       .from(schema.materials)
       .where(eq(schema.materials.isActive, true))
@@ -30,6 +38,15 @@ export default async function NewBomEntryPage() {
       .where(eq(schema.suppliers.isActive, true))
       .orderBy(schema.suppliers.name),
   ]);
+
+  // Deduplicate unit models per project
+  const seenUnitModels = new Set<string>();
+  const dedupedUnitModels = unitModelRows.filter((u) => {
+    const key = `${u.projectId}::${u.unitModel}`;
+    if (seenUnitModels.has(key)) return false;
+    seenUnitModels.add(key);
+    return true;
+  });
 
   const ACCENT = "#1a56db";
 
@@ -45,7 +62,7 @@ export default async function NewBomEntryPage() {
             New BOM Entry
           </h1>
           <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-            Define material quantities per scope of work, unit model, and unit type. Existing entries are versioned out automatically.
+            Define material quantities per scope of work, activity, unit model, and unit type.
           </p>
         </header>
 
@@ -53,6 +70,7 @@ export default async function NewBomEntryPage() {
           <BomEntryForm
             projects={projectRows}
             sowItems={sowRows}
+            unitModels={dedupedUnitModels}
             materials={materialRows}
             vendors={vendorRows}
           />

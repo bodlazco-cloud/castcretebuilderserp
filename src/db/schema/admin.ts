@@ -75,6 +75,8 @@ export const activityDefinitions = pgTable("activity_definitions", {
 export const milestoneDefinitions = pgTable("milestone_definitions", {
   id:              uuid("id").primaryKey().defaultRandom(),
   projectId:       uuid("project_id").notNull().references(() => projects.id),
+  scopeCode:       varchar("scope_code", { length: 100 }),
+  scopeName:       varchar("scope_name", { length: 150 }),
   name:            varchar("name", { length: 150 }).notNull(),
   category:        workCategoryEnum("category").notNull(),
   sequenceOrder:   integer("sequence_order").notNull(),
