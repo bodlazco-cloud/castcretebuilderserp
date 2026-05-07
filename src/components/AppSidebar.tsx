@@ -21,138 +21,122 @@ type NavSection  = { title: string; items: NavItem[] };
 
 const NAV: NavSection[] = [
   {
-    title: "Master List",
-    items: [
-      { label: "Overview",              href: "/master-list" },
-      { label: "Projects / Sites",      href: "/master-list/projects" },
-      { label: "Scope of Work",         href: "/master-list/sow" },
-      { label: "Materials Master",      href: "/master-list/materials" },
-      { label: "Vendors",               href: "/master-list/vendors" },
-      { label: "Subcontractors",        href: "/master-list/subcontractors" },
-      { label: "Developers",            href: "/master-list/developers" },
-      { label: "Reference Data",        isDivider: true },
-      { label: "Suppliers",             href: "/admin/suppliers" },
-      { label: "Activity Definitions",  href: "/admin/activity-defs" },
-      { label: "Milestone Definitions", href: "/admin/milestone-defs" },
-      { label: "BOM Standards",         href: "/admin/bom-standards" },
-      { label: "Developer Rate Cards",  href: "/admin/rate-cards" },
-    ],
-  },
-  {
     title: "Planning & Engineering",
     items: [
       { label: "Overview",              href: "/planning" },
+      { label: "Engineering",           isDivider: true },
       { label: "Bill of Materials",     href: "/planning/bom" },
-      { label: "Resource Forecasting",  href: "/planning/resource-forecasting" },
-      { label: "Change Order Requests", href: "/planning/change-orders" },
+      { label: "Resource Mapping",      isDivider: true },
+      { label: "MRP Queue",             href: "/planning/mrp-queue" },
+      { label: "Batching Forecast",     href: "/planning/batching-forecast" },
+      { label: "Motorpool Needs",       href: "/planning/motorpool-needs" },
+      { label: "Change Orders",         href: "/planning/change-orders" },
       { label: "Reports",               isDivider: true },
-      { label: "Job Costing BvA",       href: "/planning/reports/job-costing-bva" },
+      { label: "Budget vs Actual",      href: "/planning/reports/budget-vs-actual" },
+      { label: "Job Costing Report",    href: "/planning/reports/job-costing" },
     ],
   },
   {
     title: "Construction",
     items: [
-      { label: "Overview",             href: "/construction" },
-      { label: "Sites",                href: "/construction/sites" },
-      { label: "NTP Register",         href: "/construction/ntp" },
-      { label: "Issue NTP",            href: "/construction/issue-ntp" },
-      { label: "Daily Progress",       href: "/construction/daily-progress" },
-      { label: "Log Progress",         href: "/construction/log-progress" },
-      { label: "WAR Register",         href: "/construction/war" },
-      { label: "Submit WAR",           href: "/construction/submit-war" },
-      { label: "Reports",              isDivider: true },
-      { label: "Site Profitability",   href: "/construction/reports/site-profitability-report" },
+      { label: "Overview",              href: "/construction" },
+      { label: "Site Registry",         href: "/construction/sites" },
+      { label: "NTP Issuance",          href: "/construction/ntp" },
+      { label: "Daily Progress",        href: "/construction/daily-progress" },
+      { label: "Manpower Logs",         href: "/construction/manpower" },
+      { label: "WAR",                   href: "/construction/war" },
+      { label: "Reports",               isDivider: true },
+      { label: "Site Profitability",    href: "/construction/reports/site-profitability-report" },
+      { label: "Progress Report",       href: "/construction/reports/progress-report" },
     ],
   },
   {
     title: "Procurement & Stock",
     items: [
       { label: "Overview",              href: "/procurement" },
-      { label: "Purchase Requests",     href: "/procurement/pr" },
-      { label: "Purchase Orders",       href: "/procurement/po" },
+      { label: "PR/PO Management",      href: "/procurement/pr-po" },
+      { label: "Logistics",             href: "/procurement/logistics" },
       { label: "Inventory",             href: "/procurement/inventory" },
-      { label: "Receipts & Transfers",  href: "/procurement/receipts-and-transfers" },
-      { label: "Vendors",               href: "/procurement/vendors" },
-      { label: "Price Change",          href: "/procurement/price-change" },
       { label: "Reports",               isDivider: true },
-      { label: "Stock Level Analysis",  href: "/procurement/reports/stock-level-analysis" },
+      { label: "Procurement Reports",   href: "/procurement/reports" },
     ],
   },
   {
     title: "Batching Plant",
     items: [
-      { label: "Overview",         href: "/batching" },
-      { label: "Production",       href: "/batching/production" },
-      { label: "Mix Designs",      href: "/batching/mix-designs" },
-      { label: "Yield Report",     href: "/batching/yield" },
-      { label: "Internal Sales",   href: "/batching/internal-sales" },
-      { label: "Log Batch",        href: "/batching/log-batch" },
-      { label: "Reports",          isDivider: true },
-      { label: "Batching Reports", href: "/batching/reports" },
+      { label: "Overview",              href: "/batching" },
+      { label: "Mix Designs",           href: "/batching/mix-designs" },
+      { label: "Production Logs",       href: "/batching/production" },
+      { label: "Internal Sales",        href: "/batching/internal-sales" },
+      { label: "Plant Manpower",        href: "/batching/manpower" },
+      { label: "Reports",               isDivider: true },
+      { label: "Batching Reports",      href: "/batching/reports" },
     ],
   },
   {
-    title: "Motorpool",
+    title: "Fleet (MotorPool)",
     items: [
-      { label: "Overview",               href: "/motorpool" },
-      { label: "Equipment Register",     href: "/motorpool/equipment" },
-      { label: "Internal Rental Logs",   href: "/motorpool/internal-rental-logs" },
-      { label: "Fuel Logs",              href: "/motorpool/fuel" },
-      { label: "Fix or Flip",            href: "/motorpool/fix-or-flip" },
-      { label: "Manpower",               href: "/motorpool/manpower" },
-      { label: "Reports",                isDivider: true },
-      { label: "Motorpool Reports",      href: "/motorpool/reports" },
+      { label: "Overview",              href: "/motorpool" },
+      { label: "Equipment Directory",   href: "/motorpool/equipment" },
+      { label: "Maintenance",           href: "/motorpool/maintenance" },
+      { label: "Internal Rental Logs",  href: "/motorpool/internal-rental-logs" },
+      { label: "Fleet Manpower",        href: "/motorpool/manpower" },
+      { label: "Reports",               isDivider: true },
+      { label: "Fleet Reports",         href: "/motorpool/reports" },
     ],
   },
   {
     title: "Audit & Quality",
     items: [
-      { label: "Overview",                href: "/audit" },
-      { label: "PO Compliance",           href: "/audit/po-compliance" },
-      { label: "Triple Match",            href: "/audit/triple-match" },
-      { label: "Inspections",             href: "/audit/inspections" },
-      { label: "Milestone Verification",  href: "/audit/milestone-verification" },
-      { label: "QA Punch List",           href: "/audit/qa-punch-list" },
-      { label: "Reports",                 isDivider: true },
-      { label: "Material Variance",       href: "/audit/reports/material-variance" },
+      { label: "Overview",              href: "/audit" },
+      { label: "PO Verification",       href: "/audit/po-verification" },
+      { label: "Milestone Audit",       href: "/audit/milestone-audit" },
+      { label: "Variance Audit",        href: "/audit/variance-audit" },
+      { label: "QA Punch-lists",        href: "/audit/qa-punch-list" },
+      { label: "Reports",               isDivider: true },
+      { label: "Audit Reports",         href: "/audit/reports" },
     ],
   },
   {
     title: "Finance & Accounting",
     items: [
-      { label: "Overview",             href: "/finance" },
-      { label: "Invoices",             href: "/finance/invoices" },
-      { label: "Payables",             href: "/finance/payables" },
-      { label: "Banking",              href: "/finance/banking" },
-      { label: "Request for Payment",  href: "/finance/rfp" },
-      { label: "Chart of Accounts",    href: "/finance/chart-of-accounts" },
-      { label: "Cost Center",          href: "/finance/cost-center" },
-      { label: "Reports",              isDivider: true },
-      { label: "Cash Flow",            href: "/finance/reports/cash-flow" },
-      { label: "Profit & Loss",        href: "/finance/reports/profit-and-loss" },
-      { label: "Balance Sheet",        href: "/finance/reports/balance-sheet" },
-      { label: "Trial Balance",        href: "/finance/reports/trial-balance" },
-      { label: "Ledger",               href: "/finance/reports/ledger" },
+      { label: "Overview",              href: "/finance" },
+      { label: "Billing",               href: "/finance/billing" },
+      { label: "Payables",              href: "/finance/payables" },
+      { label: "Loans",                 href: "/finance/loans" },
+      { label: "Bills",                 href: "/finance/bills" },
+      { label: "Expense",               href: "/finance/expense" },
+      { label: "Banking / Recon",       href: "/finance/banking" },
+      { label: "Chart of Accounts",     href: "/finance/chart-of-accounts" },
+      { label: "Reports",               isDivider: true },
+      { label: "P&L by Dept",           href: "/finance/reports/profit-and-loss" },
+      { label: "Balance Sheet",         href: "/finance/reports/balance-sheet" },
+      { label: "Cash Flow Projections", href: "/finance/reports/cash-flow" },
+      { label: "General Ledger",        href: "/finance/reports/ledger" },
+      { label: "Trial Balance",         href: "/finance/reports/trial-balance" },
+      { label: "Vendor Summary",        href: "/finance/reports/vendor-summary" },
+      { label: "Developer Summary",     href: "/finance/reports/developer-summary" },
+      { label: "Aged Payables",         href: "/finance/reports/aged-payables" },
+      { label: "Aged Receivables",      href: "/finance/reports/aged-receivables" },
     ],
   },
   {
-    title: "HR & Payroll",
+    title: "Master List",
     items: [
-      { label: "Overview",           href: "/hr" },
-      { label: "Employee Registry",  href: "/hr/registry" },
-      { label: "DTR",                href: "/hr/dtr" },
-      { label: "Payroll",            href: "/hr/payroll" },
-      { label: "Leave Management",   href: "/hr/leaves" },
-      { label: "Reports",            isDivider: true },
-      { label: "HR Reports",         href: "/hr/reports" },
+      { label: "Construction Phases",   href: "/master-list/projects" },
+      { label: "Material List",         href: "/master-list/materials" },
+      { label: "Vendors",               href: "/master-list/vendors" },
+      { label: "Subcontractors",        href: "/master-list/subcontractors" },
+      { label: "Developers",            href: "/master-list/developers" },
     ],
   },
   {
-    title: "Administration",
+    title: "Admin",
     items: [
-      { label: "Overview",         href: "/admin" },
-      { label: "User Management",  href: "/admin/users" },
-      { label: "Global Settings",  href: "/admin/settings" },
+      { label: "Settings",              href: "/admin/settings" },
+      { label: "User Permissions",      href: "/admin/users" },
+      { label: "System Logs",           href: "/admin/system-logs" },
+      { label: "Global Configurations", href: "/admin/global-config" },
     ],
   },
 ];
@@ -160,7 +144,7 @@ const NAV: NavSection[] = [
 // Overview-only pages: only exact match marks them active
 const OVERVIEW_HREFS = new Set([
   "/planning", "/construction", "/procurement", "/batching",
-  "/motorpool", "/audit", "/finance", "/hr", "/master-list", "/admin",
+  "/motorpool", "/audit", "/finance", "/main-dashboard",
 ]);
 
 function Chevron({ open }: { open: boolean }) {
@@ -222,7 +206,6 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
         borderBottom: `1px solid ${C.border}`, flexShrink: 0,
       }}>
         <span style={{ fontWeight: 700, fontSize: "1rem", letterSpacing: "-0.01em" }}>Castcrete 360</span>
-        {/* Close button — visible only on mobile via CSS */}
         <button
           onClick={onClose}
           className="mobile-only"
@@ -241,21 +224,21 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "0.5rem 0" }}>
-        {/* Main Dashboard */}
+        {/* Executive Overview */}
         <Link href="/main-dashboard" onClick={onClose} style={{
           display: "flex", alignItems: "center", gap: "0.5rem",
           padding: "0.5rem 1rem", marginBottom: "0.25rem",
-          textDecoration: "none", fontSize: "0.875rem", fontWeight: 600,
+          textDecoration: "none", fontSize: "0.8rem", fontWeight: 600,
           color: isActive("/main-dashboard") ? "#fff" : C.fg,
           background: isActive("/main-dashboard") ? C.activeBg : "transparent",
           borderLeft: isActive("/main-dashboard") ? `3px solid ${C.active}` : "3px solid transparent",
         }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-            <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
           </svg>
-          Main Dashboard
+          Executive Overview
         </Link>
 
         <div style={{ height: "1px", background: C.border, margin: "0.25rem 0 0.5rem" }} />
