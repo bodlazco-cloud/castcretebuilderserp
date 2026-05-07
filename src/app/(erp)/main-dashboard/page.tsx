@@ -117,13 +117,30 @@ export default async function MainDashboardPage({
   thisMonthStart.setDate(1);
   thisMonthStart.setHours(0, 0, 0, 0);
 
+  let dbError: string | null = null;
+  let activeProjectsRes: { n: number }[] = [];
+  let totalProjectsRes:  { n: number }[] = [];
+  let contractValueRes:  { v: string | null }[] = [];
+  let revenueMonthRes:   { v: string | null }[] = [];
+  let receivablesRes:    { v: string | null }[] = [];
+  let unpaidPayablesRes: { v: string | null }[] = [];
+  let cashRes:           { v: string | null }[] = [];
+  let headcountRes:      { n: number }[] = [];
+  let equipTotalRes:     { n: number }[] = [];
+  let equipAssignedRes:  { n: number }[] = [];
+  let pendingWarsRes:    { n: number }[] = [];
+  let openInvoicesRes:   { n: number }[] = [];
+  let openRfpRes:        { n: number }[] = [];
+  let batchCountRes:     { n: number }[] = [];
+
+  try {
   const [
-    activeProjectsRes, totalProjectsRes, contractValueRes,
-    revenueMonthRes, receivablesRes,
-    unpaidPayablesRes, cashRes,
-    headcountRes, equipTotalRes, equipAssignedRes,
-    pendingWarsRes, openInvoicesRes, openRfpRes,
-    batchCountRes,
+    activeProjectsRes_, totalProjectsRes_, contractValueRes_,
+    revenueMonthRes_, receivablesRes_,
+    unpaidPayablesRes_, cashRes_,
+    headcountRes_, equipTotalRes_, equipAssignedRes_,
+    pendingWarsRes_, openInvoicesRes_, openRfpRes_,
+    batchCountRes_,
   ] = await Promise.all([
     db.select({ n: count() }).from(projects).where(eq(projects.status, "ACTIVE")),
     db.select({ n: count() }).from(projects).where(ne(projects.status, "CANCELLED")),
@@ -152,6 +169,23 @@ export default async function MainDashboardPage({
     db.select({ n: count() }).from(batchingProductionLogs)
       .where(gte(batchingProductionLogs.batchDate, thisMonthStart.toISOString().split("T")[0])),
   ]);
+  activeProjectsRes = activeProjectsRes_;
+  totalProjectsRes  = totalProjectsRes_;
+  contractValueRes  = contractValueRes_;
+  revenueMonthRes   = revenueMonthRes_;
+  receivablesRes    = receivablesRes_;
+  unpaidPayablesRes = unpaidPayablesRes_;
+  cashRes           = cashRes_;
+  headcountRes      = headcountRes_;
+  equipTotalRes     = equipTotalRes_;
+  equipAssignedRes  = equipAssignedRes_;
+  pendingWarsRes    = pendingWarsRes_;
+  openInvoicesRes   = openInvoicesRes_;
+  openRfpRes        = openRfpRes_;
+  batchCountRes     = batchCountRes_;
+  } catch (err) {
+    dbError = err instanceof Error ? err.message : "Database connection failed.";
+  }
 
   const activeProjects = activeProjectsRes[0]?.n ?? 0;
   const totalProjects  = totalProjectsRes[0]?.n ?? 0;
@@ -188,6 +222,15 @@ export default async function MainDashboardPage({
         {error === "unauthorized" && (
           <div style={{ marginBottom: "1.5rem", padding: "0.75rem 1rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.875rem" }}>
             You don&apos;t have permission to access that page.
+          </div>
+        )}
+        {dbError && (
+          <div style={{ marginBottom: "1.5rem", padding: "1rem 1.25rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", color: "#991b1b" }}>
+            <div style={{ fontWeight: 700, marginBottom: "0.25rem" }}>⚠ Database connection error</div>
+            <div style={{ fontSize: "0.8rem", fontFamily: "monospace" }}>{dbError}</div>
+            <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "#b91c1c" }}>
+              Check that <strong>DATABASE_URL</strong>, <strong>NEXT_PUBLIC_SUPABASE_URL</strong>, and <strong>NEXT_PUBLIC_SUPABASE_ANON_KEY</strong> are set in Replit Secrets → Deployment.
+            </div>
           </div>
         )}
 

@@ -5,8 +5,8 @@ entrypoint = "src/app/page.tsx"
 channel = "stable-24_05"
 
 [deployment]
-build = ["sh", "-c", "npm install && npm run build && cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static"]
-run = ["sh", "-c", "node .next/standalone/server.js"]
+build = ["sh", "-c", "npm install && npm run build"]
+run = ["sh", "-c", "npm run start"]
 deploymentTarget = "cloudrun"
 
 [[ports]]
