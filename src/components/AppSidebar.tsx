@@ -121,6 +121,17 @@ const NAV: NavSection[] = [
     ],
   },
   {
+    title: "HR & Payroll",
+    items: [
+      { label: "Overview",            href: "/hr" },
+      { label: "Employee Registry",   href: "/hr/registry" },
+      { label: "Payroll Processor",   href: "/hr/payroll" },
+      { label: "Leave Management",    href: "/hr/leaves" },
+      { label: "Reports",             isDivider: true },
+      { label: "Employee List",       href: "/hr/reports/employee-list" },
+    ],
+  },
+  {
     title: "Master List",
     items: [
       { label: "Construction Phases",   href: "/master-list/projects" },
@@ -144,7 +155,7 @@ const NAV: NavSection[] = [
 // Overview-only pages: only exact match marks them active
 const OVERVIEW_HREFS = new Set([
   "/planning", "/construction", "/procurement", "/batching",
-  "/motorpool", "/audit", "/finance", "/main-dashboard",
+  "/motorpool", "/audit", "/finance", "/hr", "/main-dashboard",
 ]);
 
 function Chevron({ open }: { open: boolean }) {
