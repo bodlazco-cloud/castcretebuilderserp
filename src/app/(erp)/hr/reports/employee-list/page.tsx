@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { employees, departments, leaveSchedules } from "@/db/schema";
-import { eq, asc, and, eq as drizzleEq } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import EmployeeListReport from "./EmployeeListReport";
 
 export default async function EmployeeListReportPage() {
@@ -36,7 +36,7 @@ export default async function EmployeeListReportPage() {
       daysCount:  leaveSchedules.daysCount,
     })
     .from(leaveSchedules)
-    .where(drizzleEq(leaveSchedules.status, "APPROVED"));
+    .where(eq(leaveSchedules.status, "APPROVED"));
 
   const leaveMap: Record<string, { absences: number; vacation: number }> = {};
   for (const l of leaves) {

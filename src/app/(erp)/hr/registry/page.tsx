@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { employees, departments } from "@/db/schema";
-import { eq, ilike, asc, and } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import Link from "next/link";
 
 const S = {
