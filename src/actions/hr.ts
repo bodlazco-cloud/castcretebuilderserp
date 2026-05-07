@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/db";
-import { employees, dailyTimeRecords, leaveSchedules, payrollRecords } from "@/db/schema";
-import { eq, and, gte, lte, sum } from "drizzle-orm";
+import { employees, employeeDocuments, dailyTimeRecords, leaveSchedules, payrollRecords } from "@/db/schema";
+import { eq, and, gte, lte, ilike, asc } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
@@ -253,5 +253,108 @@ export async function releasePayroll(id: string): Promise<{ success: boolean; er
 
   await db.update(payrollRecords).set({ status: "RELEASED", paidAt: new Date() }).where(eq(payrollRecords.id, id));
   revalidatePath("/hr/payroll");
+  return { success: true };
+}
+
+// ─── Update Employee Profile ──────────────────────────────────────────────────
+
+const UpdateProfileSchema = z.object({
+  id:                   z.string().uuid(),
+  fullName:             z.string().min(1).max(150),
+  position:             z.string().min(1).max(100),
+  employmentType:       z.enum(["REGULAR", "CONTRACTUAL", "PROJECT_BASED"]),
+  hireDate:             z.string().date(),
+  tinNumber:            z.string().optional(),
+  phone:                z.string().max(30).optional(),
+  email:                z.string().email().max(150).optional().or(z.literal("")),
+  address:              z.string().optional(),
+  birthday:             z.string().date().optional().or(z.literal("")),
+  civilStatus:          z.enum(["SINGLE", "MARRIED", "WIDOWED", "SEPARATED", ""]).optional(),
+  gender:               z.enum(["MALE", "FEMALE", "OTHER", ""]).optional(),
+  emergencyContactName: z.string().max(150).optional(),
+  emergencyContactPhone:z.string().max(30).optional(),
+  dailyRate:            z.number().positive(),
+  sssContribution:      z.number().min(0),
+  philhealthContribution: z.number().min(0),
+  pagibigContribution:  z.number().min(0),
+});
+
+export type UpdateProfileResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function updateEmployeeProfile(
+  input: z.infer<typeof UpdateProfileSchema>,
+): Promise<UpdateProfileResult> {
+  const parsed = UpdateProfileSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  await db.update(employees).set({
+    fullName:               d.fullName,
+    position:               d.position,
+    employmentType:         d.employmentType,
+    hireDate:               d.hireDate,
+    tinNumber:              d.tinNumber || null,
+    phone:                  d.phone || null,
+    email:                  d.email || null,
+    address:                d.address || null,
+    birthday:               d.birthday || null,
+    civilStatus:            d.civilStatus || null,
+    gender:                 d.gender || null,
+    emergencyContactName:   d.emergencyContactName || null,
+    emergencyContactPhone:  d.emergencyContactPhone || null,
+    dailyRate:              String(d.dailyRate),
+    sssContribution:        String(d.sssContribution),
+    philhealthContribution: String(d.philhealthContribution),
+    pagibigContribution:    String(d.pagibigContribution),
+    updatedAt:              new Date(),
+  }).where(eq(employees.id, d.id));
+
+  revalidatePath(`/hr/registry/${d.id}`);
+  revalidatePath("/hr/registry");
+  return { success: true };
+}
+
+// ─── Employee Documents ───────────────────────────────────────────────────────
+
+const AddDocSchema = z.object({
+  employeeId: z.string().uuid(),
+  docType:    z.enum(["MEMO", "APPRAISAL", "NOTICE", "OTHER"]),
+  title:      z.string().min(1).max(200),
+  fileUrl:    z.string().url(),
+  uploadedBy: z.string().uuid().optional(),
+});
+
+export type AddDocResult =
+  | { success: true; docId: string }
+  | { success: false; error: string };
+
+export async function addEmployeeDocument(
+  input: z.infer<typeof AddDocSchema>,
+): Promise<AddDocResult> {
+  const parsed = AddDocSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  const [doc] = await db.insert(employeeDocuments).values({
+    employeeId: d.employeeId,
+    docType:    d.docType,
+    title:      d.title,
+    fileUrl:    d.fileUrl,
+    uploadedBy: d.uploadedBy ?? null,
+  }).returning({ id: employeeDocuments.id });
+
+  revalidatePath(`/hr/registry/${d.employeeId}`);
+  return { success: true, docId: doc.id };
+}
+
+export async function deleteEmployeeDocument(
+  docId: string,
+  employeeId: string,
+): Promise<{ success: boolean; error?: string }> {
+  await db.delete(employeeDocuments)
+    .where(and(eq(employeeDocuments.id, docId), eq(employeeDocuments.employeeId, employeeId)));
+  revalidatePath(`/hr/registry/${employeeId}`);
   return { success: true };
 }

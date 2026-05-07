@@ -22,8 +22,27 @@ export const employees = pgTable("employees", {
   tinNumber:              varchar("tin_number", { length: 20 }),
   separationDate:         date("separation_date"),
   isActive:               boolean("is_active").notNull().default(true),
+  // Personal info (added migration 015)
+  phone:                  varchar("phone", { length: 30 }),
+  email:                  varchar("email", { length: 150 }),
+  address:                text("address"),
+  birthday:               date("birthday"),
+  civilStatus:            varchar("civil_status", { length: 20 }),
+  gender:                 varchar("gender", { length: 10 }),
+  emergencyContactName:   varchar("emergency_contact_name", { length: 150 }),
+  emergencyContactPhone:  varchar("emergency_contact_phone", { length: 30 }),
   createdAt:              timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:              timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const employeeDocuments = pgTable("employee_documents", {
+  id:          uuid("id").primaryKey().defaultRandom(),
+  employeeId:  uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+  docType:     varchar("doc_type", { length: 30 }).notNull().default("OTHER"),
+  title:       varchar("title", { length: 200 }).notNull(),
+  fileUrl:     text("file_url").notNull(),
+  uploadedBy:  uuid("uploaded_by").references(() => users.id),
+  createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const dailyTimeRecords = pgTable("daily_time_records", {
@@ -71,7 +90,7 @@ export const leaveSchedules = pgTable("leave_schedules", {
   leaveType:   varchar("leave_type", { length: 30 }).notNull(),
   startDate:   date("start_date").notNull(),
   endDate:     date("end_date").notNull(),
-  daysCount:   numeric("days_count", { precision: 5, scale: 0 }),  // generated in DB
+  daysCount:   numeric("days_count", { precision: 5, scale: 0 }),
   status:      varchar("status", { length: 20 }).notNull().default("PENDING"),
   approvedBy:  uuid("approved_by").references(() => users.id),
   approvedAt:  timestamp("approved_at", { withTimezone: true }),
