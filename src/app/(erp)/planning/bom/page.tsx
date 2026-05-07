@@ -2,37 +2,50 @@ export const dynamic = "force-dynamic";
 import { getAuthUser } from "@/lib/supabase-server";
 import { db } from "@/db";
 import { bomStandards, activityDefinitions, projects, materials } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 const ACCENT = "#1a56db";
 
 export default async function BomRegisterPage() {
   await getAuthUser();
 
-  const rows = await db
-    .select({
-      id:               bomStandards.id,
-      unitModel:        bomStandards.unitModel,
-      unitType:         bomStandards.unitType,
-      quantityPerUnit:  bomStandards.quantityPerUnit,
-      version:          bomStandards.version,
-      isActive:         bomStandards.isActive,
-      createdAt:        bomStandards.createdAt,
-      activityDefId:    activityDefinitions.id,
-      activityCode:     activityDefinitions.activityCode,
-      activityName:     activityDefinitions.activityName,
-      scopeName:        activityDefinitions.scopeName,
-      projId:           projects.id,
-      projName:         projects.name,
-      matCode:          materials.code,
-      matName:          materials.name,
-      matUnit:          materials.unit,
-    })
-    .from(bomStandards)
-    .leftJoin(activityDefinitions, eq(bomStandards.activityDefId, activityDefinitions.id))
-    .leftJoin(projects,            eq(activityDefinitions.projectId, projects.id))
-    .leftJoin(materials,           eq(bomStandards.materialId, materials.id))
-    .orderBy(projects.name, activityDefinitions.sequenceOrder, bomStandards.unitModel, bomStandards.unitType);
+  let rows: Array<{
+    id: string; unitModel: string; unitType: string; quantityPerUnit: string;
+    version: number; isActive: boolean; createdAt: Date;
+    activityDefId: string | null; activityCode: string | null; activityName: string | null;
+    scopeName: string | null; projId: string | null; projName: string | null;
+    matCode: string | null; matName: string | null; matUnit: string | null;
+  }> = [];
+  let dbError: string | null = null;
+
+  try {
+    rows = await db
+      .select({
+        id:               bomStandards.id,
+        unitModel:        bomStandards.unitModel,
+        unitType:         bomStandards.unitType,
+        quantityPerUnit:  bomStandards.quantityPerUnit,
+        version:          bomStandards.version,
+        isActive:         bomStandards.isActive,
+        createdAt:        bomStandards.createdAt,
+        activityDefId:    activityDefinitions.id,
+        activityCode:     activityDefinitions.activityCode,
+        activityName:     activityDefinitions.activityName,
+        scopeName:        activityDefinitions.scopeName,
+        projId:           projects.id,
+        projName:         projects.name,
+        matCode:          materials.code,
+        matName:          materials.name,
+        matUnit:          materials.unit,
+      })
+      .from(bomStandards)
+      .leftJoin(activityDefinitions, eq(bomStandards.activityDefId, activityDefinitions.id))
+      .leftJoin(projects,            eq(activityDefinitions.projectId, projects.id))
+      .leftJoin(materials,           eq(bomStandards.materialId, materials.id))
+      .orderBy(projects.name, activityDefinitions.sequenceOrder, bomStandards.unitModel, bomStandards.unitType);
+  } catch (err) {
+    dbError = err instanceof Error ? err.message : "Database query failed.";
+  }
 
   // Group: project → activityDef → unitModel+unitType → lines
   type BomLine = typeof rows[number];
@@ -91,6 +104,19 @@ export default async function BomRegisterPage() {
             color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
           }}>+ New BOM Entry</a>
         </div>
+
+        {dbError && (
+          <div style={{
+            padding: "1rem 1.25rem", marginBottom: "1.5rem", borderRadius: "8px",
+            background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontSize: "0.875rem",
+          }}>
+            <strong>Database error:</strong> {dbError}
+            <br /><span style={{ fontSize: "0.8rem", color: "#b91c1c" }}>
+              The <code>bom_standards</code> and <code>activity_definitions</code> tables may not exist yet.
+              Run the pending migrations in Supabase SQL Editor.
+            </span>
+          </div>
+        )}
 
         {projectMap.size === 0 ? (
           <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>

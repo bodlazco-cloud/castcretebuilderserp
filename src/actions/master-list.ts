@@ -6,6 +6,7 @@ import {
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
   developerRateCards, materialPriceHistory, subcontractorRateCards,
   bomStandards, costCenters, materialSuppliers,
+  phaseCategories, phaseScopes, phaseActivities, phaseBillingMilestones,
 } from "@/db/schema";
 import { eq, count } from "drizzle-orm";
 import { z } from "zod";
@@ -850,5 +851,180 @@ export async function setMaterialSupplier(
 export async function removeMaterialSupplier(id: string, materialId: string): Promise<{ success: boolean }> {
   await db.delete(materialSuppliers).where(eq(materialSuppliers.id, id));
   revalidatePath(`/admin/materials/${materialId}`);
+  return { success: true };
+}
+
+// ─── Phase Categories ──────────────────────────────────────────────────────
+
+const PhaseCategorySchema = z.object({
+  code:          z.string().min(1).max(50),
+  name:          z.string().min(1).max(150),
+  sequenceOrder: z.number().int().min(0).default(0),
+});
+
+export async function createPhaseCategory(input: z.infer<typeof PhaseCategorySchema>): Promise<MutationResult> {
+  const parsed = PhaseCategorySchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  const [row] = await db.insert(phaseCategories).values({ code: d.code, name: d.name, sequenceOrder: d.sequenceOrder }).returning({ id: phaseCategories.id });
+  revalidatePath("/master-list/construction-phases");
+  return { success: true, id: row.id };
+}
+
+export async function updatePhaseCategory(id: string, input: z.infer<typeof PhaseCategorySchema>): Promise<MutationResult> {
+  const parsed = PhaseCategorySchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(phaseCategories).set({ code: d.code, name: d.name, sequenceOrder: d.sequenceOrder }).where(eq(phaseCategories.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true, id };
+}
+
+export async function deletePhaseCategory(id: string): Promise<{ success: boolean; error?: string }> {
+  const [scopes] = await db.select({ n: count() }).from(phaseScopes).where(eq(phaseScopes.categoryId, id));
+  if (Number(scopes?.n ?? 0) > 0) return { success: false, error: "Cannot delete: scopes exist in this category. Remove them first." };
+  await db.delete(phaseCategories).where(eq(phaseCategories.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true };
+}
+
+export async function togglePhaseCategoryActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(phaseCategories).set({ isActive }).where(eq(phaseCategories.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true };
+}
+
+// ─── Phase Scopes (Scope of Work) ─────────────────────────────────────────
+
+const PhaseScopeSchema = z.object({
+  categoryId:    z.string().uuid(),
+  code:          z.string().min(1).max(100),
+  name:          z.string().min(1).max(200),
+  sequenceOrder: z.number().int().min(0).default(0),
+});
+
+export async function createPhaseScope(input: z.infer<typeof PhaseScopeSchema>): Promise<MutationResult> {
+  const parsed = PhaseScopeSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  const [row] = await db.insert(phaseScopes).values({ categoryId: d.categoryId, code: d.code, name: d.name, sequenceOrder: d.sequenceOrder }).returning({ id: phaseScopes.id });
+  revalidatePath("/master-list/construction-phases");
+  return { success: true, id: row.id };
+}
+
+export async function updatePhaseScope(id: string, input: z.infer<typeof PhaseScopeSchema>): Promise<MutationResult> {
+  const parsed = PhaseScopeSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(phaseScopes).set({ categoryId: d.categoryId, code: d.code, name: d.name, sequenceOrder: d.sequenceOrder }).where(eq(phaseScopes.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true, id };
+}
+
+export async function deletePhaseScope(id: string): Promise<{ success: boolean; error?: string }> {
+  const [acts] = await db.select({ n: count() }).from(phaseActivities).where(eq(phaseActivities.scopeId, id));
+  if (Number(acts?.n ?? 0) > 0) return { success: false, error: "Cannot delete: activities exist in this scope. Remove them first." };
+  await db.delete(phaseScopes).where(eq(phaseScopes.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true };
+}
+
+export async function togglePhaseScopeActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(phaseScopes).set({ isActive }).where(eq(phaseScopes.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true };
+}
+
+// ─── Phase Activities ──────────────────────────────────────────────────────
+
+const PhaseActivitySchema = z.object({
+  scopeId:              z.string().uuid(),
+  code:                 z.string().min(1).max(100),
+  name:                 z.string().min(1).max(200),
+  standardDurationDays: z.number().int().positive().default(1),
+  weightInScopePct:     z.number().min(0).max(100).default(0),
+  sequenceOrder:        z.number().int().min(0).default(0),
+});
+
+export async function createPhaseActivity(input: z.infer<typeof PhaseActivitySchema>): Promise<MutationResult> {
+  const parsed = PhaseActivitySchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  const [row] = await db.insert(phaseActivities).values({
+    scopeId: d.scopeId, code: d.code, name: d.name,
+    standardDurationDays: d.standardDurationDays,
+    weightInScopePct: String(d.weightInScopePct),
+    sequenceOrder: d.sequenceOrder,
+  }).returning({ id: phaseActivities.id });
+  revalidatePath("/master-list/construction-phases");
+  return { success: true, id: row.id };
+}
+
+export async function updatePhaseActivity(id: string, input: z.infer<typeof PhaseActivitySchema>): Promise<MutationResult> {
+  const parsed = PhaseActivitySchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(phaseActivities).set({
+    scopeId: d.scopeId, code: d.code, name: d.name,
+    standardDurationDays: d.standardDurationDays,
+    weightInScopePct: String(d.weightInScopePct),
+    sequenceOrder: d.sequenceOrder,
+  }).where(eq(phaseActivities.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true, id };
+}
+
+export async function deletePhaseActivity(id: string): Promise<{ success: boolean; error?: string }> {
+  await db.delete(phaseActivities).where(eq(phaseActivities.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true };
+}
+
+export async function togglePhaseActivityActive(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(phaseActivities).set({ isActive }).where(eq(phaseActivities.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true };
+}
+
+// ─── Phase Billing Milestones ──────────────────────────────────────────────
+
+const PhaseBillingMilestoneSchema = z.object({
+  categoryId:      z.string().uuid(),
+  name:            z.string().min(1).max(200),
+  weightPct:       z.number().min(0).max(100).default(0),
+  triggersBilling: z.boolean().default(true),
+  sequenceOrder:   z.number().int().min(0).default(0),
+  notes:           z.string().max(1000).optional(),
+});
+
+export async function createPhaseBillingMilestone(input: z.infer<typeof PhaseBillingMilestoneSchema>): Promise<MutationResult> {
+  const parsed = PhaseBillingMilestoneSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  const [row] = await db.insert(phaseBillingMilestones).values({
+    categoryId: d.categoryId, name: d.name,
+    weightPct: String(d.weightPct), triggersBilling: d.triggersBilling,
+    sequenceOrder: d.sequenceOrder, notes: d.notes ?? null,
+  }).returning({ id: phaseBillingMilestones.id });
+  revalidatePath("/master-list/construction-phases");
+  return { success: true, id: row.id };
+}
+
+export async function updatePhaseBillingMilestone(id: string, input: z.infer<typeof PhaseBillingMilestoneSchema>): Promise<MutationResult> {
+  const parsed = PhaseBillingMilestoneSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(phaseBillingMilestones).set({
+    categoryId: d.categoryId, name: d.name,
+    weightPct: String(d.weightPct), triggersBilling: d.triggersBilling,
+    sequenceOrder: d.sequenceOrder, notes: d.notes ?? null,
+  }).where(eq(phaseBillingMilestones.id, id));
+  revalidatePath("/master-list/construction-phases");
+  return { success: true, id };
+}
+
+export async function deletePhaseBillingMilestone(id: string): Promise<{ success: boolean; error?: string }> {
+  await db.delete(phaseBillingMilestones).where(eq(phaseBillingMilestones.id, id));
+  revalidatePath("/master-list/construction-phases");
   return { success: true };
 }
