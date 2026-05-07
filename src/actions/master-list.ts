@@ -191,7 +191,8 @@ export async function toggleSubconActive(id: string, isActive: boolean): Promise
 // ─── Activity Definitions (SOW) ────────────────────────────────────────────
 
 const ActivityDefSchema = z.object({
-  category:             z.enum(["STRUCTURAL", "ARCHITECTURAL", "TURNOVER"]),
+  projectId:            z.string().uuid(),
+  category:             z.enum(["SLAB", "STRUCTURAL", "SPECIALTY_WORKS", "MEPF", "ARCHITECTURAL", "TURNOVER"]),
   scopeCode:            z.string().min(1).max(100),
   scopeName:            z.string().min(1).max(150),
   activityCode:         z.string().min(1).max(100),
@@ -211,6 +212,7 @@ export async function createActivityDefinition(
   const [row] = await db
     .insert(activityDefinitions)
     .values({
+      projectId:            d.projectId,
       category:             d.category,
       scopeCode:            d.scopeCode,
       scopeName:            d.scopeName,
@@ -262,8 +264,11 @@ export async function toggleActivityDefinitionActive(id: string, isActive: boole
 // ─── Milestone Definitions ─────────────────────────────────────────────────
 
 const MilestoneDefSchema = z.object({
+  projectId:       z.string().uuid(),
+  scopeCode:       z.string().max(100).optional(),
+  scopeName:       z.string().max(150).optional(),
   name:            z.string().min(1).max(150),
-  category:        z.enum(["STRUCTURAL", "ARCHITECTURAL", "TURNOVER"]),
+  category:        z.enum(["SLAB", "STRUCTURAL", "SPECIALTY_WORKS", "MEPF", "ARCHITECTURAL", "TURNOVER"]),
   sequenceOrder:   z.number().int().min(1),
   triggersBilling: z.boolean(),
   weightPct:       z.number().min(0).max(100),
@@ -277,6 +282,9 @@ export async function createMilestoneDefinition(
 
   const d = parsed.data;
   const [row] = await db.insert(milestoneDefinitions).values({
+    projectId:       d.projectId,
+    scopeCode:       d.scopeCode,
+    scopeName:       d.scopeName,
     name:            d.name,
     category:        d.category,
     sequenceOrder:   d.sequenceOrder,
@@ -712,7 +720,6 @@ const BomStandardSchema = z.object({
   unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
   materialId:      z.string().uuid(),
   quantityPerUnit: z.number().positive(),
-  baseRatePhp:     z.number().positive().optional(),
 });
 
 export async function createBomStandard(input: z.infer<typeof BomStandardSchema>): Promise<MutationResult> {
@@ -725,7 +732,6 @@ export async function createBomStandard(input: z.infer<typeof BomStandardSchema>
     unitType:        d.unitType,
     materialId:      d.materialId,
     quantityPerUnit: String(d.quantityPerUnit),
-    baseRatePhp:     d.baseRatePhp != null ? String(d.baseRatePhp) : null,
   }).returning({ id: bomStandards.id });
   revalidatePath("/admin/bom-standards");
   return { success: true, id: row.id };
@@ -741,7 +747,6 @@ export async function updateBomStandard(id: string, input: z.infer<typeof BomSta
     unitType:        d.unitType,
     materialId:      d.materialId,
     quantityPerUnit: String(d.quantityPerUnit),
-    baseRatePhp:     d.baseRatePhp != null ? String(d.baseRatePhp) : null,
   }).where(eq(bomStandards.id, id));
   revalidatePath("/admin/bom-standards");
   revalidatePath(`/admin/bom-standards/${id}`);

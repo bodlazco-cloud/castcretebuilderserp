@@ -61,7 +61,7 @@ export default async function MixDesignsPage() {
     db.execute(sql`SELECT DISTINCT project_id, unit_model FROM project_units ORDER BY unit_model`),
   ]);
 
-  const unitModelRows = (unitModelRowsRaw.rows as { project_id: string; unit_model: string }[])
+  const unitModelRows = (unitModelRowsRaw as unknown as { project_id: string; unit_model: string }[])
     .map((r) => ({ projectId: r.project_id, unitModel: r.unit_model }));
 
   const dedupedUnitModels = unitModelRows;

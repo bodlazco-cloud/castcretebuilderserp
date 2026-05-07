@@ -55,7 +55,7 @@ export default async function MilestoneDefsPage() {
       LEFT JOIN projects p ON p.id = md.project_id
       ORDER BY p.name, md.sequence_order
     `);
-    rows = (raw.rows as Record<string, unknown>[]).map((r) => ({
+    rows = (raw as unknown as Record<string, unknown>[]).map((r) => ({
       id:              r.id as string,
       name:            r.name as string,
       scopeCode:       null,
