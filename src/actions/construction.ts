@@ -268,7 +268,7 @@ const SubmitWarSchema = z.object({
   unitId:           z.string().uuid(),
   unitMilestoneId:  z.string().uuid(),
   taskAssignmentId: z.string().uuid(),
-  grossAccomplishment: z.number().min(0).default(0),
+  grossAccomplishment: z.number().min(0).default(0).optional(),
   submittedBy:      z.string().uuid(),
 });
 
