@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { ApproveProjectButton, AddBlockForm, EditBlockForm, DeleteBlockButton, AddUnitForm, UnitRow } from "./ProjectActions";
+import { EditProjectForm } from "./EditProjectForm";
 
 const FIELD: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "0.2rem" };
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" };
@@ -90,6 +91,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </div>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             {!isApproved && <ApproveProjectButton projectId={id} />}
+            <EditProjectForm project={{
+              id: project.id,
+              name: project.name,
+              status: project.status,
+              startDate: project.startDate,
+              endDate: project.endDate,
+              contractValue: project.contractValue,
+              developerAdvance: project.developerAdvance,
+              targetUnitsPerMonth: project.targetUnitsPerMonth,
+              minOperatingCashBuffer: project.minOperatingCashBuffer,
+            }} />
             <a href="/master-list/sow" style={{
               padding: "0.5rem 1rem", borderRadius: "6px", background: "#6366f1",
               color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",

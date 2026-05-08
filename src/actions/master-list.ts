@@ -5,7 +5,7 @@ import {
   developers, projects, materials, suppliers,
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
   developerRateCards, materialPriceHistory, subcontractorRateCards,
-  bomStandards, costCenters, materialSuppliers,
+  bomStandards, costCenters, materialSuppliers, departments,
   phaseCategories, phaseScopes, phaseActivities, phaseBillingMilestones,
   globalSettings,
 } from "@/db/schema";
@@ -1061,5 +1061,84 @@ export async function updateGlobalSetting(
     .set({ value: value.trim(), updatedAt: new Date() })
     .where(eq(globalSettings.key, key));
   revalidatePath("/admin/global-config");
+  return { success: true };
+}
+
+// ─── Update Project (Site Registry edits) ─────────────────────────────────
+
+const UpdateProjectSchema = z.object({
+  id:                     z.string().uuid(),
+  name:                   z.string().min(1).max(200),
+  status:                 z.enum(["BIDDING", "ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"]),
+  startDate:              z.string().date().optional().or(z.literal("")),
+  endDate:                z.string().date().optional().or(z.literal("")),
+  contractValue:          z.number().min(0),
+  developerAdvance:       z.number().min(0),
+  targetUnitsPerMonth:    z.number().int().min(0),
+  minOperatingCashBuffer: z.number().min(0),
+});
+
+export async function updateProject(
+  input: z.infer<typeof UpdateProjectSchema>,
+): Promise<MutationResult> {
+  const parsed = UpdateProjectSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(projects).set({
+    name:                   d.name,
+    status:                 d.status,
+    startDate:              d.startDate || null,
+    endDate:                d.endDate || null,
+    contractValue:          String(d.contractValue),
+    developerAdvance:       String(d.developerAdvance),
+    targetUnitsPerMonth:    d.targetUnitsPerMonth,
+    minOperatingCashBuffer: String(d.minOperatingCashBuffer),
+    updatedAt:              new Date(),
+  }).where(eq(projects.id, d.id));
+  revalidatePath(`/master-list/projects/${d.id}`);
+  revalidatePath("/master-list/projects");
+  revalidatePath("/construction/sites");
+  return { success: true, id: d.id };
+}
+
+// ─── Departments ────────────────────────────────────────────────────────────
+
+const DEPT_CODES = ["PLANNING","AUDIT","CONSTRUCTION","PROCUREMENT","BATCHING","MOTORPOOL","FINANCE","HR","ADMIN","BOD"] as const;
+const DEPT_NAMES: Record<string, string> = {
+  PLANNING: "Planning", AUDIT: "Audit", CONSTRUCTION: "Construction",
+  PROCUREMENT: "Procurement", BATCHING: "Batching Plant", MOTORPOOL: "Motor Pool",
+  FINANCE: "Finance", HR: "Human Resources", ADMIN: "Administration", BOD: "Board of Directors",
+};
+
+export async function seedDepartments(): Promise<{ success: boolean; seeded: number }> {
+  const existing = await db.select({ code: departments.code }).from(departments);
+  const existingCodes = new Set(existing.map((r) => r.code));
+  let seeded = 0;
+  for (const code of DEPT_CODES) {
+    if (!existingCodes.has(code)) {
+      await db.insert(departments).values({ code, name: DEPT_NAMES[code] ?? code });
+      seeded++;
+    }
+  }
+  revalidatePath("/master-list/departments");
+  return { success: true, seeded };
+}
+
+export async function createCostCenterForDept(input: z.infer<typeof CostCenterSchema>): Promise<MutationResult> {
+  const parsed = CostCenterSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  const [existing] = await db.select({ id: costCenters.id }).from(costCenters).where(eq(costCenters.code, d.code)).limit(1);
+  if (existing) return { success: false, error: "Cost center code already exists." };
+  const [row] = await db.insert(costCenters).values({
+    code: d.code, name: d.name, deptId: d.deptId, type: d.type,
+  }).returning({ id: costCenters.id });
+  revalidatePath("/master-list/departments");
+  return { success: true, id: row.id };
+}
+
+export async function toggleCostCenterActiveForDept(id: string, isActive: boolean): Promise<{ success: boolean }> {
+  await db.update(costCenters).set({ isActive }).where(eq(costCenters.id, id));
+  revalidatePath("/master-list/departments");
   return { success: true };
 }

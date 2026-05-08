@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { developers, projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { developers, projects, developerRateCards, activityDefinitions } from "@/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
+import { DevRateCards } from "./DevRateCards";
 
 export default async function DeveloperDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await getAuthUser();
@@ -21,6 +22,38 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
     .from(projects)
     .where(eq(projects.developerId, id))
     .orderBy(projects.name);
+
+  const devProjectIds = projectRows.map((p) => p.id);
+
+  const rateCardRows = devProjectIds.length > 0
+    ? await db
+        .select({
+          id:               developerRateCards.id,
+          projectName:      projects.name,
+          scopeName:        activityDefinitions.scopeName,
+          activityCode:     activityDefinitions.activityCode,
+          activityName:     activityDefinitions.activityName,
+          grossRatePerUnit: developerRateCards.grossRatePerUnit,
+          retentionPct:     developerRateCards.retentionPct,
+          dpRecoupmentPct:  developerRateCards.dpRecoupmentPct,
+          taxPct:           developerRateCards.taxPct,
+          version:          developerRateCards.version,
+          isActive:         developerRateCards.isActive,
+        })
+        .from(developerRateCards)
+        .leftJoin(projects,            eq(developerRateCards.projectId,     projects.id))
+        .leftJoin(activityDefinitions, eq(developerRateCards.activityDefId, activityDefinitions.id))
+        .where(inArray(developerRateCards.projectId, devProjectIds))
+        .orderBy(developerRateCards.createdAt)
+    : [];
+
+  const activityDefRows = devProjectIds.length > 0
+    ? await db
+        .select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId, scopeName: activityDefinitions.scopeName, activityCode: activityDefinitions.activityCode, activityName: activityDefinitions.activityName })
+        .from(activityDefinitions)
+        .where(inArray(activityDefinitions.projectId, devProjectIds))
+        .orderBy(activityDefinitions.scopeName, activityDefinitions.activityCode)
+    : [];
 
   const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" };
   const VALUE: React.CSSProperties = { fontSize: "0.95rem", color: "#111827", fontWeight: 500 };
@@ -97,6 +130,12 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
             </table>
           </div>
         )}
+
+        <DevRateCards
+          devProjects={projectRows.map((p) => ({ id: p.id, name: p.name }))}
+          rateCards={rateCardRows}
+          allActivityDefs={activityDefRows}
+        />
       </div>
     </main>
   );
