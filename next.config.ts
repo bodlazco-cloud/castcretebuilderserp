@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["postgres"],
+  generateBuildId: () => `build-${Date.now()}`,
   allowedDevOrigins: [
     "*.spock.replit.dev",
     "*.replit.dev",

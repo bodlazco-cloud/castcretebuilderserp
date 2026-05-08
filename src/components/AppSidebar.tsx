@@ -134,7 +134,7 @@ const NAV: NavSection[] = [
   {
     title: "Master List",
     items: [
-      { label: "Construction Phases",   href: "/master-list/projects" },
+      { label: "Construction Phases",   href: "/master-list/construction-phases" },
       { label: "Material List",         href: "/master-list/materials" },
       { label: "Vendors",               href: "/master-list/vendors" },
       { label: "Subcontractors",        href: "/master-list/subcontractors" },
