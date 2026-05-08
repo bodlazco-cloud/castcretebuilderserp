@@ -5,6 +5,7 @@ import { eq, desc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { RunPayrollForm } from "./RunPayrollForm";
 import { PayrollActions } from "./PayrollActions";
+import { UploadDtrForm } from "./UploadDtrForm";
 
 const ACCENT = "#6b7280";
 
@@ -63,7 +64,10 @@ export default async function PayrollPage() {
               {rows.length} records · {draftCount} pending approval · {releasedCount} released
             </p>
           </div>
-          <RunPayrollForm />
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "flex-start", flexDirection: "column" }}>
+            <RunPayrollForm />
+            <UploadDtrForm />
+          </div>
         </div>
 
         {/* KPI strip */}

@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db";
-import { employees, employeeDocuments, dailyTimeRecords, leaveSchedules, payrollRecords } from "@/db/schema";
+import { employees, employeeDocuments, dailyTimeRecords, leaveSchedules, payrollRecords, costCenters } from "@/db/schema";
 import { eq, and, gte, lte, ilike, asc } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
@@ -105,6 +105,60 @@ export async function logDailyTimeRecord(
 
   revalidatePath("/hr");
   return { success: true, dtrId: dtr.id };
+}
+
+// ─── Batch Log Daily Time Records (CSV Upload) ────────────────────────────────
+
+const BatchDtrItemSchema = z.object({
+  employeeCode: z.string().min(1),
+  workDate:     z.string().date(),
+  costCenterCode: z.string().min(1),
+  hoursWorked:  z.number().min(0).max(24).optional(),
+  overtimeHours: z.number().min(0).optional(),
+});
+
+export type BatchDtrResult =
+  | { success: true; inserted: number; skipped: number }
+  | { success: false; error: string };
+
+export async function batchLogDtr(
+  rows: z.infer<typeof BatchDtrItemSchema>[],
+): Promise<BatchDtrResult> {
+  const parsed = z.array(BatchDtrItemSchema).safeParse(rows);
+  if (!parsed.success) return { success: false, error: "Invalid DTR data format." };
+  if (parsed.data.length === 0) return { success: false, error: "No records provided." };
+
+  const allEmps = await db.select({ id: employees.id, code: employees.employeeCode })
+    .from(employees);
+  const empMap = new Map(allEmps.map((e) => [e.code, e.id]));
+
+  const allCcs = await db.select({ id: costCenters.id, code: costCenters.code })
+    .from(costCenters);
+  const ccMap = new Map(allCcs.map((c) => [c.code, c.id]));
+
+  const toInsert: typeof dailyTimeRecords.$inferInsert[] = [];
+  let skipped = 0;
+
+  for (const r of parsed.data) {
+    const empId = empMap.get(r.employeeCode);
+    const ccId  = ccMap.get(r.costCenterCode);
+    if (!empId || !ccId) { skipped++; continue; }
+    toInsert.push({
+      employeeId:    empId,
+      workDate:      r.workDate,
+      costCenterId:  ccId,
+      hoursWorked:   r.hoursWorked != null ? String(r.hoursWorked) : null,
+      overtimeHours: String(r.overtimeHours ?? 0),
+    });
+  }
+
+  if (toInsert.length > 0) {
+    await db.insert(dailyTimeRecords).values(toInsert);
+  }
+
+  revalidatePath("/hr");
+  revalidatePath("/hr/payroll");
+  return { success: true, inserted: toInsert.length, skipped };
 }
 
 // ─── Record Leave Request ─────────────────────────────────────────────────────
