@@ -14,8 +14,9 @@ const AddEmployeeSchema = z.object({
   costCenterId:           z.string().uuid(),
   position:               z.string().min(1).max(100),
   employmentType:         z.enum(["REGULAR", "CONTRACTUAL", "PROJECT_BASED"]),
-  dailyRate:              z.number().positive(),
+  monthlyRate:            z.number().positive(),
   sssContribution:        z.number().min(0),
+  mpfContribution:        z.number().min(0).default(0),
   philhealthContribution: z.number().min(0),
   pagibigContribution:    z.number().min(0),
   hireDate:               z.string().date(),
@@ -40,6 +41,7 @@ export async function addEmployee(
     .limit(1);
   if (existing.length > 0) return { success: false, error: "Employee code already exists." };
 
+  const dailyFromMonthly = String(Math.round((d.monthlyRate / 26) * 100) / 100);
   const [emp] = await db
     .insert(employees)
     .values({
@@ -49,8 +51,10 @@ export async function addEmployee(
       costCenterId:           d.costCenterId,
       position:               d.position,
       employmentType:         d.employmentType,
-      dailyRate:              String(d.dailyRate),
+      monthlyRate:            String(d.monthlyRate),
+      dailyRate:              dailyFromMonthly,
       sssContribution:        String(d.sssContribution),
+      mpfContribution:        String(d.mpfContribution ?? 0),
       philhealthContribution: String(d.philhealthContribution),
       pagibigContribution:    String(d.pagibigContribution),
       hireDate:               d.hireDate,
@@ -273,8 +277,9 @@ const UpdateProfileSchema = z.object({
   gender:               z.enum(["MALE", "FEMALE", "OTHER", ""]).optional(),
   emergencyContactName: z.string().max(150).optional(),
   emergencyContactPhone:z.string().max(30).optional(),
-  dailyRate:            z.number().positive(),
+  monthlyRate:          z.number().positive(),
   sssContribution:      z.number().min(0),
+  mpfContribution:      z.number().min(0).default(0),
   philhealthContribution: z.number().min(0),
   pagibigContribution:  z.number().min(0),
 });
@@ -304,8 +309,10 @@ export async function updateEmployeeProfile(
     gender:                 d.gender || null,
     emergencyContactName:   d.emergencyContactName || null,
     emergencyContactPhone:  d.emergencyContactPhone || null,
-    dailyRate:              String(d.dailyRate),
+    monthlyRate:            String(d.monthlyRate),
+    dailyRate:              String(Math.round((d.monthlyRate / 26) * 100) / 100),
     sssContribution:        String(d.sssContribution),
+    mpfContribution:        String(d.mpfContribution ?? 0),
     philhealthContribution: String(d.philhealthContribution),
     pagibigContribution:    String(d.pagibigContribution),
     updatedAt:              new Date(),

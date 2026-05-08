@@ -14,17 +14,17 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
 
   const [mat] = await db
     .select({
-      id:                  materials.id,
-      code:                materials.code,
-      name:                materials.name,
-      unit:                materials.unit,
-      category:            materials.category,
-      adminPrice:          materials.adminPrice,
-      priceVersion:        materials.priceVersion,
-      isActive:            materials.isActive,
-      createdAt:           materials.createdAt,
-      supId:               suppliers.id,
-      supName:             suppliers.name,
+      id:              materials.id,
+      code:            materials.code,
+      name:            materials.name,
+      unit:            materials.unit,
+      adminPrice:      materials.adminPrice,
+      minimumQuantity: materials.minimumQuantity,
+      priceVersion:    materials.priceVersion,
+      isActive:        materials.isActive,
+      createdAt:       materials.createdAt,
+      supId:           suppliers.id,
+      supName:         suppliers.name,
     })
     .from(materials)
     .leftJoin(suppliers, eq(materials.preferredSupplierId, suppliers.id))
@@ -69,13 +69,16 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
           <h2 style={{ margin: "0 0 1rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Details</h2>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1.25rem" }}>
             <div><div style={LABEL}>Unit of Measure</div><div style={VALUE}>{mat.unit}</div></div>
-            <div><div style={LABEL}>Category</div><div style={VALUE}>{mat.category}</div></div>
             <div>
               <div style={LABEL}>Admin Price (PHP)</div>
               <div style={{ ...VALUE, fontSize: "1.1rem" }}>
                 PHP {Number(mat.adminPrice).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
               </div>
               <div style={{ fontSize: "0.75rem", color: "#9ca3af" }}>v{mat.priceVersion}</div>
+            </div>
+            <div>
+              <div style={LABEL}>Minimum Quantity</div>
+              <div style={VALUE}>{mat.minimumQuantity ? Number(mat.minimumQuantity).toFixed(4) : "—"}</div>
             </div>
             <div>
               <div style={LABEL}>Preferred Supplier</div>

@@ -1,5 +1,7 @@
 export * from "./enums";
 export * from "./core";
+export * from "./phases";
+export * from "./settings";
 export * from "./projects";
 export * from "./admin";
 export * from "./subcontractors";
