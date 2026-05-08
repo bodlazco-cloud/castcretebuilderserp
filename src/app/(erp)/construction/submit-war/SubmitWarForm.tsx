@@ -41,12 +41,11 @@ export function SubmitWarForm({ projects, units, assignments, milestones, userId
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
       const result = await submitWorkAccomplishedReport({
-        projectId:           fd.get("projectId") as string,
-        unitId:              fd.get("unitId") as string,
-        unitMilestoneId:     fd.get("unitMilestoneId") as string,
-        taskAssignmentId:    fd.get("taskAssignmentId") as string,
-        grossAccomplishment: Number(fd.get("grossAccomplishment")),
-        submittedBy:         userId,
+        projectId:        fd.get("projectId") as string,
+        unitId:           fd.get("unitId") as string,
+        unitMilestoneId:  fd.get("unitMilestoneId") as string,
+        taskAssignmentId: fd.get("taskAssignmentId") as string,
+        submittedBy:      userId,
       });
       if (result.success) {
         router.push("/construction");
@@ -107,11 +106,6 @@ export function SubmitWarForm({ projects, units, assignments, milestones, userId
             <option value="" disabled>No pending milestones for this unit</option>
           )}
         </select>
-      </label>
-
-      <label>
-        <span style={labelStyle}>Gross Accomplishment (PHP) *</span>
-        <input name="grossAccomplishment" type="number" min="0" step="0.01" required style={inputStyle} placeholder="0.00" />
       </label>
 
       <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>

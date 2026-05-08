@@ -15,8 +15,10 @@ type Employee = {
   tinNumber: string | null;
   separationDate: string | null;
   isActive: boolean;
+  monthlyRate: string | null;
   dailyRate: string;
   sssContribution: string;
+  mpfContribution: string;
   philhealthContribution: string;
   pagibigContribution: string;
   phone: string | null;
@@ -110,10 +112,11 @@ export default function EmployeeProfileClient({
         gender:                (fd.get("gender") as any) || undefined,
         emergencyContactName:  (fd.get("emergencyContactName") as string) || undefined,
         emergencyContactPhone: (fd.get("emergencyContactPhone") as string) || undefined,
-        dailyRate:             Number(fd.get("dailyRate")),
-        sssContribution:       Number(fd.get("sssContribution") || 0),
-        philhealthContribution:Number(fd.get("philhealthContribution") || 0),
-        pagibigContribution:   Number(fd.get("pagibigContribution") || 0),
+        monthlyRate:            Number(fd.get("monthlyRate")),
+        sssContribution:        Number(fd.get("sssContribution") || 0),
+        mpfContribution:        Number(fd.get("mpfContribution") || 0),
+        philhealthContribution: Number(fd.get("philhealthContribution") || 0),
+        pagibigContribution:    Number(fd.get("pagibigContribution") || 0),
       });
       setMsg(result.success
         ? { ok: true, text: "Profile saved." }
@@ -326,8 +329,9 @@ export default function EmployeeProfileClient({
                 </div>
 
                 {/* Hidden salary fields so form saves all in one action */}
-                <input type="hidden" name="dailyRate" value={emp.dailyRate} />
+                <input type="hidden" name="monthlyRate" value={emp.monthlyRate ?? String(Number(emp.dailyRate) * 26)} />
                 <input type="hidden" name="sssContribution" value={emp.sssContribution} />
+                <input type="hidden" name="mpfContribution" value={emp.mpfContribution} />
                 <input type="hidden" name="philhealthContribution" value={emp.philhealthContribution} />
                 <input type="hidden" name="pagibigContribution" value={emp.pagibigContribution} />
 
@@ -353,24 +357,28 @@ export default function EmployeeProfileClient({
                 )}
 
                 <div style={grid2}>
-                  <label><span style={label}>Daily Rate (₱) *</span>
-                    <input name="dailyRate" type="number" step="0.01" required defaultValue={emp.dailyRate} style={input} /></label>
+                  <label><span style={label}>Monthly Rate (₱) *</span>
+                    <input name="monthlyRate" type="number" step="0.01" required
+                      defaultValue={emp.monthlyRate ?? String(Number(emp.dailyRate) * 26)} style={input} /></label>
                   <div style={{ padding: "0.75rem 1rem", background: "#f9fafb", borderRadius: "6px", border: "1px solid #e5e7eb" }}>
-                    <div style={{ fontSize: "0.75rem", color: "#9ca3af", fontWeight: 600 }}>Monthly Equivalent</div>
+                    <div style={{ fontSize: "0.75rem", color: "#9ca3af", fontWeight: 600 }}>Daily Rate (÷ 26)</div>
                     <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "#111827", marginTop: "0.2rem" }}>
-                      ₱{(Number(emp.dailyRate) * 22).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                      ₱{Number(emp.dailyRate).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                     </div>
+                    <div style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: "0.15rem" }}>Auto-calculated on save</div>
                   </div>
                 </div>
 
                 <div style={{ borderTop: "1px solid #f3f4f6", paddingTop: "1.25rem" }}>
                   <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151", marginBottom: "1rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Statutory Contributions (monthly)</div>
-                  <div style={grid3}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "1rem" }}>
                     <label><span style={label}>SSS (₱)</span>
                       <input name="sssContribution" type="number" step="0.01" defaultValue={emp.sssContribution} style={input} /></label>
+                    <label><span style={label}>MPF (₱)</span>
+                      <input name="mpfContribution" type="number" step="0.01" defaultValue={emp.mpfContribution} style={input} /></label>
                     <label><span style={label}>PhilHealth (₱)</span>
                       <input name="philhealthContribution" type="number" step="0.01" defaultValue={emp.philhealthContribution} style={input} /></label>
-                    <label><span style={label}>Pag-IBIG (₱)</span>
+                    <label><span style={label}>HDMF / Pag-Ibig (₱)</span>
                       <input name="pagibigContribution" type="number" step="0.01" defaultValue={emp.pagibigContribution} style={input} /></label>
                   </div>
                 </div>
@@ -387,6 +395,14 @@ export default function EmployeeProfileClient({
                 <input type="hidden" name="position" value={emp.position} />
                 <input type="hidden" name="employmentType" value={emp.employmentType} />
                 <input type="hidden" name="hireDate" value={emp.hireDate ?? ""} />
+                <input type="hidden" name="phone" value={emp.phone ?? ""} />
+                <input type="hidden" name="email" value={emp.email ?? ""} />
+                <input type="hidden" name="address" value={emp.address ?? ""} />
+                <input type="hidden" name="birthday" value={emp.birthday ?? ""} />
+                <input type="hidden" name="civilStatus" value={emp.civilStatus ?? ""} />
+                <input type="hidden" name="gender" value={emp.gender ?? ""} />
+                <input type="hidden" name="emergencyContactName" value={emp.emergencyContactName ?? ""} />
+                <input type="hidden" name="emergencyContactPhone" value={emp.emergencyContactPhone ?? ""} />
 
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
                   <button type="submit" disabled={isPending} style={{

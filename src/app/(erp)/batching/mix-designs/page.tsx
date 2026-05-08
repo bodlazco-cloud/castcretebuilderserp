@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { standardMixes, mixDesigns, projects, projectUnits } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { standardMixes, mixDesigns, projects, projectUnits, bomStandards, activityDefinitions, materials } from "@/db/schema";
+import { eq, sql, asc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { AddStandardMixForm } from "./AddStandardMixForm";
 
@@ -50,7 +50,7 @@ export default async function MixDesignsPage() {
     needsMigration = true;
   }
 
-  const [mixDesignRows, projectRows, unitModelRowsRaw] = await Promise.all([
+  const [mixDesignRows, projectRows, unitModelRowsRaw, bomRows] = await Promise.all([
     db.select({ id: mixDesigns.id, code: mixDesigns.code, name: mixDesigns.name })
       .from(mixDesigns)
       .where(eq(mixDesigns.isActive, true))
@@ -59,6 +59,23 @@ export default async function MixDesignsPage() {
       .from(projects)
       .orderBy(projects.name),
     db.execute(sql`SELECT DISTINCT project_id, unit_model FROM project_units ORDER BY unit_model`),
+    db.select({
+      bomId:           bomStandards.id,
+      unitModel:       bomStandards.unitModel,
+      unitType:        bomStandards.unitType,
+      quantityPerUnit: bomStandards.quantityPerUnit,
+      scopeCode:       activityDefinitions.scopeCode,
+      scopeName:       activityDefinitions.scopeName,
+      activityCode:    activityDefinitions.activityCode,
+      matCode:         materials.code,
+      matName:         materials.name,
+      matUnit:         materials.unit,
+    })
+      .from(bomStandards)
+      .leftJoin(activityDefinitions, eq(bomStandards.activityDefId, activityDefinitions.id))
+      .leftJoin(materials, eq(bomStandards.materialId, materials.id))
+      .where(eq(bomStandards.isActive, true))
+      .orderBy(bomStandards.unitModel, activityDefinitions.scopeCode, activityDefinitions.activityCode),
   ]);
 
   const unitModelRows = (unitModelRowsRaw as unknown as { project_id: string; unit_model: string }[])
@@ -143,6 +160,77 @@ export default async function MixDesignsPage() {
             </div>
           </div>
         )}
+
+        {/* BOM Materials per Scope / Unit Model */}
+        <div style={{ marginTop: "2rem" }}>
+          <h2 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 700, color: "#374151" }}>
+            BOM Materials by Unit Model &amp; Scope
+          </h2>
+          <p style={{ margin: "0 0 1rem", color: "#6b7280", fontSize: "0.85rem" }}>
+            Material quantities per unit defined in the Bill of Materials. Used by batching operators to plan material staging.
+          </p>
+          {bomRows.length === 0 ? (
+            <div style={{ padding: "2rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af", fontSize: "0.875rem" }}>
+              No BOM standards defined yet. Add BOM entries under Master List → Scope of Work.
+            </div>
+          ) : (() => {
+            // Group by unit model
+            const byModel = new Map<string, typeof bomRows>();
+            for (const r of bomRows) {
+              const k = r.unitModel;
+              if (!byModel.has(k)) byModel.set(k, []);
+              byModel.get(k)!.push(r);
+            }
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                {[...byModel.entries()].map(([model, rows]) => (
+                  <div key={model} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                    <div style={{ padding: "0.65rem 1rem", background: "#fef2f2", borderBottom: "1px solid #fecaca", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span style={{ fontWeight: 700, color: "#111827" }}>{model}</span>
+                      <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>{rows.length} material entries</span>
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem", minWidth: "600px" }}>
+                        <thead>
+                          <tr style={{ background: "#f9fafb" }}>
+                            {["Scope", "Activity", "Unit Type", "Material", "Qty / Unit", "UoM"].map((h, i) => (
+                              <th key={i} style={{ padding: "0.5rem 0.9rem", textAlign: i === 4 ? "right" : "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #f3f4f6" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r) => {
+                            const tc = UNIT_TYPE_COLORS[r.unitType] ?? { bg: "#f3f4f6", color: "#374151" };
+                            return (
+                              <tr key={r.bomId} style={{ borderBottom: "1px solid #f9fafb" }}>
+                                <td style={{ padding: "0.5rem 0.9rem" }}>
+                                  <div style={{ fontWeight: 500, color: "#374151" }}>{r.scopeCode ?? "—"}</div>
+                                  <div style={{ fontSize: "0.72rem", color: "#9ca3af" }}>{r.scopeName ?? ""}</div>
+                                </td>
+                                <td style={{ padding: "0.5rem 0.9rem", color: "#374151" }}>{r.activityCode ?? "—"}</td>
+                                <td style={{ padding: "0.5rem 0.9rem" }}>
+                                  <span style={{ fontSize: "0.68rem", fontWeight: 700, padding: "0.1rem 0.4rem", borderRadius: "4px", background: tc.bg, color: tc.color }}>{r.unitType}</span>
+                                </td>
+                                <td style={{ padding: "0.5rem 0.9rem" }}>
+                                  <div style={{ fontWeight: 500, color: "#111827" }}>{r.matName ?? "—"}</div>
+                                  <div style={{ fontSize: "0.72rem", color: "#9ca3af", fontFamily: "monospace" }}>{r.matCode ?? ""}</div>
+                                </td>
+                                <td style={{ padding: "0.5rem 0.9rem", textAlign: "right", fontFamily: "monospace", fontWeight: 600, color: "#374151" }}>
+                                  {r.quantityPerUnit ? Number(r.quantityPerUnit).toFixed(4) : "—"}
+                                </td>
+                                <td style={{ padding: "0.5rem 0.9rem", color: "#6b7280" }}>{r.matUnit ?? "—"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
       </div>
     </main>
   );

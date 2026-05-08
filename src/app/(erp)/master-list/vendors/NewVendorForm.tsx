@@ -17,12 +17,22 @@ export function NewVendorForm() {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [contactPerson, setContactPerson] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result = await createSupplier({ name });
+      const result = await createSupplier({
+        name,
+        address: address || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+        contactPerson: contactPerson || undefined,
+      });
       if (result.success) {
         router.push(`/master-list/vendors/${result.id}`);
       } else {
@@ -43,6 +53,32 @@ export function NewVendorForm() {
         <span style={labelStyle}>Vendor / Supplier Name *</span>
         <input type="text" required value={name} onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Holcim Philippines, Inc." style={inputStyle} />
+      </label>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+        <label>
+          <span style={labelStyle}>Contact Person</span>
+          <input type="text" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)}
+            placeholder="e.g. Juan Dela Cruz" style={inputStyle} />
+        </label>
+        <label>
+          <span style={labelStyle}>Phone</span>
+          <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
+            placeholder="+63 9XX XXX XXXX" style={inputStyle} />
+        </label>
+      </div>
+
+      <label>
+        <span style={labelStyle}>Email</span>
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+          placeholder="vendor@example.com" style={inputStyle} />
+      </label>
+
+      <label>
+        <span style={labelStyle}>Address</span>
+        <textarea value={address} onChange={(e) => setAddress(e.target.value)}
+          placeholder="Complete business address" rows={2}
+          style={{ ...inputStyle, resize: "vertical" }} />
       </label>
 
       <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>

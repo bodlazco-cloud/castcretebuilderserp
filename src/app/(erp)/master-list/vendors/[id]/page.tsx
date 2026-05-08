@@ -43,7 +43,21 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
         </div>
 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1.25rem" }}>
+            {vendor.contactPerson && (
+              <div><div style={LABEL}>Contact Person</div><div style={VALUE}>{vendor.contactPerson}</div></div>
+            )}
+            {vendor.phone && (
+              <div><div style={LABEL}>Phone</div><div style={VALUE}>{vendor.phone}</div></div>
+            )}
+            {vendor.email && (
+              <div><div style={LABEL}>Email</div>
+                <a href={`mailto:${vendor.email}`} style={{ ...VALUE, color: "#6366f1", textDecoration: "none" }}>{vendor.email}</a>
+              </div>
+            )}
+            {vendor.address && (
+              <div style={{ gridColumn: "span 3" }}><div style={LABEL}>Address</div><div style={VALUE}>{vendor.address}</div></div>
+            )}
             <div><div style={LABEL}>Vendor ID</div><div style={{ ...VALUE, fontFamily: "monospace", fontSize: "0.8rem" }}>{vendor.id}</div></div>
             <div><div style={LABEL}>Added</div><div style={VALUE}>{new Date(vendor.createdAt).toLocaleDateString("en-PH", { dateStyle: "long" })}</div></div>
           </div>

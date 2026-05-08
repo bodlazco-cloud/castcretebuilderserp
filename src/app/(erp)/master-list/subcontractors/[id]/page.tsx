@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { subcontractors, taskAssignments, projects } from "@/db/schema";
+import { subcontractors, taskAssignments, projects, subcontractorRateCards, activityDefinitions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
+import { SubconRateCards } from "./SubconRateCards";
 
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" };
 const VALUE: React.CSSProperties = { fontSize: "0.95rem", color: "#111827", fontWeight: 500 };
@@ -39,6 +40,32 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
     .leftJoin(projects, eq(taskAssignments.projectId, projects.id))
     .where(eq(taskAssignments.subconId, id))
     .orderBy(taskAssignments.startDate);
+
+  const rateCards = await db
+    .select({
+      id:           subcontractorRateCards.id,
+      projectName:  projects.name,
+      scopeName:    activityDefinitions.scopeName,
+      activityCode: activityDefinitions.activityCode,
+      activityName: activityDefinitions.activityName,
+      ratePerUnit:  subcontractorRateCards.ratePerUnit,
+      retentionPct: subcontractorRateCards.retentionPct,
+      version:      subcontractorRateCards.version,
+      isActive:     subcontractorRateCards.isActive,
+    })
+    .from(subcontractorRateCards)
+    .leftJoin(projects,           eq(subcontractorRateCards.projectId,     projects.id))
+    .leftJoin(activityDefinitions, eq(subcontractorRateCards.activityDefId, activityDefinitions.id))
+    .where(eq(subcontractorRateCards.subconId, id))
+    .orderBy(subcontractorRateCards.createdAt);
+
+  const allProjects = await db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name);
+
+  const allActivityDefs = await db
+    .select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId, scopeName: activityDefinitions.scopeName, activityCode: activityDefinitions.activityCode, activityName: activityDefinitions.activityName })
+    .from(activityDefinitions)
+    .where(eq(activityDefinitions.isActive, true))
+    .orderBy(activityDefinitions.scopeName, activityDefinitions.activityCode);
 
   const gs = GRADE_STYLE[sub.performanceGrade] ?? { bg: "#f3f4f6", color: "#6b7280" };
 
@@ -125,6 +152,13 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
             </table>
           </div>
         )}
+
+        <SubconRateCards
+          subconId={id}
+          rateCards={rateCards}
+          projects={allProjects}
+          activityDefs={allActivityDefs}
+        />
       </div>
     </main>
   );

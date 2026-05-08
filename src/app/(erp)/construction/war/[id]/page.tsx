@@ -42,7 +42,6 @@ export default async function WarDetailPage({ params }: { params: Promise<{ id: 
   const [war] = await db
     .select({
       id:                   workAccomplishedReports.id,
-      grossAccomplishment:  workAccomplishedReports.grossAccomplishment,
       status:               workAccomplishedReports.status,
       rejectionReason:      workAccomplishedReports.rejectionReason,
       submittedAt:          workAccomplishedReports.submittedAt,
@@ -100,9 +99,6 @@ export default async function WarDetailPage({ params }: { params: Promise<{ id: 
             <span style={{ display: "inline-block", padding: "0.2rem 0.6rem", borderRadius: "999px", fontSize: "0.75rem", fontWeight: 600, background: st.bg, color: st.color }}>
               {war.status.replace(/_/g, " ")}
             </span>
-          </div>
-          <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "#111827" }}>
-            PHP {Number(war.grossAccomplishment).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
           </div>
         </div>
 

@@ -14,8 +14,6 @@ const labelStyle: React.CSSProperties = {
   display: "block", fontSize: "0.82rem", fontWeight: 600, color: "#374151", marginBottom: "0.35rem",
 };
 
-const CATEGORIES = ["CEMENT", "REBARS", "LUMBER", "CHB", "AGGREGATES", "TILES", "PAINT", "ELECTRICAL", "PLUMBING", "HARDWARE", "FINISHING", "OTHER"];
-
 export function NewMaterialForm({ suppliers }: { suppliers: Supplier[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -24,8 +22,8 @@ export function NewMaterialForm({ suppliers }: { suppliers: Supplier[] }) {
   const [code, setCode]                               = useState("");
   const [name, setName]                               = useState("");
   const [unit, setUnit]                               = useState("");
-  const [category, setCategory]                       = useState("");
   const [adminPrice, setAdminPrice]                   = useState("");
+  const [minimumQuantity, setMinimumQuantity]         = useState("");
   const [preferredSupplierId, setPreferredSupplierId] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
@@ -33,8 +31,9 @@ export function NewMaterialForm({ suppliers }: { suppliers: Supplier[] }) {
     setError(null);
     startTransition(async () => {
       const result = await createMaterial({
-        code, name, unit, category,
+        code, name, unit,
         adminPrice: Number(adminPrice),
+        minimumQuantity: minimumQuantity ? Number(minimumQuantity) : undefined,
         preferredSupplierId: preferredSupplierId || undefined,
       });
       if (result.success) {
@@ -66,35 +65,31 @@ export function NewMaterialForm({ suppliers }: { suppliers: Supplier[] }) {
         </label>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Unit of Measure *</span>
           <input type="text" required value={unit} onChange={(e) => setUnit(e.target.value)}
             placeholder="e.g. bag, kg, pc, lm, m2" style={inputStyle} />
         </label>
         <label>
-          <span style={labelStyle}>Category *</span>
-          <select required value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
-            <option value="">Select category…</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-        <label>
           <span style={labelStyle}>Admin Price (PHP) *</span>
           <input type="number" required min="0" step="0.01" value={adminPrice}
             onChange={(e) => setAdminPrice(e.target.value)} placeholder="0.00" style={inputStyle} />
         </label>
         <label>
-          <span style={labelStyle}>Preferred Supplier</span>
-          <select value={preferredSupplierId} onChange={(e) => setPreferredSupplierId(e.target.value)} style={inputStyle}>
-            <option value="">No preference</option>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <span style={labelStyle}>Minimum Quantity</span>
+          <input type="number" min="0" step="0.0001" value={minimumQuantity}
+            onChange={(e) => setMinimumQuantity(e.target.value)} placeholder="0.0000" style={inputStyle} />
         </label>
       </div>
+
+      <label>
+        <span style={labelStyle}>Preferred Supplier</span>
+        <select value={preferredSupplierId} onChange={(e) => setPreferredSupplierId(e.target.value)} style={inputStyle}>
+          <option value="">No preference</option>
+          {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      </label>
 
       <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
         <a href="/master-list/materials" style={{

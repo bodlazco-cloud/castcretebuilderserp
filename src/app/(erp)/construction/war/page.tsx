@@ -21,14 +21,13 @@ export default async function WarListPage() {
 
   const rows = await db
     .select({
-      id:                  workAccomplishedReports.id,
-      grossAccomplishment: workAccomplishedReports.grossAccomplishment,
-      status:              workAccomplishedReports.status,
-      submittedAt:         workAccomplishedReports.submittedAt,
-      unitCode:            projectUnits.unitCode,
-      unitModel:           projectUnits.unitModel,
-      projName:            projects.name,
-      subName:             subcontractors.name,
+      id:          workAccomplishedReports.id,
+      status:      workAccomplishedReports.status,
+      submittedAt: workAccomplishedReports.submittedAt,
+      unitCode:    projectUnits.unitCode,
+      unitModel:   projectUnits.unitModel,
+      projName:    projects.name,
+      subName:     subcontractors.name,
     })
     .from(workAccomplishedReports)
     .leftJoin(projectUnits,   eq(workAccomplishedReports.unitId,             projectUnits.id))
@@ -36,8 +35,6 @@ export default async function WarListPage() {
     .leftJoin(taskAssignments, eq(workAccomplishedReports.taskAssignmentId,  taskAssignments.id))
     .leftJoin(subcontractors, eq(taskAssignments.subconId,                   subcontractors.id))
     .orderBy(desc(workAccomplishedReports.submittedAt));
-
-  const totalGross = rows.reduce((sum, r) => sum + Number(r.grossAccomplishment), 0);
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -49,7 +46,7 @@ export default async function WarListPage() {
           <div>
             <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Work Accomplished Reports</h1>
             <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-              All WARs — {rows.length} total, PHP {totalGross.toLocaleString("en-PH", { minimumFractionDigits: 2 })} gross
+              All WARs — {rows.length} total
             </p>
           </div>
           <a href="/construction/submit-war" style={{
@@ -84,8 +81,8 @@ export default async function WarListPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "820px" }}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    {["Project", "Unit", "Subcontractor", "Gross Amount", "Status", "Submitted", ""].map((h, i) => (
-                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: i === 3 ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                    {["Project", "Unit", "Subcontractor", "Status", "Submitted", ""].map((h, i) => (
+                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -99,9 +96,6 @@ export default async function WarListPage() {
                           <span style={{ fontFamily: "monospace", fontWeight: 600, color: "#111827" }}>{r.unitCode ?? "—"}</span>
                         </td>
                         <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>{r.subName ?? "—"}</td>
-                        <td style={{ padding: "0.65rem 1rem", textAlign: "right", fontWeight: 700, color: "#111827" }}>
-                          PHP {Number(r.grossAccomplishment).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                        </td>
                         <td style={{ padding: "0.65rem 1rem" }}>
                           <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: st.bg, color: st.color }}>
                             {r.status.replace(/_/g, " ")}

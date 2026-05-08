@@ -40,8 +40,9 @@ export function AddEmployeeForm({
         costCenterId:           fd.get("costCenterId") as string,
         position:               fd.get("position") as string,
         employmentType:         fd.get("employmentType") as any,
-        dailyRate:              Number(fd.get("dailyRate")),
+        monthlyRate:            Number(fd.get("monthlyRate")),
         sssContribution:        Number(fd.get("sssContribution") || 0),
+        mpfContribution:        Number(fd.get("mpfContribution") || 0),
         philhealthContribution: Number(fd.get("philhealthContribution") || 0),
         pagibigContribution:    Number(fd.get("pagibigContribution") || 0),
         hireDate:               fd.get("hireDate") as string,
@@ -126,21 +127,31 @@ export function AddEmployeeForm({
         <p style={{ margin: "0 0 0.75rem", fontSize: "0.82rem", fontWeight: 600, color: "#374151" }}>
           Compensation & Contributions
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "1rem", marginBottom: "0.75rem" }}>
           <label>
-            <span style={labelStyle}>Daily Rate (PHP) *</span>
-            <input name="dailyRate" type="number" min="0" step="0.01" required style={inputStyle} placeholder="0.00" />
+            <span style={labelStyle}>Monthly Rate (PHP) *</span>
+            <input name="monthlyRate" type="number" min="0" step="0.01" required style={inputStyle} placeholder="0.00" />
           </label>
+          <div style={{ padding: "0.6rem 0.8rem", background: "#f9fafb", borderRadius: "6px", border: "1px solid #e5e7eb", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <div style={{ fontSize: "0.72rem", color: "#9ca3af", fontWeight: 600 }}>Daily Rate (computed ÷ 26)</div>
+            <div style={{ fontSize: "0.9rem", color: "#374151", fontStyle: "italic" }}>Auto-calculated on save</div>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
           <label>
             <span style={labelStyle}>SSS</span>
             <input name="sssContribution" type="number" min="0" step="0.01" style={inputStyle} placeholder="0.00" defaultValue="0" />
+          </label>
+          <label>
+            <span style={labelStyle}>MPF</span>
+            <input name="mpfContribution" type="number" min="0" step="0.01" style={inputStyle} placeholder="0.00" defaultValue="0" />
           </label>
           <label>
             <span style={labelStyle}>PhilHealth</span>
             <input name="philhealthContribution" type="number" min="0" step="0.01" style={inputStyle} placeholder="0.00" defaultValue="0" />
           </label>
           <label>
-            <span style={labelStyle}>Pag-IBIG</span>
+            <span style={labelStyle}>HDMF / Pag-Ibig</span>
             <input name="pagibigContribution" type="number" min="0" step="0.01" style={inputStyle} placeholder="0.00" defaultValue="0" />
           </label>
         </div>

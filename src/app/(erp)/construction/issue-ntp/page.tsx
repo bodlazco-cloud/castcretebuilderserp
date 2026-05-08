@@ -16,6 +16,7 @@ export default async function IssueNtpPage() {
     db.select({
       id: schema.projectUnits.id, unitCode: schema.projectUnits.unitCode,
       projectId: schema.projectUnits.projectId, unitModel: schema.projectUnits.unitModel,
+      unitType: schema.projectUnits.unitType,
     }).from(schema.projectUnits).where(eq(schema.projectUnits.status, "PENDING"))
       .orderBy(schema.projectUnits.unitCode),
     db.select({
@@ -43,7 +44,7 @@ export default async function IssueNtpPage() {
           <div style={{ padding: "1.5rem" }}>
             <IssueNtpForm
               projects={projects}
-              units={units}
+              units={units.map((u) => ({ ...u, unitType: u.unitType ?? "MID" }))}
               subcontractors={subcontractors.map((s) => ({ ...s, tradeTypes: s.tradeTypes ?? [] }))}
               userId={user?.id ?? ""}
             />
