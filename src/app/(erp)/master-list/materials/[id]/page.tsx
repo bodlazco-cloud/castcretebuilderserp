@@ -4,6 +4,7 @@ import { materials, suppliers, bomStandards, activityDefinitions } from "@/db/sc
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
+import { EditMaterialForm } from "./EditMaterialForm";
 
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" };
 const VALUE: React.CSSProperties = { fontSize: "0.95rem", color: "#111827", fontWeight: 500 };
@@ -31,6 +32,12 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
     .where(eq(materials.id, id));
 
   if (!mat) notFound();
+
+  const supplierRows = await db
+    .select({ id: suppliers.id, name: suppliers.name })
+    .from(suppliers)
+    .where(eq(suppliers.isActive, true))
+    .orderBy(suppliers.name);
 
   const bomRows = await db
     .select({
@@ -63,6 +70,10 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
               background: mat.isActive ? "#dcfce7" : "#f3f4f6", color: mat.isActive ? "#166534" : "#6b7280",
             }}>{mat.isActive ? "Active" : "Inactive"}</span>
           </div>
+          <EditMaterialForm
+            material={{ id: mat.id, name: mat.name, unit: mat.unit, adminPrice: mat.adminPrice, minimumQuantity: mat.minimumQuantity ?? null, supId: mat.supId ?? null }}
+            suppliers={supplierRows}
+          />
         </div>
 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>

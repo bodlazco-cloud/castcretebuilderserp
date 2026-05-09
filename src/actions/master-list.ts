@@ -126,6 +126,31 @@ export async function toggleMaterialActive(id: string, isActive: boolean): Promi
   return { success: true };
 }
 
+const UpdateMaterialSchema = z.object({
+  id:                  z.string().uuid(),
+  name:                z.string().min(1).max(150),
+  unit:                z.string().min(1).max(30),
+  adminPrice:          z.number().min(0),
+  minimumQuantity:     z.number().min(0).optional(),
+  preferredSupplierId: z.string().uuid().optional().or(z.literal("")),
+});
+
+export async function updateMaterial(input: z.infer<typeof UpdateMaterialSchema>): Promise<MutationResult> {
+  const parsed = UpdateMaterialSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(materials).set({
+    name:                d.name,
+    unit:                d.unit,
+    adminPrice:          String(d.adminPrice),
+    minimumQuantity:     d.minimumQuantity != null ? String(d.minimumQuantity) : null,
+    preferredSupplierId: d.preferredSupplierId || null,
+  }).where(eq(materials.id, d.id));
+  revalidatePath(`/master-list/materials/${d.id}`);
+  revalidatePath("/master-list/materials");
+  return { success: true, id: d.id };
+}
+
 // ─── Suppliers ─────────────────────────────────────────────────────────────
 
 const SupplierSchema = z.object({
@@ -162,6 +187,31 @@ export async function toggleSupplierActive(id: string, isActive: boolean): Promi
   await db.update(suppliers).set({ isActive }).where(eq(suppliers.id, id));
   revalidatePath("/master-list/vendors");
   return { success: true };
+}
+
+const UpdateSupplierSchema = z.object({
+  id:            z.string().uuid(),
+  name:          z.string().min(1).max(150),
+  address:       z.string().max(500).optional(),
+  phone:         z.string().max(50).optional(),
+  email:         z.string().email().max(150).optional().or(z.literal("")),
+  contactPerson: z.string().max(150).optional(),
+});
+
+export async function updateSupplier(input: z.infer<typeof UpdateSupplierSchema>): Promise<MutationResult> {
+  const parsed = UpdateSupplierSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  await db.update(suppliers).set({
+    name:          d.name,
+    address:       d.address || null,
+    phone:         d.phone || null,
+    email:         d.email || null,
+    contactPerson: d.contactPerson || null,
+  }).where(eq(suppliers.id, d.id));
+  revalidatePath(`/master-list/vendors/${d.id}`);
+  revalidatePath("/master-list/vendors");
+  return { success: true, id: d.id };
 }
 
 // ─── Subcontractors ────────────────────────────────────────────────────────
