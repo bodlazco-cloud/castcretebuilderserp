@@ -4,6 +4,7 @@ import { suppliers, materials } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
+import { EditVendorForm } from "./EditVendorForm";
 
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" };
 const VALUE: React.CSSProperties = { fontSize: "0.95rem", color: "#111827", fontWeight: 500 };
@@ -32,7 +33,7 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
           <a href="/master-list/vendors" style={{ fontSize: "0.8rem", color: "#6366f1", textDecoration: "none" }}>← Vendors / Suppliers</a>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem", flexWrap: "wrap", gap: "1rem" }}>
           <div>
             <h1 style={{ margin: "0 0 0.35rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>{vendor.name}</h1>
             <span style={{
@@ -40,6 +41,7 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
               background: vendor.isActive ? "#dcfce7" : "#f3f4f6", color: vendor.isActive ? "#166534" : "#6b7280",
             }}>{vendor.isActive ? "Active" : "Inactive"}</span>
           </div>
+          <EditVendorForm vendor={{ id: vendor.id, name: vendor.name, contactPerson: vendor.contactPerson ?? null, phone: vendor.phone ?? null, email: vendor.email ?? null, address: vendor.address ?? null }} />
         </div>
 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
