@@ -387,60 +387,6 @@ export async function toggleMilestoneDefinitionActive(id: string, isActive: bool
   return { success: true };
 }
 
-// ─── Material Update (full fields) ─────────────────────────────────────────
-
-const UpdateMaterialSchema = z.object({
-  code:                z.string().min(1).max(50),
-  name:                z.string().min(1).max(150),
-  unit:                z.string().min(1).max(30),
-  minimumQuantity:     z.number().min(0).optional(),
-  preferredSupplierId: z.string().uuid().optional(),
-});
-
-export async function updateMaterial(
-  id: string,
-  input: z.infer<typeof UpdateMaterialSchema>,
-): Promise<MutationResult> {
-  const parsed = UpdateMaterialSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
-
-  const d = parsed.data;
-  await db.update(materials).set({
-    code:                d.code,
-    name:                d.name,
-    unit:                d.unit,
-    minimumQuantity:     d.minimumQuantity != null ? String(d.minimumQuantity) : null,
-    preferredSupplierId: d.preferredSupplierId || null,
-  }).where(eq(materials.id, id));
-
-  revalidatePath("/admin/materials");
-  revalidatePath(`/admin/materials/${id}`);
-  revalidatePath("/master-list/materials");
-  return { success: true, id };
-}
-
-// ─── Supplier Update ───────────────────────────────────────────────────────
-
-export async function updateSupplier(
-  id: string,
-  input: z.infer<typeof SupplierSchema>,
-): Promise<MutationResult> {
-  const parsed = SupplierSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
-  const d = parsed.data;
-  await db.update(suppliers).set({
-    name:          d.name,
-    address:       d.address || null,
-    phone:         d.phone || null,
-    email:         d.email || null,
-    contactPerson: d.contactPerson || null,
-  }).where(eq(suppliers.id, id));
-  revalidatePath("/admin/suppliers");
-  revalidatePath(`/admin/suppliers/${id}`);
-  revalidatePath("/master-list/vendors");
-  return { success: true, id };
-}
-
 // ─── Subcontractor Update ──────────────────────────────────────────────────
 
 export async function updateSubcontractor(
