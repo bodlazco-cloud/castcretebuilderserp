@@ -41,31 +41,41 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
     .where(eq(taskAssignments.subconId, id))
     .orderBy(taskAssignments.startDate);
 
-  const rateCards = await db
-    .select({
-      id:           subcontractorRateCards.id,
-      projectName:  projects.name,
-      scopeName:    activityDefinitions.scopeName,
-      activityCode: activityDefinitions.activityCode,
-      activityName: activityDefinitions.activityName,
-      ratePerUnit:  subcontractorRateCards.ratePerUnit,
-      retentionPct: subcontractorRateCards.retentionPct,
-      version:      subcontractorRateCards.version,
-      isActive:     subcontractorRateCards.isActive,
-    })
-    .from(subcontractorRateCards)
-    .leftJoin(projects,           eq(subcontractorRateCards.projectId,     projects.id))
-    .leftJoin(activityDefinitions, eq(subcontractorRateCards.activityDefId, activityDefinitions.id))
-    .where(eq(subcontractorRateCards.subconId, id))
-    .orderBy(subcontractorRateCards.createdAt);
+  let rateCards: {
+    id: string; projectName: string | null; scopeName: string | null;
+    activityCode: string | null; activityName: string | null;
+    ratePerUnit: string; retentionPct: string; version: number; isActive: boolean;
+  }[] = [];
+  let allProjects: { id: string; name: string }[] = [];
+  let allActivityDefs: { id: string; projectId: string; scopeName: string; activityCode: string; activityName: string }[] = [];
 
-  const allProjects = await db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name);
-
-  const allActivityDefs = await db
-    .select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId, scopeName: activityDefinitions.scopeName, activityCode: activityDefinitions.activityCode, activityName: activityDefinitions.activityName })
-    .from(activityDefinitions)
-    .where(eq(activityDefinitions.isActive, true))
-    .orderBy(activityDefinitions.scopeName, activityDefinitions.activityCode);
+  try {
+    [rateCards, allProjects, allActivityDefs] = await Promise.all([
+      db.select({
+        id:           subcontractorRateCards.id,
+        projectName:  projects.name,
+        scopeName:    activityDefinitions.scopeName,
+        activityCode: activityDefinitions.activityCode,
+        activityName: activityDefinitions.activityName,
+        ratePerUnit:  subcontractorRateCards.ratePerUnit,
+        retentionPct: subcontractorRateCards.retentionPct,
+        version:      subcontractorRateCards.version,
+        isActive:     subcontractorRateCards.isActive,
+      })
+      .from(subcontractorRateCards)
+      .leftJoin(projects,            eq(subcontractorRateCards.projectId,     projects.id))
+      .leftJoin(activityDefinitions, eq(subcontractorRateCards.activityDefId, activityDefinitions.id))
+      .where(eq(subcontractorRateCards.subconId, id))
+      .orderBy(subcontractorRateCards.createdAt),
+      db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name),
+      db.select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId, scopeName: activityDefinitions.scopeName, activityCode: activityDefinitions.activityCode, activityName: activityDefinitions.activityName })
+        .from(activityDefinitions)
+        .where(eq(activityDefinitions.isActive, true))
+        .orderBy(activityDefinitions.scopeName, activityDefinitions.activityCode),
+    ]);
+  } catch {
+    // rate card table not yet migrated — page still loads without rate cards
+  }
 
   const gs = GRADE_STYLE[sub.performanceGrade] ?? { bg: "#f3f4f6", color: "#6b7280" };
 

@@ -25,9 +25,18 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
 
   const devProjectIds = projectRows.map((p) => p.id);
 
-  const rateCardRows = devProjectIds.length > 0
-    ? await db
-        .select({
+  let rateCardRows: {
+    id: string; projectName: string | null; scopeName: string | null;
+    activityCode: string | null; activityName: string | null;
+    grossRatePerUnit: string; retentionPct: string; dpRecoupmentPct: string;
+    taxPct: string; version: number; isActive: boolean;
+  }[] = [];
+  let activityDefRows: { id: string; projectId: string; scopeName: string; activityCode: string; activityName: string }[] = [];
+
+  if (devProjectIds.length > 0) {
+    try {
+      [rateCardRows, activityDefRows] = await Promise.all([
+        db.select({
           id:               developerRateCards.id,
           projectName:      projects.name,
           scopeName:        activityDefinitions.scopeName,
@@ -44,16 +53,16 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
         .leftJoin(projects,            eq(developerRateCards.projectId,     projects.id))
         .leftJoin(activityDefinitions, eq(developerRateCards.activityDefId, activityDefinitions.id))
         .where(inArray(developerRateCards.projectId, devProjectIds))
-        .orderBy(developerRateCards.createdAt)
-    : [];
-
-  const activityDefRows = devProjectIds.length > 0
-    ? await db
-        .select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId, scopeName: activityDefinitions.scopeName, activityCode: activityDefinitions.activityCode, activityName: activityDefinitions.activityName })
-        .from(activityDefinitions)
-        .where(inArray(activityDefinitions.projectId, devProjectIds))
-        .orderBy(activityDefinitions.scopeName, activityDefinitions.activityCode)
-    : [];
+        .orderBy(developerRateCards.createdAt),
+        db.select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId, scopeName: activityDefinitions.scopeName, activityCode: activityDefinitions.activityCode, activityName: activityDefinitions.activityName })
+          .from(activityDefinitions)
+          .where(inArray(activityDefinitions.projectId, devProjectIds))
+          .orderBy(activityDefinitions.scopeName, activityDefinitions.activityCode),
+      ]);
+    } catch {
+      // activity_def_id column not yet migrated — page still loads without rate cards
+    }
+  }
 
   const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" };
   const VALUE: React.CSSProperties = { fontSize: "0.95rem", color: "#111827", fontWeight: 500 };
