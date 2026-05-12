@@ -43,7 +43,7 @@ export default function MasterListPage() {
             Reference Data
           </span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
           {reference.map((item) => (
             <a key={item.href} href={item.href} style={cardStyle("#0369a1")}>
               <div style={{ fontWeight: 600, color: "#111827", marginBottom: "0.25rem" }}>{item.label}</div>
@@ -51,6 +51,16 @@ export default function MasterListPage() {
             </a>
           ))}
         </div>
+
+        <div style={{ marginBottom: "0.75rem" }}>
+          <span style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9ca3af" }}>
+            Data Management
+          </span>
+        </div>
+        <a href="/master-list/import" style={cardStyle("#059669")}>
+          <div style={{ fontWeight: 600, color: "#111827", marginBottom: "0.25rem" }}>Import Data</div>
+          <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>Bulk-import materials, vendors, developers, and subcontractors from CSV or Excel</div>
+        </a>
       </div>
     </main>
   );

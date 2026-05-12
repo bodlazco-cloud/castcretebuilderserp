@@ -4,7 +4,8 @@ import { db } from "@/db";
 import {
   developers, projects, materials, suppliers,
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
-  developerRateCards, materialPriceHistory, subcontractorRateCards,
+  developerRateCards, developerRateCardDeductions,
+  materialPriceHistory, subcontractorRateCards, subcontractorRateCardDeductions,
   bomStandards, costCenters, materialSuppliers, departments,
   phaseCategories, phaseScopes, phaseActivities, phaseBillingMilestones,
   globalSettings,
@@ -43,6 +44,18 @@ export async function toggleDeveloperActive(id: string, isActive: boolean): Prom
   await db.update(developers).set({ isActive }).where(eq(developers.id, id));
   revalidatePath("/master-list/developers");
   return { success: true };
+}
+
+export async function updateDeveloper(
+  id: string,
+  input: z.infer<typeof DeveloperSchema>,
+): Promise<MutationResult> {
+  const parsed = DeveloperSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  await db.update(developers).set({ name: parsed.data.name }).where(eq(developers.id, id));
+  revalidatePath("/master-list/developers");
+  revalidatePath(`/master-list/developers/${id}`);
+  return { success: true, id };
 }
 
 // ─── Projects ──────────────────────────────────────────────────────────────
@@ -550,7 +563,9 @@ export async function deleteProjectUnit(id: string): Promise<{ success: boolean;
 
 const RateCardSchema = z.object({
   projectId:        z.string().uuid(),
-  activityDefId:    z.string().uuid(),
+  phaseActivityId:  z.string().uuid().optional(),
+  unitModel:        z.string().max(50).optional(),
+  unitType:         z.enum(["BEG", "MID", "END", "SHOP"]).optional(),
   grossRatePerUnit: z.number().positive(),
   retentionPct:     z.number().min(0).max(1),
   dpRecoupmentPct:  z.number().min(0).max(1),
@@ -563,13 +578,15 @@ export async function createDeveloperRateCard(
   const parsed = RateCardSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
-  const { projectId, activityDefId, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
+  const { projectId, phaseActivityId, unitModel, unitType, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
 
   const [row] = await db
     .insert(developerRateCards)
     .values({
       projectId,
-      activityDefId,
+      phaseActivityId:  phaseActivityId ?? null,
+      unitModel:        unitModel ?? null,
+      unitType:         (unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
       grossRatePerUnit: String(grossRatePerUnit),
       retentionPct:     String(retentionPct),
       dpRecoupmentPct:  String(dpRecoupmentPct),
@@ -577,7 +594,7 @@ export async function createDeveloperRateCard(
     })
     .returning({ id: developerRateCards.id });
 
-  revalidatePath("/admin/rate-cards");
+  revalidatePath("/master-list/developers");
   return { success: true, id: row.id };
 }
 
@@ -588,13 +605,15 @@ export async function updateDeveloperRateCard(
   const parsed = RateCardSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
-  const { projectId, activityDefId, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
+  const { projectId, phaseActivityId, unitModel, unitType, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
 
   await db
     .update(developerRateCards)
     .set({
       projectId,
-      activityDefId,
+      phaseActivityId:  phaseActivityId ?? null,
+      unitModel:        unitModel ?? null,
+      unitType:         (unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
       grossRatePerUnit: String(grossRatePerUnit),
       retentionPct:     String(retentionPct),
       dpRecoupmentPct:  String(dpRecoupmentPct),
@@ -602,7 +621,7 @@ export async function updateDeveloperRateCard(
     })
     .where(eq(developerRateCards.id, id));
 
-  revalidatePath("/admin/rate-cards");
+  revalidatePath("/master-list/developers");
   return { success: true, id };
 }
 
@@ -611,7 +630,32 @@ export async function toggleDeveloperRateCardActive(
   isActive: boolean,
 ): Promise<{ success: boolean }> {
   await db.update(developerRateCards).set({ isActive }).where(eq(developerRateCards.id, id));
-  revalidatePath("/admin/rate-cards");
+  revalidatePath("/master-list/developers");
+  return { success: true };
+}
+
+const DeductionSchema = z.object({
+  name:         z.string().min(1).max(150),
+  deductionPct: z.number().min(0).max(1),
+});
+
+export async function createDevRateCardDeduction(
+  rateCardId: string,
+  input: z.infer<typeof DeductionSchema>,
+): Promise<MutationResult> {
+  const parsed = DeductionSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const [row] = await db
+    .insert(developerRateCardDeductions)
+    .values({ rateCardId, name: parsed.data.name, deductionPct: String(parsed.data.deductionPct) })
+    .returning({ id: developerRateCardDeductions.id });
+  revalidatePath("/master-list/developers");
+  return { success: true, id: row.id };
+}
+
+export async function deleteDevRateCardDeduction(id: string): Promise<{ success: boolean }> {
+  await db.delete(developerRateCardDeductions).where(eq(developerRateCardDeductions.id, id));
+  revalidatePath("/master-list/developers");
   return { success: true };
 }
 
@@ -653,11 +697,13 @@ export async function deleteSupplier(id: string): Promise<{ success: boolean; er
 // ─── Subcontractor Rate Cards ───────────────────────────────────────────────
 
 const SubconRateCardSchema = z.object({
-  subconId:      z.string().uuid(),
-  projectId:     z.string().uuid(),
-  activityDefId: z.string().uuid(),
-  ratePerUnit:   z.number().positive(),
-  retentionPct:  z.number().min(0).max(1),
+  subconId:        z.string().uuid(),
+  projectId:       z.string().uuid(),
+  phaseActivityId: z.string().uuid().optional(),
+  unitModel:       z.string().max(50).optional(),
+  unitType:        z.enum(["BEG", "MID", "END", "SHOP"]).optional(),
+  ratePerUnit:     z.number().positive(),
+  retentionPct:    z.number().min(0).max(1),
 });
 
 export async function createSubconRateCard(
@@ -670,15 +716,17 @@ export async function createSubconRateCard(
   const [row] = await db
     .insert(subcontractorRateCards)
     .values({
-      subconId:      d.subconId,
-      projectId:     d.projectId,
-      activityDefId: d.activityDefId,
-      ratePerUnit:   String(d.ratePerUnit),
-      retentionPct:  String(d.retentionPct),
+      subconId:        d.subconId,
+      projectId:       d.projectId,
+      phaseActivityId: d.phaseActivityId ?? null,
+      unitModel:       d.unitModel ?? null,
+      unitType:        (d.unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
+      ratePerUnit:     String(d.ratePerUnit),
+      retentionPct:    String(d.retentionPct),
     })
     .returning({ id: subcontractorRateCards.id });
 
-  revalidatePath("/admin/subcon-rate-cards");
+  revalidatePath("/master-list/subcontractors");
   return { success: true, id: row.id };
 }
 
@@ -691,15 +739,16 @@ export async function updateSubconRateCard(
 
   const d = parsed.data;
   await db.update(subcontractorRateCards).set({
-    subconId:      d.subconId,
-    projectId:     d.projectId,
-    activityDefId: d.activityDefId,
-    ratePerUnit:   String(d.ratePerUnit),
-    retentionPct:  String(d.retentionPct),
+    subconId:        d.subconId,
+    projectId:       d.projectId,
+    phaseActivityId: d.phaseActivityId ?? null,
+    unitModel:       d.unitModel ?? null,
+    unitType:        (d.unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
+    ratePerUnit:     String(d.ratePerUnit),
+    retentionPct:    String(d.retentionPct),
   }).where(eq(subcontractorRateCards.id, id));
 
-  revalidatePath("/admin/subcon-rate-cards");
-  revalidatePath(`/admin/subcon-rate-cards/${id}`);
+  revalidatePath("/master-list/subcontractors");
   return { success: true, id };
 }
 
@@ -708,7 +757,27 @@ export async function toggleSubconRateCardActive(
   isActive: boolean,
 ): Promise<{ success: boolean }> {
   await db.update(subcontractorRateCards).set({ isActive }).where(eq(subcontractorRateCards.id, id));
-  revalidatePath("/admin/subcon-rate-cards");
+  revalidatePath("/master-list/subcontractors");
+  return { success: true };
+}
+
+export async function createSubconRateCardDeduction(
+  rateCardId: string,
+  input: z.infer<typeof DeductionSchema>,
+): Promise<MutationResult> {
+  const parsed = DeductionSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const [row] = await db
+    .insert(subcontractorRateCardDeductions)
+    .values({ rateCardId, name: parsed.data.name, deductionPct: String(parsed.data.deductionPct) })
+    .returning({ id: subcontractorRateCardDeductions.id });
+  revalidatePath("/master-list/subcontractors");
+  return { success: true, id: row.id };
+}
+
+export async function deleteSubconRateCardDeduction(id: string): Promise<{ success: boolean }> {
+  await db.delete(subcontractorRateCardDeductions).where(eq(subcontractorRateCardDeductions.id, id));
+  revalidatePath("/master-list/subcontractors");
   return { success: true };
 }
 

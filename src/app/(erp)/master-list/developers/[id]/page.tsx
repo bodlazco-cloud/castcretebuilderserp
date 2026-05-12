@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { developers, projects, developerRateCards, activityDefinitions } from "@/db/schema";
+import { developers, projects, developerRateCards, developerRateCardDeductions, phaseCategories, phaseScopes, phaseActivities } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { DevRateCards } from "./DevRateCards";
+import { EditDeveloperForm } from "./EditDeveloperForm";
 
 export default async function DeveloperDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await getAuthUser();
@@ -25,43 +26,60 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
 
   const devProjectIds = projectRows.map((p) => p.id);
 
-  let rateCardRows: {
-    id: string; projectName: string | null; scopeName: string | null;
-    activityCode: string | null; activityName: string | null;
+  type RateCardRow = {
+    id: string; projectName: string | null;
+    phaseActivityId: string | null; unitModel: string | null; unitType: string | null;
+    phaseCategoryName: string | null; phaseScopeName: string | null;
+    phaseActivityCode: string | null; phaseActivityName: string | null;
     grossRatePerUnit: string; retentionPct: string; dpRecoupmentPct: string;
     taxPct: string; version: number; isActive: boolean;
-  }[] = [];
-  let activityDefRows: { id: string; projectId: string; scopeName: string; activityCode: string; activityName: string }[] = [];
+  };
 
-  if (devProjectIds.length > 0) {
-    try {
-      [rateCardRows, activityDefRows] = await Promise.all([
-        db.select({
-          id:               developerRateCards.id,
-          projectName:      projects.name,
-          scopeName:        activityDefinitions.scopeName,
-          activityCode:     activityDefinitions.activityCode,
-          activityName:     activityDefinitions.activityName,
-          grossRatePerUnit: developerRateCards.grossRatePerUnit,
-          retentionPct:     developerRateCards.retentionPct,
-          dpRecoupmentPct:  developerRateCards.dpRecoupmentPct,
-          taxPct:           developerRateCards.taxPct,
-          version:          developerRateCards.version,
-          isActive:         developerRateCards.isActive,
-        })
-        .from(developerRateCards)
-        .leftJoin(projects,            eq(developerRateCards.projectId,     projects.id))
-        .leftJoin(activityDefinitions, eq(developerRateCards.activityDefId, activityDefinitions.id))
-        .where(inArray(developerRateCards.projectId, devProjectIds))
-        .orderBy(developerRateCards.createdAt),
-        db.select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId, scopeName: activityDefinitions.scopeName, activityCode: activityDefinitions.activityCode, activityName: activityDefinitions.activityName })
-          .from(activityDefinitions)
-          .where(inArray(activityDefinitions.projectId, devProjectIds))
-          .orderBy(activityDefinitions.scopeName, activityDefinitions.activityCode),
-      ]);
-    } catch {
-      // activity_def_id column not yet migrated — page still loads without rate cards
+  let rateCardRows: RateCardRow[] = [];
+  let deductionRows: { id: string; rateCardId: string; name: string; deductionPct: string; isActive: boolean }[] = [];
+  let phaseCategoryList: { id: string; name: string }[] = [];
+  let phaseScopeList: { id: string; categoryId: string; name: string }[] = [];
+  let phaseActivityList: { id: string; scopeId: string; code: string; name: string }[] = [];
+
+  try {
+    [rateCardRows, phaseCategoryList, phaseScopeList, phaseActivityList] = await Promise.all([
+      db.select({
+        id:                developerRateCards.id,
+        projectName:       projects.name,
+        phaseActivityId:   developerRateCards.phaseActivityId,
+        unitModel:         developerRateCards.unitModel,
+        unitType:          developerRateCards.unitType,
+        phaseCategoryName: phaseCategories.name,
+        phaseScopeName:    phaseScopes.name,
+        phaseActivityCode: phaseActivities.code,
+        phaseActivityName: phaseActivities.name,
+        grossRatePerUnit:  developerRateCards.grossRatePerUnit,
+        retentionPct:      developerRateCards.retentionPct,
+        dpRecoupmentPct:   developerRateCards.dpRecoupmentPct,
+        taxPct:            developerRateCards.taxPct,
+        version:           developerRateCards.version,
+        isActive:          developerRateCards.isActive,
+      })
+      .from(developerRateCards)
+      .leftJoin(projects,         eq(developerRateCards.projectId,        projects.id))
+      .leftJoin(phaseActivities,  eq(developerRateCards.phaseActivityId,  phaseActivities.id))
+      .leftJoin(phaseScopes,      eq(phaseActivities.scopeId,             phaseScopes.id))
+      .leftJoin(phaseCategories,  eq(phaseScopes.categoryId,              phaseCategories.id))
+      .where(inArray(developerRateCards.projectId, devProjectIds.length > 0 ? devProjectIds : ["00000000-0000-0000-0000-000000000000"]))
+      .orderBy(developerRateCards.createdAt),
+      db.select({ id: phaseCategories.id, name: phaseCategories.name }).from(phaseCategories).where(eq(phaseCategories.isActive, true)).orderBy(phaseCategories.sequenceOrder),
+      db.select({ id: phaseScopes.id, categoryId: phaseScopes.categoryId, name: phaseScopes.name }).from(phaseScopes).where(eq(phaseScopes.isActive, true)).orderBy(phaseScopes.sequenceOrder),
+      db.select({ id: phaseActivities.id, scopeId: phaseActivities.scopeId, code: phaseActivities.code, name: phaseActivities.name }).from(phaseActivities).where(eq(phaseActivities.isActive, true)).orderBy(phaseActivities.sequenceOrder),
+    ]);
+
+    if (rateCardRows.length > 0) {
+      deductionRows = await db
+        .select({ id: developerRateCardDeductions.id, rateCardId: developerRateCardDeductions.rateCardId, name: developerRateCardDeductions.name, deductionPct: developerRateCardDeductions.deductionPct, isActive: developerRateCardDeductions.isActive })
+        .from(developerRateCardDeductions)
+        .where(inArray(developerRateCardDeductions.rateCardId, rateCardRows.map((r) => r.id)));
     }
+  } catch {
+    // schema not yet migrated — page still loads without rate cards
   }
 
   const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" };
@@ -90,6 +108,7 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
               background: dev.isActive ? "#dcfce7" : "#f3f4f6", color: dev.isActive ? "#166534" : "#6b7280",
             }}>{dev.isActive ? "Active" : "Inactive"}</span>
           </div>
+          <EditDeveloperForm developer={{ id: dev.id, name: dev.name }} />
         </div>
 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
@@ -143,7 +162,10 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
         <DevRateCards
           devProjects={projectRows.map((p) => ({ id: p.id, name: p.name }))}
           rateCards={rateCardRows}
-          allActivityDefs={activityDefRows}
+          deductions={deductionRows}
+          phaseCategories={phaseCategoryList}
+          phaseScopes={phaseScopeList}
+          phaseActivities={phaseActivityList}
         />
       </div>
     </main>

@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { subcontractors, taskAssignments, projects, subcontractorRateCards, activityDefinitions } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { subcontractors, taskAssignments, projects, subcontractorRateCards, subcontractorRateCardDeductions, phaseCategories, phaseScopes, phaseActivities } from "@/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { SubconRateCards } from "./SubconRateCards";
+import { EditSubconForm } from "./EditSubconForm";
 
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" };
 const VALUE: React.CSSProperties = { fontSize: "0.95rem", color: "#111827", fontWeight: 500 };
@@ -41,40 +42,58 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
     .where(eq(taskAssignments.subconId, id))
     .orderBy(taskAssignments.startDate);
 
-  let rateCards: {
-    id: string; projectName: string | null; scopeName: string | null;
-    activityCode: string | null; activityName: string | null;
+  type RateCardRow = {
+    id: string; projectName: string | null;
+    phaseActivityId: string | null; unitModel: string | null; unitType: string | null;
+    phaseCategoryName: string | null; phaseScopeName: string | null;
+    phaseActivityCode: string | null; phaseActivityName: string | null;
     ratePerUnit: string; retentionPct: string; version: number; isActive: boolean;
-  }[] = [];
+  };
+
+  let rateCards: RateCardRow[] = [];
+  let deductions: { id: string; rateCardId: string; name: string; deductionPct: string; isActive: boolean }[] = [];
   let allProjects: { id: string; name: string }[] = [];
-  let allActivityDefs: { id: string; projectId: string; scopeName: string; activityCode: string; activityName: string }[] = [];
+  let phaseCategoryList: { id: string; name: string }[] = [];
+  let phaseScopeList: { id: string; categoryId: string; name: string }[] = [];
+  let phaseActivityList: { id: string; scopeId: string; code: string; name: string }[] = [];
 
   try {
-    [rateCards, allProjects, allActivityDefs] = await Promise.all([
+    [rateCards, allProjects, phaseCategoryList, phaseScopeList, phaseActivityList] = await Promise.all([
       db.select({
-        id:           subcontractorRateCards.id,
-        projectName:  projects.name,
-        scopeName:    activityDefinitions.scopeName,
-        activityCode: activityDefinitions.activityCode,
-        activityName: activityDefinitions.activityName,
-        ratePerUnit:  subcontractorRateCards.ratePerUnit,
-        retentionPct: subcontractorRateCards.retentionPct,
-        version:      subcontractorRateCards.version,
-        isActive:     subcontractorRateCards.isActive,
+        id:                subcontractorRateCards.id,
+        projectName:       projects.name,
+        phaseActivityId:   subcontractorRateCards.phaseActivityId,
+        unitModel:         subcontractorRateCards.unitModel,
+        unitType:          subcontractorRateCards.unitType,
+        phaseCategoryName: phaseCategories.name,
+        phaseScopeName:    phaseScopes.name,
+        phaseActivityCode: phaseActivities.code,
+        phaseActivityName: phaseActivities.name,
+        ratePerUnit:       subcontractorRateCards.ratePerUnit,
+        retentionPct:      subcontractorRateCards.retentionPct,
+        version:           subcontractorRateCards.version,
+        isActive:          subcontractorRateCards.isActive,
       })
       .from(subcontractorRateCards)
-      .leftJoin(projects,            eq(subcontractorRateCards.projectId,     projects.id))
-      .leftJoin(activityDefinitions, eq(subcontractorRateCards.activityDefId, activityDefinitions.id))
+      .leftJoin(projects,        eq(subcontractorRateCards.projectId,       projects.id))
+      .leftJoin(phaseActivities, eq(subcontractorRateCards.phaseActivityId, phaseActivities.id))
+      .leftJoin(phaseScopes,     eq(phaseActivities.scopeId,                phaseScopes.id))
+      .leftJoin(phaseCategories, eq(phaseScopes.categoryId,                 phaseCategories.id))
       .where(eq(subcontractorRateCards.subconId, id))
       .orderBy(subcontractorRateCards.createdAt),
       db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name),
-      db.select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId, scopeName: activityDefinitions.scopeName, activityCode: activityDefinitions.activityCode, activityName: activityDefinitions.activityName })
-        .from(activityDefinitions)
-        .where(eq(activityDefinitions.isActive, true))
-        .orderBy(activityDefinitions.scopeName, activityDefinitions.activityCode),
+      db.select({ id: phaseCategories.id, name: phaseCategories.name }).from(phaseCategories).where(eq(phaseCategories.isActive, true)).orderBy(phaseCategories.sequenceOrder),
+      db.select({ id: phaseScopes.id, categoryId: phaseScopes.categoryId, name: phaseScopes.name }).from(phaseScopes).where(eq(phaseScopes.isActive, true)).orderBy(phaseScopes.sequenceOrder),
+      db.select({ id: phaseActivities.id, scopeId: phaseActivities.scopeId, code: phaseActivities.code, name: phaseActivities.name }).from(phaseActivities).where(eq(phaseActivities.isActive, true)).orderBy(phaseActivities.sequenceOrder),
     ]);
+    if (rateCards.length > 0) {
+      deductions = await db
+        .select({ id: subcontractorRateCardDeductions.id, rateCardId: subcontractorRateCardDeductions.rateCardId, name: subcontractorRateCardDeductions.name, deductionPct: subcontractorRateCardDeductions.deductionPct, isActive: subcontractorRateCardDeductions.isActive })
+        .from(subcontractorRateCardDeductions)
+        .where(inArray(subcontractorRateCardDeductions.rateCardId, rateCards.map((r) => r.id)));
+    }
   } catch {
-    // rate card table not yet migrated — page still loads without rate cards
+    // schema not yet migrated — page still loads without rate cards
   }
 
   const gs = GRADE_STYLE[sub.performanceGrade] ?? { bg: "#f3f4f6", color: "#6b7280" };
@@ -112,6 +131,12 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
               }}>{sub.isActive ? "Active" : "Inactive"}</span>
             </div>
           </div>
+          <EditSubconForm sub={{
+            id: sub.id, name: sub.name, code: sub.code,
+            tradeTypes: sub.tradeTypes,
+            defaultMaxActiveUnits: sub.defaultMaxActiveUnits,
+            manpowerBenchmark: sub.manpowerBenchmark,
+          }} />
         </div>
 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
@@ -166,8 +191,11 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
         <SubconRateCards
           subconId={id}
           rateCards={rateCards}
+          deductions={deductions}
           projects={allProjects}
-          activityDefs={allActivityDefs}
+          phaseCategories={phaseCategoryList}
+          phaseScopes={phaseScopeList}
+          phaseActivities={phaseActivityList}
         />
       </div>
     </main>
