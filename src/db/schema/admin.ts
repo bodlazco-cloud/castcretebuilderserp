@@ -4,6 +4,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./core";
 import { projects } from "./projects";
+import { phaseActivities } from "./phases";
 import { workCategoryEnum, unitTypeEnum } from "./enums";
 
 export const suppliers = pgTable("suppliers", {
@@ -92,18 +93,30 @@ export const milestoneDefinitions = pgTable("milestone_definitions", {
 });
 
 export const developerRateCards = pgTable("developer_rate_cards", {
-  id:              uuid("id").primaryKey().defaultRandom(),
-  projectId:       uuid("project_id").notNull().references(() => projects.id),
-  activityDefId:   uuid("activity_def_id").notNull().references(() => activityDefinitions.id),
+  id:               uuid("id").primaryKey().defaultRandom(),
+  projectId:        uuid("project_id").notNull().references(() => projects.id),
+  activityDefId:    uuid("activity_def_id").references(() => activityDefinitions.id),
+  phaseActivityId:  uuid("phase_activity_id").references(() => phaseActivities.id),
+  unitModel:        varchar("unit_model", { length: 50 }),
+  unitType:         unitTypeEnum("unit_type"),
   grossRatePerUnit: numeric("gross_rate_per_unit", { precision: 15, scale: 2 }).notNull(),
-  retentionPct:    numeric("retention_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
-  dpRecoupmentPct: numeric("dp_recoupment_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
-  taxPct:          numeric("tax_pct", { precision: 5, scale: 4 }).notNull().default("0.00"),
-  version:         integer("version").notNull().default(1),
-  isActive:        boolean("is_active").notNull().default(true),
-  approvedBy:      uuid("approved_by").references(() => users.id),
-  approvedAt:      timestamp("approved_at", { withTimezone: true }),
-  createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  retentionPct:     numeric("retention_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
+  dpRecoupmentPct:  numeric("dp_recoupment_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
+  taxPct:           numeric("tax_pct", { precision: 5, scale: 4 }).notNull().default("0.00"),
+  version:          integer("version").notNull().default(1),
+  isActive:         boolean("is_active").notNull().default(true),
+  approvedBy:       uuid("approved_by").references(() => users.id),
+  approvedAt:       timestamp("approved_at", { withTimezone: true }),
+  createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const developerRateCardDeductions = pgTable("developer_rate_card_deductions", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  rateCardId:   uuid("rate_card_id").notNull().references(() => developerRateCards.id, { onDelete: "cascade" }),
+  name:         varchar("name", { length: 150 }).notNull(),
+  deductionPct: numeric("deduction_pct", { precision: 5, scale: 4 }).notNull(),
+  isActive:     boolean("is_active").notNull().default(true),
+  createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const materialSuppliers = pgTable("material_suppliers", {

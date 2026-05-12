@@ -5,7 +5,8 @@ import {
 import { users } from "./core";
 import { projects } from "./projects";
 import { activityDefinitions } from "./admin";
-import { tradeTypeEnum, performanceGradeEnum } from "./enums";
+import { phaseActivities } from "./phases";
+import { tradeTypeEnum, performanceGradeEnum, unitTypeEnum } from "./enums";
 
 export const subcontractors = pgTable("subcontractors", {
   id:                   uuid("id").primaryKey().defaultRandom(),
@@ -65,15 +66,27 @@ export const subcontractorPerformanceRatings = pgTable("subcontractor_performanc
 });
 
 export const subcontractorRateCards = pgTable("subcontractor_rate_cards", {
-  id:            uuid("id").primaryKey().defaultRandom(),
-  subconId:      uuid("subcon_id").notNull().references(() => subcontractors.id),
-  projectId:     uuid("project_id").notNull().references(() => projects.id),
-  activityDefId: uuid("activity_def_id").notNull().references(() => activityDefinitions.id),
-  ratePerUnit:   numeric("rate_per_unit", { precision: 15, scale: 2 }).notNull(),
-  retentionPct:  numeric("retention_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
-  version:       integer("version").notNull().default(1),
-  isActive:      boolean("is_active").notNull().default(true),
-  approvedBy:    uuid("approved_by").references(() => users.id),
-  approvedAt:    timestamp("approved_at", { withTimezone: true }),
-  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  id:              uuid("id").primaryKey().defaultRandom(),
+  subconId:        uuid("subcon_id").notNull().references(() => subcontractors.id),
+  projectId:       uuid("project_id").notNull().references(() => projects.id),
+  activityDefId:   uuid("activity_def_id").references(() => activityDefinitions.id),
+  phaseActivityId: uuid("phase_activity_id").references(() => phaseActivities.id),
+  unitModel:       varchar("unit_model", { length: 50 }),
+  unitType:        unitTypeEnum("unit_type"),
+  ratePerUnit:     numeric("rate_per_unit", { precision: 15, scale: 2 }).notNull(),
+  retentionPct:    numeric("retention_pct", { precision: 5, scale: 4 }).notNull().default("0.10"),
+  version:         integer("version").notNull().default(1),
+  isActive:        boolean("is_active").notNull().default(true),
+  approvedBy:      uuid("approved_by").references(() => users.id),
+  approvedAt:      timestamp("approved_at", { withTimezone: true }),
+  createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const subcontractorRateCardDeductions = pgTable("subcontractor_rate_card_deductions", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  rateCardId:   uuid("rate_card_id").notNull().references(() => subcontractorRateCards.id, { onDelete: "cascade" }),
+  name:         varchar("name", { length: 150 }).notNull(),
+  deductionPct: numeric("deduction_pct", { precision: 5, scale: 4 }).notNull(),
+  isActive:     boolean("is_active").notNull().default(true),
+  createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
