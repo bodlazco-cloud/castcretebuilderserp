@@ -134,11 +134,15 @@ const NAV: NavSection[] = [
   {
     title: "Master List",
     items: [
-      { label: "Construction Phases",   href: "/master-list/construction-phases" },
-      { label: "Material List",         href: "/master-list/materials" },
-      { label: "Vendors",               href: "/master-list/vendors" },
-      { label: "Subcontractors",        href: "/master-list/subcontractors" },
-      { label: "Developers",            href: "/master-list/developers" },
+      { label: "Overview",             href: "/master-list" },
+      { label: "Projects / Sites",     href: "/master-list/projects" },
+      { label: "Construction Phases",  href: "/master-list/construction-phases" },
+      { label: "Material List",        href: "/master-list/materials" },
+      { label: "Vendors",              href: "/master-list/vendors" },
+      { label: "Subcontractors",       href: "/master-list/subcontractors" },
+      { label: "Developers",           href: "/master-list/developers" },
+      { label: "Scope of Work",        href: "/master-list/sow" },
+      { label: "Import Data",          href: "/master-list/import" },
     ],
   },
   {
@@ -155,7 +159,7 @@ const NAV: NavSection[] = [
 // Overview-only pages: only exact match marks them active
 const OVERVIEW_HREFS = new Set([
   "/planning", "/construction", "/procurement", "/batching",
-  "/motorpool", "/audit", "/finance", "/hr", "/main-dashboard",
+  "/motorpool", "/audit", "/finance", "/hr", "/main-dashboard", "/master-list",
 ]);
 
 function Chevron({ open }: { open: boolean }) {
