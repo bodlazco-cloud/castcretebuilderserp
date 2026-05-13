@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createProject } from "@/actions/master-list";
+import { createProject, createProjectUnitModel } from "@/actions/master-list";
 import { useRouter } from "next/navigation";
 
 type Developer = { id: string; name: string };
@@ -31,6 +31,24 @@ export function NewProjectForm({ devOptions }: { devOptions: Developer[] }) {
   const [startDate, setStartDate]               = useState("");
   const [endDate, setEndDate]                   = useState("");
 
+  const [unitModels, setUnitModels]   = useState<string[]>([]);
+  const [modelInput, setModelInput]   = useState("");
+
+  function addModel() {
+    const val = modelInput.trim();
+    if (!val || unitModels.includes(val)) { setModelInput(""); return; }
+    setUnitModels((prev) => [...prev, val]);
+    setModelInput("");
+  }
+
+  function removeModel(m: string) {
+    setUnitModels((prev) => prev.filter((x) => x !== m));
+  }
+
+  function handleModelKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") { e.preventDefault(); addModel(); }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -47,11 +65,14 @@ export function NewProjectForm({ devOptions }: { devOptions: Developer[] }) {
         startDate:  startDate || undefined,
         endDate:    endDate   || undefined,
       });
-      if (result.success) {
-        router.push(`/master-list/projects/${result.id}`);
-      } else {
-        setError(result.error);
+      if (!result.success) { setError(result.error); return; }
+
+      // Create unit models for the new project
+      for (const modelName of unitModels) {
+        await createProjectUnitModel(result.id, { name: modelName });
       }
+
+      router.push(`/master-list/projects/${result.id}`);
     });
   }
 
@@ -120,6 +141,47 @@ export function NewProjectForm({ devOptions }: { devOptions: Developer[] }) {
           <span style={labelStyle}>End Date</span>
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={inputStyle} />
         </label>
+      </div>
+
+      {/* Unit Models */}
+      <div>
+        <div style={labelStyle}>Unit Models</div>
+        <p style={{ margin: "0 0 0.6rem", fontSize: "0.8rem", color: "#6b7280" }}>
+          Define the unit models for this project (e.g. Type A, 2BR Corner, Single). These will be referenced on block/unit entries, BOM, and BOQ.
+        </p>
+        {unitModels.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginBottom: "0.6rem" }}>
+            {unitModels.map((m) => (
+              <span key={m} style={{
+                display: "inline-flex", alignItems: "center", gap: "0.3rem",
+                padding: "0.25rem 0.6rem", borderRadius: "999px",
+                background: "#eff6ff", color: "#1e40af", fontSize: "0.8rem", fontWeight: 600,
+                border: "1px solid #bfdbfe",
+              }}>
+                {m}
+                <button type="button" onClick={() => removeModel(m)} style={{
+                  background: "none", border: "none", cursor: "pointer", color: "#93c5fd",
+                  fontSize: "0.75rem", padding: 0, lineHeight: 1,
+                }}>✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <input
+            type="text" value={modelInput}
+            onChange={(e) => setModelInput(e.target.value)}
+            onKeyDown={handleModelKeyDown}
+            placeholder="Type a model name and press Enter or Add"
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <button type="button" onClick={addModel} disabled={!modelInput.trim()} style={{
+            padding: "0.6rem 1rem", borderRadius: "6px", background: "#6366f1",
+            color: "#fff", border: "none", fontSize: "0.85rem", fontWeight: 600,
+            cursor: modelInput.trim() ? "pointer" : "not-allowed",
+            opacity: modelInput.trim() ? 1 : 0.6, whiteSpace: "nowrap",
+          }}>Add</button>
+        </div>
       </div>
 
       <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
