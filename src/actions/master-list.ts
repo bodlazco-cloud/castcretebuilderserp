@@ -872,7 +872,7 @@ export async function createCostCenter(input: z.infer<typeof CostCenterSchema>):
   return { success: true, id: row.id };
 }
 
-export async function updateCostCenter(id: string, input: z.infer<typeof CostCenterSchema>): Promise<MutationResult> {
+export async function updateCostCenterAdmin(id: string, input: z.infer<typeof CostCenterSchema>): Promise<MutationResult> {
   const parsed = CostCenterSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
   const d = parsed.data;
@@ -888,7 +888,7 @@ export async function toggleCostCenterActive(id: string, isActive: boolean): Pro
   return { success: true };
 }
 
-export async function deleteCostCenter(id: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteCostCenterAdmin(id: string): Promise<{ success: boolean; error?: string }> {
   await db.delete(costCenters).where(eq(costCenters.id, id));
   revalidatePath("/admin/cost-centers");
   return { success: true };
@@ -1227,6 +1227,53 @@ export async function deleteSubcontractor(id: string): Promise<{ success: boolea
     return { success: true };
   } catch {
     return { success: false, error: "Cannot delete: subcontractor may have linked records." };
+  }
+}
+
+// ─── Department Edit / Delete ────────────────────────────────────────────────
+
+export async function updateDepartment(id: string, input: { name: string }): Promise<{ success: boolean; error?: string }> {
+  const name = input.name?.trim();
+  if (!name) return { success: false, error: "Name is required." };
+  await db.update(departments).set({ name }).where(eq(departments.id, id));
+  revalidatePath("/master-list/departments");
+  return { success: true };
+}
+
+export async function deleteDepartment(id: string): Promise<{ success: boolean; error?: string }> {
+  const [n] = await db.select({ n: count() }).from(costCenters).where(eq(costCenters.deptId, id));
+  if ((n?.n ?? 0) > 0) return { success: false, error: `Cannot delete: ${n?.n} cost center(s) are linked. Delete them first.` };
+  try {
+    await db.delete(departments).where(eq(departments.id, id));
+    revalidatePath("/master-list/departments");
+    return { success: true };
+  } catch {
+    return { success: false, error: "Cannot delete: department is referenced by other records." };
+  }
+}
+
+// ─── Cost Center Edit / Delete ───────────────────────────────────────────────
+
+export async function updateCostCenter(id: string, input: { code: string; name: string; type: string }): Promise<{ success: boolean; error?: string }> {
+  const code = input.code?.trim();
+  const name = input.name?.trim();
+  if (!code || !name) return { success: false, error: "Code and name are required." };
+  try {
+    await db.update(costCenters).set({ code, name, type: input.type as any }).where(eq(costCenters.id, id));
+    revalidatePath("/master-list/departments");
+    return { success: true };
+  } catch {
+    return { success: false, error: "Code already exists or update failed." };
+  }
+}
+
+export async function deleteCostCenter(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await db.delete(costCenters).where(eq(costCenters.id, id));
+    revalidatePath("/master-list/departments");
+    return { success: true };
+  } catch {
+    return { success: false, error: "Cannot delete: cost center is referenced by other records." };
   }
 }
 

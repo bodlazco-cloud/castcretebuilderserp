@@ -1,12 +1,13 @@
 export default function MasterListPage() {
   const items = [
-    { label: "Projects / Sites",           href: "/master-list/projects",             desc: "All project contracts, statuses, and developer links" },
-    { label: "Construction Phases",        href: "/master-list/construction-phases",  desc: "Phase categories, scopes, and activity definitions" },
-    { label: "Materials Master",           href: "/master-list/materials",            desc: "Materials catalog used across BOM and procurement" },
-    { label: "Vendors / Suppliers",        href: "/master-list/vendors",              desc: "Approved vendor accreditation and price history" },
-    { label: "Subcontractors Master",      href: "/master-list/subcontractors",       desc: "Accredited subcontractors, grades, and scores" },
-    { label: "Developers Master",          href: "/master-list/developers",           desc: "Developer master list linked to project contracts" },
-    { label: "Import Data",                href: "/master-list/import",               desc: "Bulk-import materials, vendors, developers, and subcontractors from CSV or Excel" },
+    { label: "Projects / Sites",           href: "/master-list/projects",            desc: "All project contracts, statuses, and developer links" },
+    { label: "Construction Phases",        href: "/master-list/construction-phases", desc: "Phase categories, scopes, and activity definitions" },
+    { label: "Materials Master",           href: "/master-list/materials",           desc: "Materials catalog used across BOM and procurement" },
+    { label: "Vendors / Suppliers",        href: "/master-list/vendors",             desc: "Approved vendor accreditation and price history" },
+    { label: "Subcontractors Master",      href: "/master-list/subcontractors",      desc: "Accredited subcontractors, grades, and scores" },
+    { label: "Developers Master",          href: "/master-list/developers",          desc: "Developer master list linked to project contracts" },
+    { label: "Departments & Cost Centers", href: "/master-list/departments",         desc: "Department registry and cost center assignments used across all modules" },
+    { label: "Import Data",                href: "/master-list/import",              desc: "Bulk-import materials, vendors, developers, and subcontractors from CSV or Excel" },
   ];
 
   return (
