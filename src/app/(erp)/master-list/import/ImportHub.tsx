@@ -78,7 +78,7 @@ function EntityImporter({ entity, onDone }: { entity: EntityKey; onDone: (r: Imp
         const data = ev.target?.result;
         const wb = XLSX.read(data, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const parsed = XLSX.utils.sheet_to_json<ImportRow>(ws, { defval: "" });
+        const parsed = XLSX.utils.sheet_to_json<ImportRow>(ws, { defval: "", raw: false });
         if (parsed.length === 0) { setParseError("File appears to be empty."); return; }
         setRows(parsed);
       } catch {
