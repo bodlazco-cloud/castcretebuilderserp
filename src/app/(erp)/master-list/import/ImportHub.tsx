@@ -52,7 +52,8 @@ function downloadTemplate(entity: EntityKey) {
   const cfg = ENTITY_CONFIG[entity];
   const ws = XLSX.utils.json_to_sheet([...cfg.sample]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, cfg.label);
+  const sheetName = cfg.label.replace(/[\/\\?\*\[\]]/g, "-").slice(0, 31);
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `import-template-${entity}.xlsx`);
 }
 

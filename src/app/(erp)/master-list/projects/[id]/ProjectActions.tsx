@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   approveProject, createBlock, createProjectUnit,
   updateBlock, deleteBlock, updateProjectUnit, deleteProjectUnit,
+  createProjectUnitModel, deleteProjectUnitModel,
 } from "@/actions/master-list";
 import { useRouter } from "next/navigation";
 
@@ -205,9 +206,10 @@ export function DeleteBlockButton({ blockId }: { blockId: string }) {
 
 // ─── Add Unit Form ──────────────────────────────────────────────────────────
 
-export function AddUnitForm({ projectId, blockOptions }: {
+export function AddUnitForm({ projectId, blockOptions, unitModelOptions }: {
   projectId: string;
   blockOptions: { id: string; blockName: string }[];
+  unitModelOptions: string[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -216,7 +218,7 @@ export function AddUnitForm({ projectId, blockOptions }: {
   const [blockId, setBlockId] = useState(blockOptions[0]?.id ?? "");
   const [lotNumber, setLotNumber] = useState("");
   const [unitCode, setUnitCode] = useState("");
-  const [unitModel, setUnitModel] = useState("");
+  const [unitModel, setUnitModel] = useState(unitModelOptions[0] ?? "");
   const [unitType, setUnitType] = useState<"BEG" | "MID" | "END" | "SHOP">("MID");
 
   function handleSubmit(e: React.FormEvent) {
@@ -265,8 +267,14 @@ export function AddUnitForm({ projectId, blockOptions }: {
       </label>
       <label style={{ flex: "1 1 120px" }}>
         <span style={labelStyle}>Unit Model</span>
-        <input type="text" required value={unitModel} onChange={(e) => setUnitModel(e.target.value)}
-          placeholder="Type A / 2BR" style={inputStyle} />
+        {unitModelOptions.length > 0 ? (
+          <select required value={unitModel} onChange={(e) => setUnitModel(e.target.value)} style={inputStyle}>
+            {unitModelOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        ) : (
+          <input type="text" required value={unitModel} onChange={(e) => setUnitModel(e.target.value)}
+            placeholder="Add unit models first" style={inputStyle} />
+        )}
       </label>
       <label style={{ flex: "0 0 100px" }}>
         <span style={labelStyle}>Unit Type</span>
@@ -300,9 +308,10 @@ const UNIT_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   COMPLETED:   { bg: "#dcfce7", color: "#166534" },
 };
 
-export function UnitRow({ unit, blockOptions }: {
+export function UnitRow({ unit, blockOptions, unitModelOptions }: {
   unit: { id: string; blockId: string; lotNumber: string; unitCode: string; unitModel: string; unitType: string; status: UnitStatus; contractPrice?: string | null };
   blockOptions: { id: string; blockName: string }[];
+  unitModelOptions: string[];
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -360,7 +369,13 @@ export function UnitRow({ unit, blockOptions }: {
             </label>
             <label style={{ flex: "1 1 100px" }}>
               <span style={labelStyle}>Model</span>
-              <input type="text" required value={unitModel} onChange={(e) => setUnitModel(e.target.value)} style={inputStyle} />
+              {unitModelOptions.length > 0 ? (
+                <select required value={unitModel} onChange={(e) => setUnitModel(e.target.value)} style={inputStyle}>
+                  {unitModelOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              ) : (
+                <input type="text" required value={unitModel} onChange={(e) => setUnitModel(e.target.value)} style={inputStyle} />
+              )}
             </label>
             <label style={{ flex: "0 0 90px" }}>
               <span style={labelStyle}>Unit Type</span>
@@ -431,5 +446,91 @@ export function UnitRow({ unit, blockOptions }: {
         )}
       </td>
     </tr>
+  );
+}
+
+// ─── Unit Model Manager ──────────────────────────────────────────────────────
+
+export function UnitModelManager({ projectId, models }: {
+  projectId: string;
+  models: { id: string; name: string }[];
+}) {
+  const router = useRouter();
+  const [newName, setNewName] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const name = newName.trim();
+    if (!name) return;
+    startTransition(async () => {
+      const result = await createProjectUnitModel(projectId, { name });
+      if (result.success) { setNewName(""); router.refresh(); }
+      else setError(result.error ?? "Error");
+    });
+  }
+
+  function handleDelete(id: string) {
+    setDeletingId(id);
+    startTransition(async () => {
+      await deleteProjectUnitModel(id, projectId);
+      setDeletingId(null);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.25rem 1.5rem", marginBottom: "1.5rem" }}>
+      <h2 style={{ margin: "0 0 0.75rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Unit Models</h2>
+      <p style={{ margin: "0 0 1rem", fontSize: "0.82rem", color: "#6b7280" }}>
+        Define the unit models for this project. These will appear as options when adding units, and on BOM/BOQ entries.
+      </p>
+
+      {models.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
+          {models.map((m) => (
+            <span key={m.id} style={{
+              display: "inline-flex", alignItems: "center", gap: "0.35rem",
+              padding: "0.25rem 0.6rem", borderRadius: "999px",
+              background: "#eff6ff", color: "#1e40af", fontSize: "0.8rem", fontWeight: 600,
+              border: "1px solid #bfdbfe",
+            }}>
+              {m.name}
+              <button
+                onClick={() => handleDelete(m.id)}
+                disabled={deletingId === m.id}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#93c5fd", fontSize: "0.75rem", padding: 0, lineHeight: 1 }}
+                aria-label={`Remove ${m.name}`}
+              >
+                {deletingId === m.id ? "…" : "✕"}
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={handleAdd} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+        {error && <div style={{ width: "100%", fontSize: "0.78rem", color: "#b91c1c", marginBottom: "0.25rem" }}>{error}</div>}
+        <div style={{ flex: "1 1 180px" }}>
+          <label style={labelStyle}>Add Unit Model</label>
+          <input
+            type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
+            placeholder="e.g. Type A / 2BR / Single"
+            style={inputStyle}
+          />
+        </div>
+        <button type="submit" disabled={isPending || !newName.trim()} style={{
+          padding: "0.5rem 1rem", borderRadius: "6px", background: "#6366f1",
+          color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600,
+          cursor: isPending || !newName.trim() ? "not-allowed" : "pointer",
+          opacity: isPending || !newName.trim() ? 0.7 : 1,
+        }}>
+          {isPending ? "Adding…" : "Add"}
+        </button>
+      </form>
+    </div>
   );
 }

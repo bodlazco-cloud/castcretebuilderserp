@@ -24,11 +24,12 @@ export default async function NewBomEntryPage() {
       .where(eq(schema.activityDefinitions.isActive, true))
       .orderBy(schema.activityDefinitions.scopeCode, schema.activityDefinitions.sequenceOrder),
     db.select({
-        projectId: schema.projectUnits.projectId,
-        unitModel: schema.projectUnits.unitModel,
+        projectId: schema.projectUnitModels.projectId,
+        unitModel: schema.projectUnitModels.name,
       })
-      .from(schema.projectUnits)
-      .orderBy(schema.projectUnits.unitModel),
+      .from(schema.projectUnitModels)
+      .orderBy(schema.projectUnitModels.name)
+      .catch(() => [] as { projectId: string; unitModel: string }[]),
     db.select({ id: schema.materials.id, code: schema.materials.code, name: schema.materials.name, unit: schema.materials.unit })
       .from(schema.materials)
       .where(eq(schema.materials.isActive, true))
@@ -38,15 +39,6 @@ export default async function NewBomEntryPage() {
       .where(eq(schema.suppliers.isActive, true))
       .orderBy(schema.suppliers.name),
   ]);
-
-  // Deduplicate unit models per project
-  const seenUnitModels = new Set<string>();
-  const dedupedUnitModels = unitModelRows.filter((u) => {
-    const key = `${u.projectId}::${u.unitModel}`;
-    if (seenUnitModels.has(key)) return false;
-    seenUnitModels.add(key);
-    return true;
-  });
 
   const ACCENT = "#1a56db";
 
@@ -70,7 +62,7 @@ export default async function NewBomEntryPage() {
           <BomEntryForm
             projects={projectRows}
             sowItems={sowRows}
-            unitModels={dedupedUnitModels}
+            unitModels={unitModelRows}
             materials={materialRows}
             vendors={vendorRows}
           />
