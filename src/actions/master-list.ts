@@ -1220,18 +1220,28 @@ export async function createProjectUnitModel(
 ): Promise<MutationResult> {
   const parsed = UnitModelSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
-  const [row] = await db
-    .insert(projectUnitModels)
-    .values({ projectId, name: parsed.data.name })
-    .returning({ id: projectUnitModels.id });
-  revalidatePath(`/master-list/projects/${projectId}`);
-  revalidatePath("/planning/bom/new");
-  return { success: true, id: row.id };
+  try {
+    const [row] = await db
+      .insert(projectUnitModels)
+      .values({ projectId, name: parsed.data.name })
+      .returning({ id: projectUnitModels.id });
+    revalidatePath(`/master-list/projects/${projectId}`);
+    revalidatePath("/planning/bom/new");
+    return { success: true, id: row.id };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("does not exist")) return { success: false, error: "Migration not applied yet — run the project_unit_models SQL in Supabase first." };
+    return { success: false, error: "Could not save unit model. " + msg };
+  }
 }
 
 export async function deleteProjectUnitModel(id: string, projectId: string): Promise<{ success: boolean; error?: string }> {
-  await db.delete(projectUnitModels).where(eq(projectUnitModels.id, id));
-  revalidatePath(`/master-list/projects/${projectId}`);
-  revalidatePath("/planning/bom/new");
-  return { success: true };
+  try {
+    await db.delete(projectUnitModels).where(eq(projectUnitModels.id, id));
+    revalidatePath(`/master-list/projects/${projectId}`);
+    revalidatePath("/planning/bom/new");
+    return { success: true };
+  } catch {
+    return { success: false, error: "Could not delete unit model." };
+  }
 }
