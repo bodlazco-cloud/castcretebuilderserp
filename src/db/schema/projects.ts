@@ -40,3 +40,10 @@ export const blocks = pgTable("blocks", {
   totalLots:  integer("total_lots").notNull(),
   createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const projectUnitModels = pgTable("project_unit_models", {
+  id:        uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name:      varchar("name", { length: 50 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

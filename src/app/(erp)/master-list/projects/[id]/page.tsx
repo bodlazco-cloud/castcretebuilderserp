@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { projects, developers, blocks, projectUnits } from "@/db/schema";
+import { projects, developers, blocks, projectUnits, projectUnitModels } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
-import { ApproveProjectButton, AddBlockForm, EditBlockForm, DeleteBlockButton, AddUnitForm, UnitRow } from "./ProjectActions";
+import { ApproveProjectButton, AddBlockForm, EditBlockForm, DeleteBlockButton, AddUnitForm, UnitRow, UnitModelManager } from "./ProjectActions";
 import { EditProjectForm } from "./EditProjectForm";
 
 const FIELD: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "0.2rem" };
@@ -57,14 +57,23 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     .where(eq(blocks.projectId, id))
     .orderBy(blocks.blockName);
 
-  const unitRows = blockRows.length > 0
-    ? await db
-        .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, unitType: projectUnits.unitType, status: projectUnits.status, contractPrice: projectUnits.contractPrice })
-        .from(projectUnits)
-        .where(eq(projectUnits.projectId, id))
-        .orderBy(projectUnits.unitCode)
-    : [];
+  const [unitRows, unitModelRows] = await Promise.all([
+    blockRows.length > 0
+      ? db
+          .select({ id: projectUnits.id, blockId: projectUnits.blockId, unitCode: projectUnits.unitCode, lotNumber: projectUnits.lotNumber, unitModel: projectUnits.unitModel, unitType: projectUnits.unitType, status: projectUnits.status, contractPrice: projectUnits.contractPrice })
+          .from(projectUnits)
+          .where(eq(projectUnits.projectId, id))
+          .orderBy(projectUnits.unitCode)
+      : Promise.resolve([]),
+    db
+      .select({ id: projectUnitModels.id, name: projectUnitModels.name })
+      .from(projectUnitModels)
+      .where(eq(projectUnitModels.projectId, id))
+      .orderBy(projectUnitModels.name)
+      .catch(() => [] as { id: string; name: string }[]),
+  ]);
 
+  const unitModelNames = unitModelRows.map((m) => m.name);
   const sc = STATUS_STYLE[project.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
   const isApproved = project.status === "ACTIVE" && !!project.bodApprovedAt;
 
@@ -153,6 +162,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
 
+        {/* Unit Models */}
+        <UnitModelManager projectId={id} models={unitModelRows} />
+
         {/* Blocks & Units */}
         <div style={{ marginBottom: "1.5rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -195,13 +207,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                               key={u.id}
                               unit={{ id: u.id, blockId: u.blockId ?? "", lotNumber: u.lotNumber, unitCode: u.unitCode, unitModel: u.unitModel, unitType: u.unitType ?? "MID", status: u.status, contractPrice: u.contractPrice }}
                               blockOptions={blockRows.map((b) => ({ id: b.id, blockName: b.blockName }))}
+                              unitModelOptions={unitModelNames}
                             />
                           ))}
                         </tbody>
                       </table>
                     )}
                     <div style={{ padding: "0.75rem 1rem", borderTop: blockUnits.length > 0 ? "1px solid #f3f4f6" : undefined }}>
-                      <AddUnitForm projectId={id} blockOptions={blockRows.map((b) => ({ id: b.id, blockName: b.blockName }))} />
+                      <AddUnitForm projectId={id} blockOptions={blockRows.map((b) => ({ id: b.id, blockName: b.blockName }))} unitModelOptions={unitModelNames} />
                     </div>
                   </div>
                 );

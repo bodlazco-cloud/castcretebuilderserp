@@ -3,7 +3,7 @@
 import { db } from "@/db";
 import {
   developers, projects, materials, suppliers,
-  subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits,
+  subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits, projectUnitModels,
   developerRateCards, developerRateCardDeductions,
   materialPriceHistory, subcontractorRateCards, subcontractorRateCardDeductions,
   bomStandards, costCenters, materialSuppliers, departments,
@@ -1205,5 +1205,33 @@ export async function createCostCenterForDept(input: z.infer<typeof CostCenterSc
 export async function toggleCostCenterActiveForDept(id: string, isActive: boolean): Promise<{ success: boolean }> {
   await db.update(costCenters).set({ isActive }).where(eq(costCenters.id, id));
   revalidatePath("/master-list/departments");
+  return { success: true };
+}
+
+// ─── Project Unit Models ────────────────────────────────────────────────────
+
+const UnitModelSchema = z.object({
+  name: z.string().min(1).max(50),
+});
+
+export async function createProjectUnitModel(
+  projectId: string,
+  input: z.infer<typeof UnitModelSchema>,
+): Promise<MutationResult> {
+  const parsed = UnitModelSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const [row] = await db
+    .insert(projectUnitModels)
+    .values({ projectId, name: parsed.data.name })
+    .returning({ id: projectUnitModels.id });
+  revalidatePath(`/master-list/projects/${projectId}`);
+  revalidatePath("/planning/bom/new");
+  return { success: true, id: row.id };
+}
+
+export async function deleteProjectUnitModel(id: string, projectId: string): Promise<{ success: boolean; error?: string }> {
+  await db.delete(projectUnitModels).where(eq(projectUnitModels.id, id));
+  revalidatePath(`/master-list/projects/${projectId}`);
+  revalidatePath("/planning/bom/new");
   return { success: true };
 }
