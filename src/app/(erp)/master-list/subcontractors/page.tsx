@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { subcontractors } from "@/db/schema";
 import { getAuthUser } from "@/lib/supabase-server";
+import { deleteSubcontractor } from "@/actions/master-list";
+import { DeleteRowButton } from "../DeleteRowButton";
 
 const GRADE_STYLE: Record<string, { bg: string; color: string }> = {
   A: { bg: "#dcfce7", color: "#166534" },
@@ -83,7 +85,10 @@ export default async function SubcontractorsPage() {
                           )}
                         </td>
                         <td style={{ padding: "0.65rem 1rem", textAlign: "right" }}>
-                          <a href={`/master-list/subcontractors/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                          <span style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center" }}>
+                            <a href={`/master-list/subcontractors/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                            <DeleteRowButton action={deleteSubcontractor.bind(null, r.id)} />
+                          </span>
                         </td>
                       </tr>
                     );

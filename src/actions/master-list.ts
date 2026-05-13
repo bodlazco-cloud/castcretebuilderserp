@@ -1208,6 +1208,28 @@ export async function toggleCostCenterActiveForDept(id: string, isActive: boolea
   return { success: true };
 }
 
+// ─── Developer Delete ────────────────────────────────────────────────────────
+
+export async function deleteDeveloper(id: string): Promise<{ success: boolean; error?: string }> {
+  const [n] = await db.select({ n: count() }).from(projects).where(eq(projects.developerId, id));
+  if ((n?.n ?? 0) > 0) return { success: false, error: `Cannot delete: ${n?.n} project(s) are linked to this developer.` };
+  await db.delete(developers).where(eq(developers.id, id));
+  revalidatePath("/master-list/developers");
+  return { success: true };
+}
+
+// ─── Subcontractor Delete ────────────────────────────────────────────────────
+
+export async function deleteSubcontractor(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await db.delete(subcontractors).where(eq(subcontractors.id, id));
+    revalidatePath("/master-list/subcontractors");
+    return { success: true };
+  } catch {
+    return { success: false, error: "Cannot delete: subcontractor may have linked records." };
+  }
+}
+
 // ─── Project Unit Models ────────────────────────────────────────────────────
 
 const UnitModelSchema = z.object({
