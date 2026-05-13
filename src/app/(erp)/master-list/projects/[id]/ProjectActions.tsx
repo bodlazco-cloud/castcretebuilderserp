@@ -225,6 +225,10 @@ export function AddUnitForm({ projectId, blockOptions, unitModelOptions }: {
     e.preventDefault();
     setError(null);
     if (!blockId) { setError("Select a block first."); return; }
+    if (!unitModel.trim()) {
+      setError("Unit model is required. Add unit models to the project first, or type a model name.");
+      return;
+    }
     startTransition(async () => {
       const result = await createProjectUnit({ projectId, blockId, lotNumber, unitCode, unitModel, unitType });
       if (result.success) {

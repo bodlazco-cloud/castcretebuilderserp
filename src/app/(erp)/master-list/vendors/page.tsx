@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { suppliers } from "@/db/schema";
 import { getAuthUser } from "@/lib/supabase-server";
+import { deleteSupplier } from "@/actions/master-list";
+import { DeleteRowButton } from "../DeleteRowButton";
 
 export default async function VendorsPage() {
   await getAuthUser();
@@ -55,7 +57,10 @@ export default async function VendorsPage() {
                       {new Date(r.createdAt).toLocaleDateString("en-PH")}
                     </td>
                     <td style={{ padding: "0.75rem 1rem", textAlign: "right" }}>
-                      <a href={`/master-list/vendors/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                      <span style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center" }}>
+                        <a href={`/master-list/vendors/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                        <DeleteRowButton action={deleteSupplier.bind(null, r.id)} />
+                      </span>
                     </td>
                   </tr>
                 ))}

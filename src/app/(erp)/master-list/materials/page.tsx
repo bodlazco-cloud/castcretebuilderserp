@@ -3,6 +3,8 @@ import { db } from "@/db";
 import { materials, suppliers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
+import { deleteMaterial } from "@/actions/master-list";
+import { DeleteRowButton } from "../DeleteRowButton";
 
 export default async function MaterialsPage() {
   await getAuthUser();
@@ -72,7 +74,10 @@ export default async function MaterialsPage() {
                         }}>{r.isActive ? "Active" : "Inactive"}</span>
                       </td>
                       <td style={{ padding: "0.65rem 1rem", textAlign: "right" }}>
-                        <a href={`/master-list/materials/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                        <span style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center" }}>
+                          <a href={`/master-list/materials/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
+                          <DeleteRowButton action={deleteMaterial.bind(null, r.id)} />
+                        </span>
                       </td>
                     </tr>
                   ))}
