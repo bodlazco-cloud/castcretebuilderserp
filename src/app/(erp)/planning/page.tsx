@@ -68,6 +68,27 @@ const GRADE_BG     = { A: "#f0fdf4", B: "#fffbeb", C: "#fef2f2" } as const;
 export default async function PlanningPage() {
   await getAuthUser();
 
+  // Top-level guard: if Promise.all itself throws for any reason, render a safe fallback
+  try {
+    return await renderPage();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return (
+      <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
+        <div style={{ maxWidth: "900px" }}>
+          <a href="/main-dashboard" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none" }}>← Back to Dashboard</a>
+          <h1 style={{ margin: "1.5rem 0 0.5rem", fontSize: "1.5rem", fontWeight: 700 }}>Planning & Engineering</h1>
+          <div style={{ padding: "1rem 1.25rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", color: "#991b1b", fontSize: "0.875rem" }}>
+            <strong>Page error:</strong> {msg}
+            <br /><span style={{ fontSize: "0.8rem" }}>Run pending DB migrations in Supabase then refresh.</span>
+          </div>
+        </div>
+      </main>
+    );
+  }
+}
+
+async function renderPage() {
   // ── All queries with .catch() so any missing table never crashes the page ──
   const [
     activeProjectRows,
@@ -557,3 +578,4 @@ export default async function PlanningPage() {
     </main>
   );
 }
+
