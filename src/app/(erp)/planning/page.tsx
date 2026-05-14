@@ -79,8 +79,8 @@ const UNIT_STATUS_ORDER = ["PENDING", "NTP_ISSUED", "IN_PROGRESS", "COMPLETED", 
 export default async function PlanningPage() {
   await getAuthUser();
 
-  // ── Parallel data fetch ────────────────────────────────────────────────────
-  const [
+  // ── Parallel data fetch (every query has .catch so the page never crashes) ─
+  let [
     activeProjectRows,
     unitStatusRows,
     allActivityRows,
@@ -99,7 +99,8 @@ export default async function PlanningPage() {
     })
       .from(schema.projects)
       .where(eq(schema.projects.status, "ACTIVE"))
-      .orderBy(schema.projects.name),
+      .orderBy(schema.projects.name)
+      .catch(() => [] as { id: string; name: string; contractValue: string }[]),
 
     // 2. Unit counts by status (all projects)
     db.select({
@@ -107,7 +108,8 @@ export default async function PlanningPage() {
       cnt:       count(),
     })
       .from(schema.projectUnits)
-      .groupBy(schema.projectUnits.status),
+      .groupBy(schema.projectUnits.status)
+      .catch(() => [] as { status: string; cnt: number }[]),
 
     // 3. All active activity definitions (for BOM coverage calc)
     db.select({
@@ -115,7 +117,8 @@ export default async function PlanningPage() {
       projectId: schema.activityDefinitions.projectId,
     })
       .from(schema.activityDefinitions)
-      .where(eq(schema.activityDefinitions.isActive, true)),
+      .where(eq(schema.activityDefinitions.isActive, true))
+      .catch(() => [] as { id: string; projectId: string }[]),
 
     // 4. Distinct activityDefIds that have an active BOM standard
     db.selectDistinct({
@@ -124,12 +127,14 @@ export default async function PlanningPage() {
     })
       .from(schema.bomStandards)
       .innerJoin(schema.activityDefinitions, eq(schema.bomStandards.activityDefId, schema.activityDefinitions.id))
-      .where(eq(schema.bomStandards.isActive, true)),
+      .where(eq(schema.bomStandards.isActive, true))
+      .catch(() => [] as { activityDefId: string; projectId: string }[]),
 
     // 5. Total active BOM standards count
     db.select({ cnt: count() })
       .from(schema.bomStandards)
-      .where(eq(schema.bomStandards.isActive, true)),
+      .where(eq(schema.bomStandards.isActive, true))
+      .catch(() => [{ cnt: 0 }]),
 
     // 6. Committed PO totals per project
     db.select({
@@ -151,7 +156,8 @@ export default async function PlanningPage() {
     })
       .from(schema.subcontractors)
       .where(eq(schema.subcontractors.isActive, true))
-      .groupBy(schema.subcontractors.performanceGrade, schema.subcontractors.stopAssignment),
+      .groupBy(schema.subcontractors.performanceGrade, schema.subcontractors.stopAssignment)
+      .catch(() => [] as { performanceGrade: "A" | "B" | "C"; stopAssignment: boolean; cnt: number }[]),
 
     // 8. Inventory stock (for MRP status)
     db.select({
@@ -161,7 +167,7 @@ export default async function PlanningPage() {
       quantityReserved: schema.inventoryStock.quantityReserved,
     })
       .from(schema.inventoryStock)
-      .catch(() => [] as typeof schema.inventoryStock.$inferSelect[]),
+      .catch(() => [] as { materialId: string; projectId: string; quantityOnHand: string; quantityReserved: string }[]),
 
     // 9. Active BOM lines with qty_per_unit for MRP gross calc
     db.select({
