@@ -58,6 +58,7 @@ export const bomStandards = pgTable("bom_standards", {
   quantityPerUnit:  numeric("quantity_per_unit", { precision: 15, scale: 4 }).notNull(),
   version:          integer("version").notNull().default(1),
   isActive:         boolean("is_active").notNull().default(true),
+  status:           varchar("status", { length: 30 }).notNull().default("DRAFT"),
   approvedBy:       uuid("approved_by").references(() => users.id),
   approvedAt:       timestamp("approved_at", { withTimezone: true }),
   createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

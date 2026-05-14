@@ -52,7 +52,7 @@ export async function saveBomEntries(
       ),
     );
 
-  // Insert new entries
+  // Insert new entries as DRAFT (pending BOD approval)
   await db.insert(bomStandards).values(
     items.map((item) => ({
       activityDefId,
@@ -60,6 +60,7 @@ export async function saveBomEntries(
       unitType,
       materialId:      item.materialId,
       quantityPerUnit: String(item.quantityPerUnit),
+      status:          "DRAFT",
     })),
   );
 
@@ -176,4 +177,43 @@ export async function createManpowerLog(input: z.infer<typeof CreateManpowerLogS
 
   revalidatePath("/planning/resource-forecasting");
   return { success: true, id: row.id };
+}
+
+// ─── BOM Approval Workflow ────────────────────────────────────────────────────
+
+export type BomApprovalResult = { success: boolean; error?: string };
+
+export async function submitBomForApproval(ids: string[]): Promise<BomApprovalResult> {
+  if (ids.length === 0) return { success: false, error: "No entries selected." };
+  await getAuthUser();
+  for (const id of ids) {
+    await db
+      .update(bomStandards)
+      .set({ status: "PENDING_REVIEW" })
+      .where(and(eq(bomStandards.id, id), eq(bomStandards.status, "DRAFT")));
+  }
+  revalidatePath("/planning/bom");
+  return { success: true };
+}
+
+export async function reviewBomStandard(
+  id: string,
+  action: "APPROVE" | "REJECT",
+  rejectionReason?: string,
+): Promise<BomApprovalResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+  if (action === "APPROVE") {
+    await db
+      .update(bomStandards)
+      .set({ status: "APPROVED", approvedBy: user.id, approvedAt: new Date() })
+      .where(eq(bomStandards.id, id));
+  } else {
+    await db
+      .update(bomStandards)
+      .set({ status: "REJECTED" })
+      .where(eq(bomStandards.id, id));
+  }
+  revalidatePath("/planning/bom");
+  return { success: true };
 }

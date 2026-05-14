@@ -3,15 +3,36 @@ import { getAuthUser } from "@/lib/supabase-server";
 import { db } from "@/db";
 import { bomStandards, activityDefinitions, projects, materials } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { BomSubmitActions, BomReviewActions } from "./BomApprovalActions";
 
 const ACCENT = "#1a56db";
+
+const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+  DRAFT:          { bg: "#f3f4f6", color: "#374151",  label: "Draft" },
+  PENDING_REVIEW: { bg: "#fef3c7", color: "#92400e",  label: "Pending BOD" },
+  APPROVED:       { bg: "#dcfce7", color: "#14532d",  label: "Approved" },
+  REJECTED:       { bg: "#fee2e2", color: "#7f1d1d",  label: "Rejected" },
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const s = STATUS_STYLES[status] ?? { bg: "#f3f4f6", color: "#374151", label: status };
+  return (
+    <span style={{
+      fontSize: "0.68rem", fontWeight: 700, padding: "0.15rem 0.45rem",
+      borderRadius: "999px", background: s.bg, color: s.color,
+      textTransform: "uppercase", letterSpacing: "0.03em",
+    }}>
+      {s.label}
+    </span>
+  );
+}
 
 export default async function BomRegisterPage() {
   await getAuthUser();
 
   let rows: Array<{
     id: string; unitModel: string; unitType: string; quantityPerUnit: string;
-    version: number; isActive: boolean; createdAt: Date;
+    version: number; isActive: boolean; status: string; createdAt: Date;
     activityDefId: string | null; activityCode: string | null; activityName: string | null;
     scopeName: string | null; projId: string | null; projName: string | null;
     matCode: string | null; matName: string | null; matUnit: string | null;
@@ -27,6 +48,7 @@ export default async function BomRegisterPage() {
         quantityPerUnit:  bomStandards.quantityPerUnit,
         version:          bomStandards.version,
         isActive:         bomStandards.isActive,
+        status:           bomStandards.status,
         createdAt:        bomStandards.createdAt,
         activityDefId:    activityDefinitions.id,
         activityCode:     activityDefinitions.activityCode,
@@ -81,8 +103,11 @@ export default async function BomRegisterPage() {
     act.unitGroups.get(ugKey)!.lines.push(row);
   }
 
-  const activeCount = rows.filter((r) => r.isActive).length;
+  const activeCount   = rows.filter((r) => r.isActive).length;
   const archivedCount = rows.filter((r) => !r.isActive).length;
+  const draftCount    = rows.filter((r) => r.status === "DRAFT").length;
+  const pendingCount  = rows.filter((r) => r.status === "PENDING_REVIEW").length;
+  const approvedCount = rows.filter((r) => r.status === "APPROVED").length;
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -97,12 +122,28 @@ export default async function BomRegisterPage() {
             <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
               {activeCount} active line{activeCount !== 1 ? "s" : ""}
               {archivedCount > 0 && ` · ${archivedCount} archived`}
+              {draftCount > 0 && ` · `}
+              {draftCount > 0 && <span style={{ color: "#92400e" }}>{draftCount} draft</span>}
+              {pendingCount > 0 && ` · `}
+              {pendingCount > 0 && <span style={{ color: "#d97706" }}>{pendingCount} pending BOD</span>}
+              {approvedCount > 0 && ` · `}
+              {approvedCount > 0 && <span style={{ color: "#16a34a" }}>{approvedCount} approved</span>}
             </p>
           </div>
           <a href="/planning/bom/new" style={{
             padding: "0.55rem 1.1rem", borderRadius: "6px", background: ACCENT,
             color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
           }}>+ New BOM Entry</a>
+        </div>
+
+        {/* Workflow guide */}
+        <div style={{
+          padding: "0.75rem 1rem", marginBottom: "1.5rem", borderRadius: "8px",
+          background: "#eff6ff", border: "1px solid #bfdbfe", fontSize: "0.8rem", color: "#1e40af",
+        }}>
+          <strong>Approval workflow:</strong> New BOM entries start as <strong>Draft</strong>.
+          Planning submits them for BOD review → BOD approves or rejects.
+          Any changes to approved entries must go through a <a href="/planning/change-orders" style={{ color: ACCENT }}>Change Order</a>.
         </div>
 
         {dbError && (
@@ -146,6 +187,7 @@ export default async function BomRegisterPage() {
                     {Array.from(act.unitGroups.values()).map((ug) => {
                       const activeLines   = ug.lines.filter((l) => l.isActive);
                       const archivedLines = ug.lines.filter((l) => !l.isActive);
+                      const draftIds      = activeLines.filter((l) => l.status === "DRAFT").map((l) => l.id);
                       return (
                         <div key={`${ug.unitModel}::${ug.unitType}`} style={{ padding: "0.75rem 1.25rem 0.75rem 2rem", borderBottom: "1px solid #f3f4f6" }}>
                           {/* Unit model / type badge */}
@@ -164,17 +206,17 @@ export default async function BomRegisterPage() {
 
                           {/* Active lines */}
                           {activeLines.length > 0 && (
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem", marginBottom: archivedLines.length > 0 ? "0.5rem" : 0 }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
                               <thead>
                                 <tr>
-                                  {["Material Code", "Material Name", "Unit", "Qty / Unit", "Ver."].map((h, i) => (
-                                    <th key={i} style={{ padding: "0.3rem 0.5rem", textAlign: i === 3 ? "right" : "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                                  {["Material Code", "Material Name", "Unit", "Qty / Unit", "Ver.", "Status", ""].map((h, i) => (
+                                    <th key={i} style={{ padding: "0.3rem 0.5rem", textAlign: i === 3 ? "right" : "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
                                   ))}
                                 </tr>
                               </thead>
                               <tbody>
                                 {activeLines.map((line) => (
-                                  <tr key={line.id}>
+                                  <tr key={line.id} style={{ background: line.status === "REJECTED" ? "#fff5f5" : "transparent" }}>
                                     <td style={{ padding: "0.3rem 0.5rem", fontFamily: "monospace", fontSize: "0.78rem", fontWeight: 600, color: "#374151" }}>{line.matCode}</td>
                                     <td style={{ padding: "0.3rem 0.5rem", color: "#111827" }}>{line.matName}</td>
                                     <td style={{ padding: "0.3rem 0.5rem", color: "#6b7280" }}>{line.matUnit}</td>
@@ -182,15 +224,28 @@ export default async function BomRegisterPage() {
                                       {Number(line.quantityPerUnit).toFixed(4)}
                                     </td>
                                     <td style={{ padding: "0.3rem 0.5rem", color: "#9ca3af", textAlign: "center" }}>v{line.version}</td>
+                                    <td style={{ padding: "0.3rem 0.5rem" }}>
+                                      <StatusBadge status={line.status} />
+                                    </td>
+                                    <td style={{ padding: "0.3rem 0.5rem" }}>
+                                      {line.status === "PENDING_REVIEW" && (
+                                        <BomReviewActions id={line.id} />
+                                      )}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
                           )}
 
+                          {/* Submit DRAFT lines for approval */}
+                          {draftIds.length > 0 && (
+                            <BomSubmitActions ids={draftIds} />
+                          )}
+
                           {/* Archived lines (collapsed) */}
                           {archivedLines.length > 0 && (
-                            <details style={{ marginTop: "0.25rem" }}>
+                            <details style={{ marginTop: "0.4rem" }}>
                               <summary style={{ fontSize: "0.75rem", color: "#9ca3af", cursor: "pointer", userSelect: "none" }}>
                                 {archivedLines.length} archived line{archivedLines.length !== 1 ? "s" : ""}
                               </summary>
@@ -203,6 +258,8 @@ export default async function BomRegisterPage() {
                                       <td style={{ padding: "0.25rem 0.5rem", color: "#6b7280" }}>{line.matUnit}</td>
                                       <td style={{ padding: "0.25rem 0.5rem", textAlign: "right" }}>{Number(line.quantityPerUnit).toFixed(4)}</td>
                                       <td style={{ padding: "0.25rem 0.5rem", color: "#9ca3af", textAlign: "center" }}>v{line.version}</td>
+                                      <td style={{ padding: "0.25rem 0.5rem" }}><StatusBadge status={line.status} /></td>
+                                      <td />
                                     </tr>
                                   ))}
                                 </tbody>
