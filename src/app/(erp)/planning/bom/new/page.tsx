@@ -60,6 +60,7 @@ export default async function NewBomEntryPage() {
       [] as { id: string; name: string }[],
     ),
   ]);
+
   return (
     <main className="min-h-screen bg-slate-950 p-6 font-sans">
       <div className="max-w-4xl mx-auto space-y-5">
