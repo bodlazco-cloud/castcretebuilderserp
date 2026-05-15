@@ -6,6 +6,13 @@
 -- that still reference them (admin, batching, master-list, procurement).
 -- The new master_bom_entries + planning_variance_requests replace them for Planning only.
 
+-- ─── Drop new tables if they exist from a failed/partial run ─────────────────
+-- (safe to drop — these tables are brand new and have no legacy data)
+
+DROP TABLE IF EXISTS planning_variance_requests CASCADE;
+DROP TABLE IF EXISTS resource_forecasts         CASCADE;
+DROP TABLE IF EXISTS master_bom_entries         CASCADE;
+
 -- ─── New enums ───────────────────────────────────────────────────────────────
 
 DO $$ BEGIN
@@ -26,7 +33,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ─── Master BOM Entries ───────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS master_bom_entries (
+CREATE TABLE master_bom_entries (
     id                  UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id          UUID            NOT NULL REFERENCES projects(id),
     unit_model          VARCHAR(50)     NOT NULL,
@@ -48,13 +55,13 @@ CREATE TABLE IF NOT EXISTS master_bom_entries (
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_mbe_active_scope
+CREATE UNIQUE INDEX idx_mbe_active_scope
     ON master_bom_entries (project_id, unit_model, unit_type, activity_def_id, material_id)
     WHERE is_active = TRUE AND status = 'APPROVED';
 
 -- ─── Resource Forecasts (auto-populated by PostgreSQL trigger on NTP) ─────────
 
-CREATE TABLE IF NOT EXISTS resource_forecasts (
+CREATE TABLE resource_forecasts (
     id                      UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id              UUID            NOT NULL REFERENCES projects(id),
     unit_id                 UUID            NOT NULL REFERENCES project_units(id),
@@ -70,12 +77,12 @@ CREATE TABLE IF NOT EXISTS resource_forecasts (
     updated_at              TIMESTAMPTZ     NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_rf_unique_unit_bom
+CREATE UNIQUE INDEX idx_rf_unique_unit_bom
     ON resource_forecasts (unit_id, master_bom_entry_id, forecast_type);
 
 -- ─── Planning Variance Requests (BOM changes + procurement overages) ──────────
 
-CREATE TABLE IF NOT EXISTS planning_variance_requests (
+CREATE TABLE planning_variance_requests (
     id                      UUID                    PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id              UUID                    NOT NULL REFERENCES projects(id),
     request_type            variance_request_type   NOT NULL,
@@ -164,6 +171,7 @@ CREATE TRIGGER trg_ntp_generate_forecasts
     EXECUTE FUNCTION public.fn_ntp_generate_forecasts();
 
 -- ─── RLS ─────────────────────────────────────────────────────────────────────
+-- Tables were freshly created above; RLS policies are created new (no DROP needed).
 
 ALTER TABLE master_bom_entries         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE resource_forecasts         ENABLE ROW LEVEL SECURITY;
@@ -178,15 +186,15 @@ CREATE POLICY "pvr_read_all"   ON planning_variance_requests FOR SELECT USING (T
 -- these policies are defence-in-depth for direct DB access)
 CREATE POLICY "mbe_write_admin" ON master_bom_entries
     FOR ALL USING (
-        auth.jwt() ->> 'dept_code' IN ('PLANNING','ADMIN','BOD')
+        (auth.jwt() ->> 'dept_code') IN ('PLANNING','ADMIN','BOD')
     );
 
 CREATE POLICY "rf_write_admin" ON resource_forecasts
     FOR ALL USING (
-        auth.jwt() ->> 'dept_code' IN ('PLANNING','ADMIN','BOD','PROCUREMENT')
+        (auth.jwt() ->> 'dept_code') IN ('PLANNING','ADMIN','BOD','PROCUREMENT')
     );
 
 CREATE POLICY "pvr_write_admin" ON planning_variance_requests
     FOR ALL USING (
-        auth.jwt() ->> 'dept_code' IN ('PLANNING','ADMIN','BOD','PROCUREMENT')
+        (auth.jwt() ->> 'dept_code') IN ('PLANNING','ADMIN','BOD','PROCUREMENT')
     );
