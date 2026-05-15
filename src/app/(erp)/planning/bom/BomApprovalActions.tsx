@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { submitBomForApproval, reviewBomStandard } from "@/actions/planning";
+import { submitBomForReview, reviewMasterBom } from "@/actions/planning";
 
 // ── Submit DRAFT entries for BOD approval ─────────────────────────────────────
 
@@ -14,7 +14,7 @@ export function BomSubmitActions({ ids }: { ids: string[] }) {
   function handleSubmit() {
     setMsg(null);
     startTransition(async () => {
-      const result = await submitBomForApproval(ids);
+      const result = await submitBomForReview(ids);
       if (result.success) {
         setMsg({ text: `${ids.length} line${ids.length !== 1 ? "s" : ""} submitted for BOD approval.`, ok: true });
         router.refresh();
@@ -56,7 +56,7 @@ export function BomReviewActions({ id }: { id: string }) {
   function handleApprove() {
     setError(null);
     startTransition(async () => {
-      const result = await reviewBomStandard(id, "APPROVE");
+      const result = await reviewMasterBom(id, "APPROVE");
       if (result.success) {
         router.refresh();
       } else {
@@ -69,7 +69,7 @@ export function BomReviewActions({ id }: { id: string }) {
     if (!reason.trim()) { setError("Rejection reason is required."); return; }
     setError(null);
     startTransition(async () => {
-      const result = await reviewBomStandard(id, "REJECT", reason);
+      const result = await reviewMasterBom(id, "REJECT", reason);
       if (result.success) {
         router.refresh();
       } else {

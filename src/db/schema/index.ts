@@ -13,6 +13,7 @@ export * from "./motorpool";
 export * from "./hr";
 export * from "./finance";
 export * from "./changeorders";
+export * from "./planning";
 export * from "./manpower";
 export * from "./payroll";
 export * from "./banking";

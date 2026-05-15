@@ -30,7 +30,7 @@ const NAV: NavSection[] = [
       { label: "MRP Queue",             href: "/planning/mrp-queue" },
       { label: "Batching Forecast",     href: "/planning/batching-forecast" },
       { label: "Motorpool Needs",       href: "/planning/motorpool-needs" },
-      { label: "Change Orders",         href: "/planning/change-orders" },
+      { label: "Variance Requests",      href: "/planning/variance-requests" },
       { label: "Reports",               isDivider: true },
       { label: "Budget vs Actual",      href: "/planning/reports/budget-vs-actual" },
       { label: "Job Costing Report",    href: "/planning/reports/job-costing" },

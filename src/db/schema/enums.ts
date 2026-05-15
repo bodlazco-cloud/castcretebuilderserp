@@ -82,3 +82,19 @@ export const paymentFlowStatusEnum = pgEnum("payment_flow_status", [
 export const materialMovementTypeEnum = pgEnum("material_movement_type", [
   "RECEIPT", "ISSUANCE", "TRANSFER", "ADJUSTMENT",
 ]);
+
+export const bomStatusEnum = pgEnum("bom_status", [
+  "DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED",
+]);
+
+export const forecastTypeEnum = pgEnum("forecast_type", [
+  "MATERIAL", "CONCRETE", "EQUIPMENT",
+]);
+
+export const forecastStatusEnum = pgEnum("forecast_status", [
+  "PENDING_PR", "PR_CREATED", "PO_ISSUED", "ISSUED",
+]);
+
+export const varianceRequestTypeEnum = pgEnum("variance_request_type", [
+  "BOM_CHANGE", "PROCUREMENT_VARIANCE",
+]);

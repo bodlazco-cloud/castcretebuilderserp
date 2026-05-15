@@ -1,18 +1,35 @@
 "use server";
 
 import { db } from "@/db";
-import { bomStandards, activityDefinitions, changeOrderRequests, constructionManpowerLogs } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import {
+  masterBomEntries,
+  resourceForecasts,
+  planningVarianceRequests,
+  activityDefinitions,
+} from "@/db/schema";
+import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+type DeptCode = string;
+
+function guardDept(dept: DeptCode, allowed: DeptCode[]): boolean {
+  return allowed.includes(dept);
+}
+
+// ─── Master BOM ───────────────────────────────────────────────────────────────
+
 const BomLineSchema = z.object({
   materialId:      z.string().uuid(),
   quantityPerUnit: z.number().positive(),
+  equipmentType:   z.string().max(100).optional(),
 });
 
-const SaveBomSchema = z.object({
+const SaveMasterBomSchema = z.object({
+  projectId:     z.string().uuid(),
   activityDefId: z.string().uuid(),
   unitModel:     z.string().min(1).max(50),
   unitType:      z.enum(["BEG", "MID", "END", "SHOP"]),
@@ -23,44 +40,55 @@ export type SaveBomResult =
   | { success: true; inserted: number }
   | { success: false; error: string };
 
-export async function saveBomEntries(
-  input: z.infer<typeof SaveBomSchema>,
+export async function saveMasterBomEntries(
+  input: z.infer<typeof SaveMasterBomSchema>,
 ): Promise<SaveBomResult> {
-  const parsed = SaveBomSchema.safeParse(input);
+  const parsed = SaveMasterBomSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
-  const { activityDefId, unitModel, unitType, items } = parsed.data;
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
 
-  // Verify activity exists
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may create BOM entries." };
+  }
+
+  const { projectId, activityDefId, unitModel, unitType, items } = parsed.data;
+
   const [activity] = await db
-    .select({ id: activityDefinitions.id, projectId: activityDefinitions.projectId })
+    .select({ id: activityDefinitions.id })
     .from(activityDefinitions)
-    .where(eq(activityDefinitions.id, activityDefId));
+    .where(and(eq(activityDefinitions.id, activityDefId), eq(activityDefinitions.projectId, projectId)));
 
-  if (!activity) return { success: false, error: "Activity definition not found." };
+  if (!activity) return { success: false, error: "Activity definition not found for this project." };
 
-  // Deactivate existing BOM entries for this scope to maintain versioning
+  // Deactivate existing DRAFT entries for same scope (soft version bump)
   await db
-    .update(bomStandards)
+    .update(masterBomEntries)
     .set({ isActive: false })
     .where(
       and(
-        eq(bomStandards.activityDefId, activityDefId),
-        eq(bomStandards.unitModel, unitModel),
-        eq(bomStandards.unitType, unitType),
-        eq(bomStandards.isActive, true),
+        eq(masterBomEntries.projectId, projectId),
+        eq(masterBomEntries.activityDefId, activityDefId),
+        eq(masterBomEntries.unitModel, unitModel),
+        eq(masterBomEntries.unitType, unitType),
+        eq(masterBomEntries.isActive, true),
+        eq(masterBomEntries.status, "DRAFT"),
       ),
     );
 
-  // Insert new entries as DRAFT (pending BOD approval)
-  await db.insert(bomStandards).values(
+  await db.insert(masterBomEntries).values(
     items.map((item) => ({
+      projectId,
       activityDefId,
       unitModel,
       unitType,
       materialId:      item.materialId,
       quantityPerUnit: String(item.quantityPerUnit),
-      status:          "DRAFT",
+      equipmentType:   item.equipmentType ?? null,
+      status:          "DRAFT" as const,
+      createdBy:       user.id,
     })),
   );
 
@@ -68,152 +96,227 @@ export async function saveBomEntries(
   return { success: true, inserted: items.length };
 }
 
-// ─── Change Orders ────────────────────────────────────────────────────────────
+export type BomReviewResult = { success: boolean; error?: string };
 
-const CreateCoSchema = z.object({
-  projectId:    z.string().uuid(),
-  activityDefId: z.string().uuid().optional(),
-  bomStandardId: z.string().uuid().optional(),
-  unitModel:    z.string().max(50).optional(),
-  unitType:     z.enum(["BEG", "MID", "END", "SHOP"]).optional(),
-  materialId:   z.string().uuid().optional(),
-  changeType:   z.enum(["ADD", "MODIFY", "REMOVE"]),
-  oldQuantity:  z.number().positive().optional(),
-  newQuantity:  z.number().positive().optional(),
-  reason:       z.string().min(1).max(2000),
-});
-
-export type CreateCoResult = { success: true; id: string } | { success: false; error: string };
-
-export async function createChangeOrder(input: z.infer<typeof CreateCoSchema>): Promise<CreateCoResult> {
-  const parsed = CreateCoSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+export async function submitBomForReview(ids: string[]): Promise<BomReviewResult> {
+  if (ids.length === 0) return { success: false, error: "No entries selected." };
 
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
-  const { projectId, activityDefId, bomStandardId, unitModel, unitType, materialId, changeType, oldQuantity, newQuantity, reason } = parsed.data;
 
-  const [row] = await db
-    .insert(changeOrderRequests)
-    .values({
-      projectId,
-      activityDefId:  activityDefId  ?? null,
-      bomStandardId:  bomStandardId  ?? null,
-      unitModel:      unitModel      ?? null,
-      unitType:       unitType       ?? null,
-      materialId:     materialId     ?? null,
-      changeType,
-      oldQuantity:    oldQuantity != null ? String(oldQuantity) : null,
-      newQuantity:    newQuantity != null ? String(newQuantity) : null,
-      reason,
-      status:         "PENDING",
-      requestedBy:    user.id,
-    })
-    .returning({ id: changeOrderRequests.id });
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning may submit BOM for review." };
+  }
 
-  revalidatePath("/planning/change-orders");
-  return { success: true, id: row.id };
+  await db
+    .update(masterBomEntries)
+    .set({ status: "PENDING_REVIEW", submittedBy: user.id, submittedAt: new Date() })
+    .where(and(inArray(masterBomEntries.id, ids), eq(masterBomEntries.status, "DRAFT")));
+
+  revalidatePath("/planning/bom");
+  return { success: true };
 }
 
-export async function reviewChangeOrder(
+export async function reviewMasterBom(
   id: string,
   action: "APPROVE" | "REJECT",
   rejectionReason?: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<BomReviewResult> {
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
-  const newStatus = action === "APPROVE" ? "APPROVED" : "REJECTED";
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["ADMIN", "BOD"])) {
+    return { success: false, error: "Only Admin or BOD may approve/reject BOM entries." };
+  }
 
   await db
-    .update(changeOrderRequests)
+    .update(masterBomEntries)
     .set({
-      status:          newStatus,
+      status:          action === "APPROVE" ? "APPROVED" : "REJECTED",
       reviewedBy:      user.id,
       reviewedAt:      new Date(),
       rejectionReason: action === "REJECT" ? (rejectionReason ?? null) : null,
+      updatedAt:       new Date(),
     })
-    .where(eq(changeOrderRequests.id, id));
+    .where(eq(masterBomEntries.id, id));
 
-  revalidatePath(`/planning/change-orders/${id}`);
-  revalidatePath("/planning/change-orders");
+  revalidatePath("/planning/bom");
   return { success: true };
 }
 
-// ─── Resource Forecasting (Manpower Logs) ────────────────────────────────────
+// ─── Resource Forecasts ───────────────────────────────────────────────────────
 
-const CreateManpowerLogSchema = z.object({
-  projectId:        z.string().uuid(),
-  logDate:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  activityDefId:    z.string().uuid().optional(),
-  subconId:         z.string().uuid().optional(),
-  subconHeadcount:  z.number().int().min(0),
-  directStaffCount: z.number().int().min(0),
-  remarks:          z.string().max(1000).optional(),
+export type ForecastUpdateResult = { success: boolean; error?: string };
+
+export async function updateForecastStatus(
+  forecastId: string,
+  newStatus: "PENDING_PR" | "PR_CREATED" | "PO_ISSUED" | "ISSUED",
+  prId?: string,
+): Promise<ForecastUpdateResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PROCUREMENT", "PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Insufficient permissions." };
+  }
+
+  await db
+    .update(resourceForecasts)
+    .set({
+      status:               newStatus,
+      purchaseRequisitionId: prId ?? null,
+      updatedAt:            new Date(),
+    })
+    .where(eq(resourceForecasts.id, forecastId));
+
+  revalidatePath("/planning/mrp-queue");
+  revalidatePath("/planning/batching-forecast");
+  revalidatePath("/planning/motorpool-needs");
+  return { success: true };
+}
+
+export type BudgetCheckResult =
+  | { allowed: true }
+  | { allowed: false; overBy: number; requiresBodApproval: boolean };
+
+export async function checkForecastBudget(input: {
+  projectId:     string;
+  materialId:    string;
+  requestedQty:  number;
+}): Promise<BudgetCheckResult> {
+  // Aggregate gross_quantity from approved forecasts for this material on this project
+  const rows = await db
+    .select({ grossQuantity: resourceForecasts.grossQuantity, quantityConsumed: resourceForecasts.quantityConsumed })
+    .from(resourceForecasts)
+    .where(eq(resourceForecasts.projectId, input.projectId));
+
+  // Sum remaining across all forecasts (simplistic check — real gate is per unit)
+  const totalRemaining = rows.reduce(
+    (acc, r) => acc + (Number(r.grossQuantity) - Number(r.quantityConsumed)),
+    0,
+  );
+
+  if (input.requestedQty <= totalRemaining) return { allowed: true };
+
+  const overBy = input.requestedQty - totalRemaining;
+  return { allowed: false, overBy, requiresBodApproval: true };
+}
+
+// ─── Variance Requests ────────────────────────────────────────────────────────
+
+const VarianceRequestSchema = z.object({
+  projectId:            z.string().uuid(),
+  requestType:          z.enum(["BOM_CHANGE", "PROCUREMENT_VARIANCE"]),
+  // BOM change
+  masterBomEntryId:     z.string().uuid().optional(),
+  bomChangeType:        z.enum(["ADD", "MODIFY", "REMOVE"]).optional(),
+  oldQuantity:          z.number().positive().optional(),
+  newQuantity:          z.number().positive().optional(),
+  newMaterialId:        z.string().uuid().optional(),
+  // Procurement variance
+  resourceForecastId:   z.string().uuid().optional(),
+  purchaseRequisitionId: z.string().uuid().optional(),
+  requestedQuantity:    z.number().positive().optional(),
+  isMinOrderQtyIssue:   z.boolean().default(false),
+  // Common
+  reason:               z.string().min(10).max(3000),
 });
 
-export type CreateManpowerLogResult = { success: true; id: string } | { success: false; error: string };
+export type CreateVarianceResult =
+  | { success: true; id: string }
+  | { success: false; error: string };
 
-export async function createManpowerLog(input: z.infer<typeof CreateManpowerLogSchema>): Promise<CreateManpowerLogResult> {
-  const parsed = CreateManpowerLogSchema.safeParse(input);
+export async function createVarianceRequest(
+  input: z.infer<typeof VarianceRequestSchema>,
+): Promise<CreateVarianceResult> {
+  const parsed = VarianceRequestSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
-  const { projectId, logDate, activityDefId, subconId, subconHeadcount, directStaffCount, remarks } = parsed.data;
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "PROCUREMENT", "ADMIN", "BOD"])) {
+    return { success: false, error: "Insufficient permissions to create variance request." };
+  }
+
+  const d = parsed.data;
 
   const [row] = await db
-    .insert(constructionManpowerLogs)
+    .insert(planningVarianceRequests)
     .values({
-      projectId,
-      logDate,
-      activityDefId:    activityDefId    ?? null,
-      subconId:         subconId         ?? null,
-      subconHeadcount,
-      directStaffCount,
-      remarks:          remarks          ?? null,
-      recordedBy:       user.id,
+      projectId:            d.projectId,
+      requestType:          d.requestType,
+      masterBomEntryId:     d.masterBomEntryId     ?? null,
+      bomChangeType:        d.bomChangeType         ?? null,
+      oldQuantity:          d.oldQuantity != null    ? String(d.oldQuantity) : null,
+      newQuantity:          d.newQuantity != null    ? String(d.newQuantity) : null,
+      newMaterialId:        d.newMaterialId         ?? null,
+      resourceForecastId:   d.resourceForecastId    ?? null,
+      purchaseRequisitionId: d.purchaseRequisitionId ?? null,
+      requestedQuantity:    d.requestedQuantity != null ? String(d.requestedQuantity) : null,
+      isMinOrderQtyIssue:   d.isMinOrderQtyIssue,
+      reason:               d.reason,
+      status:               "DRAFT",
+      submittedBy:          user.id,
     })
-    .returning({ id: constructionManpowerLogs.id });
+    .returning({ id: planningVarianceRequests.id });
 
-  revalidatePath("/planning/resource-forecasting");
+  revalidatePath("/planning/variance-requests");
   return { success: true, id: row.id };
 }
 
-// ─── BOM Approval Workflow ────────────────────────────────────────────────────
+export async function submitVarianceRequest(id: string): Promise<BomReviewResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
 
-export type BomApprovalResult = { success: boolean; error?: string };
+  await db
+    .update(planningVarianceRequests)
+    .set({ status: "PENDING_REVIEW", submittedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(planningVarianceRequests.id, id), eq(planningVarianceRequests.status, "DRAFT")));
 
-export async function submitBomForApproval(ids: string[]): Promise<BomApprovalResult> {
-  if (ids.length === 0) return { success: false, error: "No entries selected." };
-  await getAuthUser();
-  for (const id of ids) {
-    await db
-      .update(bomStandards)
-      .set({ status: "PENDING_REVIEW" })
-      .where(and(eq(bomStandards.id, id), eq(bomStandards.status, "DRAFT")));
-  }
-  revalidatePath("/planning/bom");
+  revalidatePath("/planning/variance-requests");
   return { success: true };
 }
 
-export async function reviewBomStandard(
+export async function reviewVarianceRequest(
   id: string,
   action: "APPROVE" | "REJECT",
   rejectionReason?: string,
-): Promise<BomApprovalResult> {
+): Promise<BomReviewResult> {
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
-  if (action === "APPROVE") {
-    await db
-      .update(bomStandards)
-      .set({ status: "APPROVED", approvedBy: user.id, approvedAt: new Date() })
-      .where(eq(bomStandards.id, id));
-  } else {
-    await db
-      .update(bomStandards)
-      .set({ status: "REJECTED" })
-      .where(eq(bomStandards.id, id));
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+
+  // BOD-only for min-order-qty variances
+  const [req] = await db
+    .select({ isMinOrderQtyIssue: planningVarianceRequests.isMinOrderQtyIssue })
+    .from(planningVarianceRequests)
+    .where(eq(planningVarianceRequests.id, id));
+
+  if (req?.isMinOrderQtyIssue && !guardDept(dept, ["BOD"])) {
+    return { success: false, error: "Minimum order quantity variances require BOD approval." };
   }
-  revalidatePath("/planning/bom");
+
+  if (!guardDept(dept, ["ADMIN", "BOD"])) {
+    return { success: false, error: "Only Admin or BOD may approve/reject variance requests." };
+  }
+
+  await db
+    .update(planningVarianceRequests)
+    .set({
+      status:          action === "APPROVE" ? "APPROVED" : "REJECTED",
+      reviewedBy:      user.id,
+      reviewedAt:      new Date(),
+      rejectionReason: action === "REJECT" ? (rejectionReason ?? null) : null,
+      updatedAt:       new Date(),
+    })
+    .where(eq(planningVarianceRequests.id, id));
+
+  revalidatePath("/planning/variance-requests");
   return { success: true };
 }

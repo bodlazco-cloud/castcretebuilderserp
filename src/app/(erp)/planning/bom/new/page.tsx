@@ -1,64 +1,80 @@
 export const dynamic = "force-dynamic";
-import { getAuthUser } from "@/lib/supabase-server";
+
 import { db } from "@/db";
-import * as schema from "@/db/schema";
+import { projects, activityDefinitions, materials, projectUnitModels, suppliers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { BomEntryForm } from "../BomEntryForm";
 
-export default async function NewBomEntryPage() {
-  await getAuthUser();
+function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
+  return Promise.race([
+    p.catch(() => fallback),
+    new Promise<T>((r) => setTimeout(() => r(fallback), ms)),
+  ]);
+}
 
+export default async function NewBomEntryPage() {
   const [projectRows, sowRows, unitModelRows, materialRows, vendorRows] = await Promise.all([
-    db.select({ id: schema.projects.id, name: schema.projects.name })
-      .from(schema.projects)
-      .orderBy(schema.projects.name),
-    db.select({
-        id:           schema.activityDefinitions.id,
-        projectId:    schema.activityDefinitions.projectId,
-        scopeCode:    schema.activityDefinitions.scopeCode,
-        scopeName:    schema.activityDefinitions.scopeName,
-        activityCode: schema.activityDefinitions.activityCode,
-        activityName: schema.activityDefinitions.activityName,
-      })
-      .from(schema.activityDefinitions)
-      .where(eq(schema.activityDefinitions.isActive, true))
-      .orderBy(schema.activityDefinitions.scopeCode, schema.activityDefinitions.sequenceOrder),
-    db.select({
-        projectId: schema.projectUnitModels.projectId,
-        unitModel: schema.projectUnitModels.name,
-      })
-      .from(schema.projectUnitModels)
-      .orderBy(schema.projectUnitModels.name)
-      .catch(() => [] as { projectId: string; unitModel: string }[]),
-    db.select({ id: schema.materials.id, code: schema.materials.code, name: schema.materials.name, unit: schema.materials.unit })
-      .from(schema.materials)
-      .where(eq(schema.materials.isActive, true))
-      .orderBy(schema.materials.code),
-    db.select({ id: schema.suppliers.id, name: schema.suppliers.name })
-      .from(schema.suppliers)
-      .where(eq(schema.suppliers.isActive, true))
-      .orderBy(schema.suppliers.name),
+    safe(
+      db
+        .select({ id: projects.id, name: projects.name })
+        .from(projects)
+        .orderBy(projects.name),
+      [] as { id: string; name: string }[],
+    ),
+    safe(
+      db
+        .select({
+          id:           activityDefinitions.id,
+          projectId:    activityDefinitions.projectId,
+          scopeCode:    activityDefinitions.scopeCode,
+          scopeName:    activityDefinitions.scopeName,
+          activityCode: activityDefinitions.activityCode,
+          activityName: activityDefinitions.activityName,
+        })
+        .from(activityDefinitions)
+        .where(eq(activityDefinitions.isActive, true))
+        .orderBy(activityDefinitions.scopeCode, activityDefinitions.sequenceOrder),
+      [] as { id: string; projectId: string; scopeCode: string; scopeName: string; activityCode: string; activityName: string }[],
+    ),
+    safe(
+      db
+        .select({ projectId: projectUnitModels.projectId, unitModel: projectUnitModels.name })
+        .from(projectUnitModels)
+        .orderBy(projectUnitModels.name),
+      [] as { projectId: string; unitModel: string }[],
+    ),
+    safe(
+      db
+        .select({ id: materials.id, code: materials.code, name: materials.name, unit: materials.unit })
+        .from(materials)
+        .where(eq(materials.isActive, true))
+        .orderBy(materials.code),
+      [] as { id: string; code: string; name: string; unit: string }[],
+    ),
+    safe(
+      db
+        .select({ id: suppliers.id, name: suppliers.name })
+        .from(suppliers)
+        .where(eq(suppliers.isActive, true))
+        .orderBy(suppliers.name),
+      [] as { id: string; name: string }[],
+    ),
   ]);
 
-  const ACCENT = "#1a56db";
-
   return (
-    <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "860px" }}>
-        <div style={{ marginBottom: "1.5rem" }}>
-          <a href="/planning/bom" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>← BOM Register</a>
-        </div>
-
-        <header style={{ marginBottom: "1.75rem" }}>
-          <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>
-            New BOM Entry
-          </h1>
-          <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
+    <main className="min-h-screen bg-slate-950 p-6 font-sans">
+      <div className="max-w-4xl mx-auto space-y-5">
+        <div>
+          <p className="text-xs text-slate-400 mb-1">
+            <a href="/planning/bom" className="hover:text-white transition-colors">← BOM Register</a>
+          </p>
+          <h1 className="text-2xl font-bold text-white">New BOM Entry</h1>
+          <p className="text-sm text-slate-400 mt-0.5">
             Define material quantities per scope of work, activity, unit model, and unit type.
           </p>
-        </header>
+        </div>
 
-        <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.75rem" }}>
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
           <BomEntryForm
             projects={projectRows}
             sowItems={sowRows}
