@@ -6,6 +6,7 @@ import {
   resourceForecasts,
   planningVarianceRequests,
   activityDefinitions,
+  constructionManpowerLogs,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -319,4 +320,47 @@ export async function reviewVarianceRequest(
 
   revalidatePath("/planning/variance-requests");
   return { success: true };
+}
+
+// ─── Manpower Logs (kept for resource-forecasting page) ───────────────────────
+
+const CreateManpowerLogSchema = z.object({
+  projectId:        z.string().uuid(),
+  logDate:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  activityDefId:    z.string().uuid().optional(),
+  subconId:         z.string().uuid().optional(),
+  subconHeadcount:  z.number().int().min(0),
+  directStaffCount: z.number().int().min(0),
+  remarks:          z.string().max(1000).optional(),
+});
+
+export type CreateManpowerLogResult = { success: true; id: string } | { success: false; error: string };
+
+export async function createManpowerLog(
+  input: z.infer<typeof CreateManpowerLogSchema>,
+): Promise<CreateManpowerLogResult> {
+  const parsed = CreateManpowerLogSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { projectId, logDate, activityDefId, subconId, subconHeadcount, directStaffCount, remarks } = parsed.data;
+
+  const [row] = await db
+    .insert(constructionManpowerLogs)
+    .values({
+      projectId,
+      logDate,
+      activityDefId:    activityDefId ?? null,
+      subconId:         subconId      ?? null,
+      subconHeadcount,
+      directStaffCount,
+      remarks:          remarks       ?? null,
+      recordedBy:       user.id,
+    })
+    .returning({ id: constructionManpowerLogs.id });
+
+  revalidatePath("/planning/resource-forecasting");
+  return { success: true, id: row.id };
 }
