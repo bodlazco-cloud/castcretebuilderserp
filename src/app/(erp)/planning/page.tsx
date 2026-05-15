@@ -89,7 +89,7 @@ export default async function PlanningPage() {
 }
 
 // Resolves with fallback if the promise rejects OR takes longer than `ms`
-function safe<T>(p: Promise<T>, fallback: T, ms = 4000): Promise<T> {
+function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
     p.catch(() => fallback),
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
