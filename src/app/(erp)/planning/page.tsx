@@ -88,8 +88,15 @@ export default async function PlanningPage() {
   }
 }
 
+// Resolves with fallback if the promise rejects OR takes longer than `ms`
+function safe<T>(p: Promise<T>, fallback: T, ms = 8000): Promise<T> {
+  return Promise.race([
+    p.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 async function renderPage() {
-  // ── All queries with .catch() so any missing table never crashes the page ──
   const [
     activeProjectRows,
     unitStatusRows,
@@ -100,61 +107,81 @@ async function renderPage() {
     poSumRows,
     subconSummaryRows,
     inventoryRows,
-    bomCostRows,       // for BOM budget computation
-    unitCountRows,     // for BOM budget × unit count
+    bomCostRows,
+    unitCountRows,
   ] = await Promise.all([
-    db.select({ id: schema.projects.id, name: schema.projects.name, contractValue: schema.projects.contractValue })
-      .from(schema.projects).where(eq(schema.projects.status, "ACTIVE")).orderBy(schema.projects.name)
-      .catch(() => [] as { id: string; name: string; contractValue: string }[]),
+    safe(
+      db.select({ id: schema.projects.id, name: schema.projects.name, contractValue: schema.projects.contractValue })
+        .from(schema.projects).where(eq(schema.projects.status, "ACTIVE")).orderBy(schema.projects.name),
+      [] as { id: string; name: string; contractValue: string }[],
+    ),
 
-    db.select({ status: schema.projectUnits.status, cnt: count() })
-      .from(schema.projectUnits).groupBy(schema.projectUnits.status)
-      .catch(() => [] as { status: string; cnt: number }[]),
+    safe(
+      db.select({ status: schema.projectUnits.status, cnt: count() })
+        .from(schema.projectUnits).groupBy(schema.projectUnits.status),
+      [] as { status: string; cnt: number }[],
+    ),
 
-    db.select({ id: schema.activityDefinitions.id, projectId: schema.activityDefinitions.projectId })
-      .from(schema.activityDefinitions).where(eq(schema.activityDefinitions.isActive, true))
-      .catch(() => [] as { id: string; projectId: string }[]),
+    safe(
+      db.select({ id: schema.activityDefinitions.id, projectId: schema.activityDefinitions.projectId })
+        .from(schema.activityDefinitions).where(eq(schema.activityDefinitions.isActive, true)),
+      [] as { id: string; projectId: string }[],
+    ),
 
-    db.selectDistinct({ activityDefId: schema.bomStandards.activityDefId, projectId: schema.activityDefinitions.projectId })
-      .from(schema.bomStandards)
-      .innerJoin(schema.activityDefinitions, eq(schema.bomStandards.activityDefId, schema.activityDefinitions.id))
-      .where(eq(schema.bomStandards.isActive, true))
-      .catch(() => [] as { activityDefId: string; projectId: string }[]),
+    safe(
+      db.selectDistinct({ activityDefId: schema.bomStandards.activityDefId, projectId: schema.activityDefinitions.projectId })
+        .from(schema.bomStandards)
+        .innerJoin(schema.activityDefinitions, eq(schema.bomStandards.activityDefId, schema.activityDefinitions.id))
+        .where(eq(schema.bomStandards.isActive, true)),
+      [] as { activityDefId: string; projectId: string }[],
+    ),
 
-    db.select({ cnt: count() }).from(schema.bomStandards).where(eq(schema.bomStandards.isActive, true))
-      .catch(() => [{ cnt: 0 }]),
+    safe(
+      db.select({ cnt: count() }).from(schema.bomStandards).where(eq(schema.bomStandards.isActive, true)),
+      [{ cnt: 0 }],
+    ),
 
-    db.select({ cnt: count() }).from(schema.bomStandards)
-      .where(eq(schema.bomStandards.status, "DRAFT"))
-      .catch(() => [{ cnt: 0 }]),
+    safe(
+      db.select({ cnt: count() }).from(schema.bomStandards).where(eq(schema.bomStandards.status, "DRAFT")),
+      [{ cnt: 0 }],
+    ),
 
-    db.select({ projectId: schema.purchaseOrders.projectId, total: sum(schema.purchaseOrders.totalAmount) })
-      .from(schema.purchaseOrders)
-      .where(inArray(schema.purchaseOrders.status, ["BOD_APPROVED", "AWAITING_DELIVERY", "PARTIALLY_DELIVERED", "DELIVERED"]))
-      .groupBy(schema.purchaseOrders.projectId)
-      .catch(() => [] as { projectId: string; total: string | null }[]),
+    safe(
+      db.select({ projectId: schema.purchaseOrders.projectId, total: sum(schema.purchaseOrders.totalAmount) })
+        .from(schema.purchaseOrders)
+        .where(inArray(schema.purchaseOrders.status, ["BOD_APPROVED", "AWAITING_DELIVERY", "PARTIALLY_DELIVERED", "DELIVERED"] as const))
+        .groupBy(schema.purchaseOrders.projectId),
+      [] as { projectId: string; total: string | null }[],
+    ),
 
-    db.select({ performanceGrade: schema.subcontractors.performanceGrade, stopAssignment: schema.subcontractors.stopAssignment, cnt: count() })
-      .from(schema.subcontractors).where(eq(schema.subcontractors.isActive, true))
-      .groupBy(schema.subcontractors.performanceGrade, schema.subcontractors.stopAssignment)
-      .catch(() => [] as { performanceGrade: "A" | "B" | "C"; stopAssignment: boolean; cnt: number }[]),
+    safe(
+      db.select({ performanceGrade: schema.subcontractors.performanceGrade, stopAssignment: schema.subcontractors.stopAssignment, cnt: count() })
+        .from(schema.subcontractors).where(eq(schema.subcontractors.isActive, true))
+        .groupBy(schema.subcontractors.performanceGrade, schema.subcontractors.stopAssignment),
+      [] as { performanceGrade: "A" | "B" | "C"; stopAssignment: boolean; cnt: number }[],
+    ),
 
-    db.select({ materialId: schema.inventoryStock.materialId, projectId: schema.inventoryStock.projectId, quantityOnHand: schema.inventoryStock.quantityOnHand, quantityReserved: schema.inventoryStock.quantityReserved })
-      .from(schema.inventoryStock)
-      .catch(() => [] as { materialId: string; projectId: string; quantityOnHand: string; quantityReserved: string }[]),
+    safe(
+      db.select({ materialId: schema.inventoryStock.materialId, projectId: schema.inventoryStock.projectId, quantityOnHand: schema.inventoryStock.quantityOnHand, quantityReserved: schema.inventoryStock.quantityReserved })
+        .from(schema.inventoryStock),
+      [] as { materialId: string; projectId: string; quantityOnHand: string; quantityReserved: string }[],
+    ),
 
-    // BOM cost data: qty_per_unit × admin_price per (projectId, materialId, unitModel, unitType)
-    db.select({ projectId: schema.activityDefinitions.projectId, materialId: schema.bomStandards.materialId, unitModel: schema.bomStandards.unitModel, unitType: schema.bomStandards.unitType, qtyPerUnit: schema.bomStandards.quantityPerUnit, adminPrice: schema.materials.adminPrice })
-      .from(schema.bomStandards)
-      .innerJoin(schema.activityDefinitions, eq(schema.bomStandards.activityDefId, schema.activityDefinitions.id))
-      .innerJoin(schema.materials, eq(schema.bomStandards.materialId, schema.materials.id))
-      .where(eq(schema.bomStandards.isActive, true))
-      .catch(() => [] as { projectId: string; materialId: string; unitModel: string; unitType: string; qtyPerUnit: string; adminPrice: string }[]),
+    safe(
+      db.select({ projectId: schema.activityDefinitions.projectId, materialId: schema.bomStandards.materialId, unitModel: schema.bomStandards.unitModel, unitType: schema.bomStandards.unitType, qtyPerUnit: schema.bomStandards.quantityPerUnit, adminPrice: schema.materials.adminPrice })
+        .from(schema.bomStandards)
+        .innerJoin(schema.activityDefinitions, eq(schema.bomStandards.activityDefId, schema.activityDefinitions.id))
+        .innerJoin(schema.materials, eq(schema.bomStandards.materialId, schema.materials.id))
+        .where(eq(schema.bomStandards.isActive, true)),
+      [] as { projectId: string; materialId: string; unitModel: string; unitType: string; qtyPerUnit: string; adminPrice: string }[],
+    ),
 
-    db.select({ projectId: schema.projectUnits.projectId, unitModel: schema.projectUnits.unitModel, unitType: schema.projectUnits.unitType, cnt: count() })
-      .from(schema.projectUnits)
-      .groupBy(schema.projectUnits.projectId, schema.projectUnits.unitModel, schema.projectUnits.unitType)
-      .catch(() => [] as { projectId: string; unitModel: string; unitType: string; cnt: number }[]),
+    safe(
+      db.select({ projectId: schema.projectUnits.projectId, unitModel: schema.projectUnits.unitModel, unitType: schema.projectUnits.unitType, cnt: count() })
+        .from(schema.projectUnits)
+        .groupBy(schema.projectUnits.projectId, schema.projectUnits.unitModel, schema.projectUnits.unitType),
+      [] as { projectId: string; unitModel: string; unitType: string; cnt: number }[],
+    ),
   ]);
 
   // ── Compute metrics ────────────────────────────────────────────────────────
