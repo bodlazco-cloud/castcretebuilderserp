@@ -1,452 +1,240 @@
 export const dynamic = "force-dynamic";
-import { getAuthUser } from "@/lib/supabase-server";
+
 import { db } from "@/db";
-import * as schema from "@/db/schema";
-import { eq, ne, count } from "drizzle-orm";
+import { resourceForecasts, masterBomEntries, materials, projectUnits, projects } from "@/db/schema";
+import { eq, count } from "drizzle-orm";
 
-const ACCENT = "#1a56db";
-
-const STATUS_CONFIG = {
-  ORDER:      { label: "Order Now",  bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" },
-  LOW:        { label: "Low Stock",  bg: "#fffbeb", color: "#92400e", border: "#fde68a" },
-  SUFFICIENT: { label: "Sufficient", bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
-} as const;
-
-type MrpStatus = keyof typeof STATUS_CONFIG;
-
-type MrpLine = {
-  materialId:        string;
-  matCode:           string;
-  matName:           string;
-  matUnit:           string;
-  matAdminPrice:     number;
-  preferredSupplier: string | null;
-  grossRequired:     number;
-  onHand:            number;
-  reserved:          number;
-  available:         number;
-  netNeeded:         number;
-  estCost:           number;
-  status:            MrpStatus;
-};
-
-const thStyle: React.CSSProperties = {
-  padding: "0.6rem 0.85rem",
-  textAlign: "left",
-  fontSize: "0.72rem",
-  fontWeight: 700,
-  color: "#6b7280",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  borderBottom: "1px solid #e5e7eb",
-  whiteSpace: "nowrap",
-  background: "#f9fafb",
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: "0.6rem 0.85rem",
-  fontSize: "0.82rem",
-  color: "#111827",
-  borderBottom: "1px solid #f3f4f6",
-  whiteSpace: "nowrap",
-};
-
-function fmt(n: number, decimals = 4) {
-  return n.toLocaleString("en-PH", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
+  return Promise.race([
+    p.catch(() => fallback),
+    new Promise<T>((r) => setTimeout(() => r(fallback), ms)),
+  ]);
 }
 
-function fmtCost(n: number) {
-  return n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function Badge({ label, color }: { label: string; color: string }) {
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${color}`}>
+      {label}
+    </span>
+  );
 }
+
+function ForecastStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; color: string }> = {
+    PENDING_PR: { label: "Pending PR", color: "bg-red-900/70 text-red-300" },
+    PR_CREATED: { label: "PR Created", color: "bg-yellow-900/70 text-yellow-300" },
+    PO_ISSUED:  { label: "PO Issued",  color: "bg-blue-900/70 text-blue-300" },
+    ISSUED:     { label: "Issued",     color: "bg-green-900/70 text-green-300" },
+  };
+  const s = map[status] ?? { label: status, color: "bg-slate-700 text-slate-300" };
+  return <Badge label={s.label} color={s.color} />;
+}
+
+type MrpRow = {
+  id: string;
+  grossQuantity: string;
+  quantityConsumed: string;
+  status: string;
+  purchaseRequisitionId: string | null;
+  unitCode: string | null;
+  unitModel: string | null;
+  unitType: string | null;
+  projId: string | null;
+  projName: string | null;
+  matName: string | null;
+  matUnit: string | null;
+  matCode: string | null;
+};
 
 export default async function MrpQueuePage() {
-  await getAuthUser();
+  const [rows, statusCounts] = await Promise.all([
+    safe(
+      db
+        .select({
+          id:                    resourceForecasts.id,
+          grossQuantity:         resourceForecasts.grossQuantity,
+          quantityConsumed:      resourceForecasts.quantityConsumed,
+          status:                resourceForecasts.status,
+          purchaseRequisitionId: resourceForecasts.purchaseRequisitionId,
+          unitCode:              projectUnits.unitCode,
+          unitModel:             projectUnits.unitModel,
+          unitType:              projectUnits.unitType,
+          projId:                projects.id,
+          projName:              projects.name,
+          matName:               materials.name,
+          matUnit:               materials.unit,
+          matCode:               materials.code,
+        })
+        .from(resourceForecasts)
+        .leftJoin(masterBomEntries, eq(resourceForecasts.masterBomEntryId, masterBomEntries.id))
+        .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
+        .leftJoin(projectUnits, eq(resourceForecasts.unitId, projectUnits.id))
+        .leftJoin(projects, eq(resourceForecasts.projectId, projects.id))
+        .where(eq(resourceForecasts.forecastType, "MATERIAL"))
+        .orderBy(projects.name, projectUnits.unitCode),
+      [] as MrpRow[],
+    ),
+    safe(
+      db
+        .select({ status: resourceForecasts.status, cnt: count() })
+        .from(resourceForecasts)
+        .where(eq(resourceForecasts.forecastType, "MATERIAL"))
+        .groupBy(resourceForecasts.status),
+      [] as { status: string; cnt: number }[],
+    ),
+  ]);
 
-  type ProjectRow = { id: string; name: string };
-  let projectRows: ProjectRow[] = [];
-  let mrpByProject = new Map<string, { name: string; lines: MrpLine[] }>();
-  let dbError: string | null = null;
+  const statusMap = Object.fromEntries(statusCounts.map((r) => [r.status, Number(r.cnt)]));
+  const pendingPr = statusMap["PENDING_PR"] ?? 0;
+  const prCreated = statusMap["PR_CREATED"] ?? 0;
+  const poIssued  = statusMap["PO_ISSUED"]  ?? 0;
+  const issued    = statusMap["ISSUED"]     ?? 0;
 
-  try {
-    // 1. Active projects
-    projectRows = await db
-      .select({ id: schema.projects.id, name: schema.projects.name })
-      .from(schema.projects)
-      .where(eq(schema.projects.status, "ACTIVE"))
-      .orderBy(schema.projects.name);
-
-    // 2. Active BOM standards with activity + material
-    const bomRows = await db
-      .select({
-        activityDefId:       schema.bomStandards.activityDefId,
-        unitModel:           schema.bomStandards.unitModel,
-        unitType:            schema.bomStandards.unitType,
-        qtyPerUnit:          schema.bomStandards.quantityPerUnit,
-        projectId:           schema.activityDefinitions.projectId,
-        materialId:          schema.bomStandards.materialId,
-        matCode:             schema.materials.code,
-        matName:             schema.materials.name,
-        matUnit:             schema.materials.unit,
-        matAdminPrice:       schema.materials.adminPrice,
-        preferredSupplierId: schema.materials.preferredSupplierId,
-      })
-      .from(schema.bomStandards)
-      .innerJoin(schema.activityDefinitions, eq(schema.bomStandards.activityDefId, schema.activityDefinitions.id))
-      .innerJoin(schema.materials, eq(schema.bomStandards.materialId, schema.materials.id))
-      .where(eq(schema.bomStandards.isActive, true));
-
-    // 3. Unit counts by (projectId, unitModel, unitType) — exclude turned-over
-    const unitCountRows = await db
-      .select({
-        projectId: schema.projectUnits.projectId,
-        unitModel:  schema.projectUnits.unitModel,
-        unitType:   schema.projectUnits.unitType,
-        unitCount:  count(),
-      })
-      .from(schema.projectUnits)
-      .where(ne(schema.projectUnits.status, "TURNED_OVER"))
-      .groupBy(
-        schema.projectUnits.projectId,
-        schema.projectUnits.unitModel,
-        schema.projectUnits.unitType,
-      );
-
-    // 4. Inventory stock by (projectId, materialId)
-    const stockRows = await db
-      .select({
-        projectId:        schema.inventoryStock.projectId,
-        materialId:       schema.inventoryStock.materialId,
-        quantityOnHand:   schema.inventoryStock.quantityOnHand,
-        quantityReserved: schema.inventoryStock.quantityReserved,
-      })
-      .from(schema.inventoryStock);
-
-    // 5. Supplier names
-    const supplierRows = await db
-      .select({ id: schema.suppliers.id, name: schema.suppliers.name })
-      .from(schema.suppliers)
-      .where(eq(schema.suppliers.isActive, true));
-
-    // ── Build lookup maps ──────────────────────────────────────────────────────
-    const unitCountMap = new Map<string, number>();
-    for (const uc of unitCountRows) {
-      unitCountMap.set(`${uc.projectId}::${uc.unitModel}::${uc.unitType}`, Number(uc.unitCount));
+  type ProjectGroup = { projId: string; projName: string; rows: MrpRow[] };
+  const projectMap = new Map<string, ProjectGroup>();
+  for (const row of rows) {
+    const pid = row.projId ?? "unknown";
+    if (!projectMap.has(pid)) {
+      projectMap.set(pid, { projId: pid, projName: row.projName ?? "Unknown Project", rows: [] });
     }
-
-    const stockMap = new Map<string, { onHand: number; reserved: number }>();
-    for (const s of stockRows) {
-      const key = `${s.projectId}::${s.materialId}`;
-      const existing = stockMap.get(key) ?? { onHand: 0, reserved: 0 };
-      stockMap.set(key, {
-        onHand:   existing.onHand   + Number(s.quantityOnHand),
-        reserved: existing.reserved + Number(s.quantityReserved),
-      });
-    }
-
-    const supplierMap = new Map<string, string>();
-    for (const s of supplierRows) supplierMap.set(s.id, s.name);
-
-    // ── Compute gross requirements per (projectId, materialId) ─────────────────
-    const activeProjectIds = new Set(projectRows.map((p) => p.id));
-    const grossMap = new Map<string, MrpLine>();
-
-    for (const bom of bomRows) {
-      if (!activeProjectIds.has(bom.projectId)) continue;
-      const unitCount = unitCountMap.get(`${bom.projectId}::${bom.unitModel}::${bom.unitType}`) ?? 0;
-      if (unitCount === 0) continue;
-
-      const gross = Number(bom.qtyPerUnit) * unitCount;
-      const key = `${bom.projectId}::${bom.materialId}`;
-
-      if (!grossMap.has(key)) {
-        grossMap.set(key, {
-          materialId:        bom.materialId,
-          matCode:           bom.matCode,
-          matName:           bom.matName,
-          matUnit:           bom.matUnit,
-          matAdminPrice:     Number(bom.matAdminPrice),
-          preferredSupplier: bom.preferredSupplierId ? (supplierMap.get(bom.preferredSupplierId) ?? null) : null,
-          grossRequired:     0,
-          onHand:            0,
-          reserved:          0,
-          available:         0,
-          netNeeded:         0,
-          estCost:           0,
-          status:            "SUFFICIENT",
-        });
-      }
-      grossMap.get(key)!.grossRequired += gross;
-    }
-
-    // ── Apply inventory, derive net/status ────────────────────────────────────
-    for (const [key, line] of grossMap) {
-      const stock = stockMap.get(key) ?? { onHand: 0, reserved: 0 };
-      line.onHand    = stock.onHand;
-      line.reserved  = stock.reserved;
-      line.available = Math.max(0, stock.onHand - stock.reserved);
-      line.netNeeded = Math.max(0, line.grossRequired - line.available);
-      line.estCost   = line.netNeeded * line.matAdminPrice;
-      line.status    = line.netNeeded > 0
-        ? "ORDER"
-        : line.available < line.grossRequired * 0.2
-          ? "LOW"
-          : "SUFFICIENT";
-    }
-
-    // ── Group by project ───────────────────────────────────────────────────────
-    for (const proj of projectRows) {
-      mrpByProject.set(proj.id, { name: proj.name, lines: [] });
-    }
-
-    const statusOrder: Record<MrpStatus, number> = { ORDER: 0, LOW: 1, SUFFICIENT: 2 };
-    for (const [key, line] of grossMap) {
-      const projId = key.split("::")[0];
-      if (mrpByProject.has(projId)) {
-        mrpByProject.get(projId)!.lines.push(line);
-      }
-    }
-    for (const proj of mrpByProject.values()) {
-      proj.lines.sort((a, b) =>
-        statusOrder[a.status] !== statusOrder[b.status]
-          ? statusOrder[a.status] - statusOrder[b.status]
-          : a.matCode.localeCompare(b.matCode),
-      );
-    }
-
-    // Remove projects with no BOM lines
-    for (const [pid, proj] of mrpByProject) {
-      if (proj.lines.length === 0) mrpByProject.delete(pid);
-    }
-  } catch (err) {
-    dbError = err instanceof Error ? err.message : "Database query failed.";
+    projectMap.get(pid)!.rows.push(row);
   }
 
-  // ── KPIs ───────────────────────────────────────────────────────────────────
-  const allLines = Array.from(mrpByProject.values()).flatMap((p) => p.lines);
-  const totalMaterials = allLines.length;
-  const orderCount     = allLines.filter((l) => l.status === "ORDER").length;
-  const lowCount       = allLines.filter((l) => l.status === "LOW").length;
-  const totalEstCost   = allLines.reduce((s, l) => s + l.estCost, 0);
-
   const kpis = [
-    { label: "Materials in Queue",  value: totalMaterials.toLocaleString(),              accent: ACCENT   },
-    { label: "Need to Order",       value: orderCount.toLocaleString(),                   accent: "#b91c1c" },
-    { label: "Low Stock",           value: lowCount.toLocaleString(),                     accent: "#92400e" },
-    { label: "Est. Procurement Cost", value: `PHP ${fmtCost(totalEstCost)}`,              accent: "#166534" },
+    { label: "Pending PR",  value: pendingPr, color: "border-red-500",    text: "text-red-400" },
+    { label: "PR Created",  value: prCreated, color: "border-yellow-500", text: "text-yellow-400" },
+    { label: "PO Issued",   value: poIssued,  color: "border-blue-500",   text: "text-blue-400" },
+    { label: "Issued",      value: issued,    color: "border-green-500",  text: "text-green-400" },
   ];
 
   return (
-    <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "1200px" }}>
+    <main className="min-h-screen bg-slate-950 p-6 font-sans">
+      <div className="max-w-7xl mx-auto space-y-5">
 
-        {/* Back link */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <a href="/planning" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>
-            ← Planning & Engineering
-          </a>
-        </div>
-
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.5rem" }}>
-          <div>
-            <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>MRP Queue</h1>
-            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-              Material requirements aggregated from BOM standards across active projects
-            </p>
-          </div>
-          <a
-            href="/planning/bom/new"
-            style={{
-              padding: "0.55rem 1.1rem", borderRadius: "6px",
-              background: "#fff", color: ACCENT, fontSize: "0.875rem",
-              fontWeight: 600, textDecoration: "none", border: `1px solid ${ACCENT}`,
-            }}
-          >
-            Update BOM
-          </a>
-        </div>
-
-        {/* DB Error */}
-        {dbError && (
-          <div style={{
-            padding: "1rem 1.25rem", marginBottom: "1.5rem", borderRadius: "8px",
-            background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontSize: "0.875rem",
-          }}>
-            <strong>Database error:</strong> {dbError}
-          </div>
-        )}
-
-        {/* KPI cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
-          {kpis.map((kpi) => (
-            <div key={kpi.label} style={{
-              background: "#fff", borderRadius: "8px", padding: "1.25rem 1.5rem",
-              boxShadow: "0 1px 4px rgba(0,0,0,0.07)", borderTop: `3px solid ${kpi.accent}`,
-            }}>
-              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", lineHeight: 1 }}>{kpi.value}</div>
-              <div style={{ fontSize: "0.78rem", color: "#6b7280", marginTop: "0.4rem" }}>{kpi.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Legend */}
-        <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
-          {(Object.entries(STATUS_CONFIG) as [MrpStatus, typeof STATUS_CONFIG[MrpStatus]][]).map(([key, cfg]) => (
-            <span key={key} style={{
-              display: "inline-flex", alignItems: "center", gap: "0.35rem",
-              padding: "0.25rem 0.65rem", borderRadius: "999px", fontSize: "0.75rem", fontWeight: 600,
-              background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
-            }}>
-              {cfg.label}
-            </span>
-          ))}
-          <span style={{ fontSize: "0.75rem", color: "#9ca3af", alignSelf: "center", marginLeft: "0.25rem" }}>
-            · LOW = available {"<"} 20% of gross requirement
-          </span>
-        </div>
-
-        {/* No data */}
-        {!dbError && mrpByProject.size === 0 && (
-          <div style={{
-            padding: "3rem", background: "#fff", borderRadius: "8px",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af",
-          }}>
-            <div style={{ fontSize: "1.1rem", fontWeight: 600, marginBottom: "0.5rem" }}>No MRP data yet</div>
-            <p style={{ margin: "0 0 1rem", fontSize: "0.875rem" }}>
-              To generate the queue, make sure active projects have units registered and BOM standards defined.
-            </p>
-            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
-              <a href="/master-list/projects" style={{ color: ACCENT, fontSize: "0.875rem" }}>Add project units →</a>
-              <a href="/planning/bom/new" style={{ color: ACCENT, fontSize: "0.875rem" }}>Add BOM standards →</a>
-            </div>
-          </div>
-        )}
-
-        {/* MRP tables by project */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
-          {Array.from(mrpByProject.values()).map((proj) => {
-            const projOrderCount = proj.lines.filter((l) => l.status === "ORDER").length;
-            const projEstCost    = proj.lines.reduce((s, l) => s + l.estCost, 0);
-
-            return (
-              <div key={proj.name} style={{
-                background: "#fff", borderRadius: "8px",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden",
-              }}>
-                {/* Project header bar */}
-                <div style={{
-                  padding: "0.85rem 1.25rem",
-                  background: projOrderCount > 0 ? "#fef2f2" : "#f0f5ff",
-                  borderBottom: `1px solid ${projOrderCount > 0 ? "#fecaca" : "#dbeafe"}`,
-                  display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap",
-                }}>
-                  <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "#1e3a8a" }}>{proj.name}</span>
-                  <span style={{ fontSize: "0.8rem", color: "#6b7280" }}>
-                    {proj.lines.length} material{proj.lines.length !== 1 ? "s" : ""}
-                  </span>
-                  {projOrderCount > 0 && (
-                    <span style={{
-                      padding: "0.2rem 0.6rem", borderRadius: "999px", fontSize: "0.72rem",
-                      fontWeight: 700, background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca",
-                    }}>
-                      {projOrderCount} to order
-                    </span>
-                  )}
-                  {projEstCost > 0 && (
-                    <span style={{ marginLeft: "auto", fontSize: "0.82rem", color: "#374151", fontWeight: 600 }}>
-                      Est. PHP {fmtCost(projEstCost)}
-                    </span>
-                  )}
-                </div>
-
-                {/* Table */}
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem", minWidth: "900px" }}>
-                    <thead>
-                      <tr>
-                        <th style={thStyle}>Code</th>
-                        <th style={thStyle}>Material</th>
-                        <th style={thStyle}>Unit</th>
-                        <th style={{ ...thStyle, textAlign: "right" }}>Gross Required</th>
-                        <th style={{ ...thStyle, textAlign: "right" }}>On Hand</th>
-                        <th style={{ ...thStyle, textAlign: "right" }}>Reserved</th>
-                        <th style={{ ...thStyle, textAlign: "right" }}>Available</th>
-                        <th style={{ ...thStyle, textAlign: "right" }}>Net Needed</th>
-                        <th style={{ ...thStyle, textAlign: "right" }}>Est. Cost (PHP)</th>
-                        <th style={thStyle}>Supplier</th>
-                        <th style={thStyle}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {proj.lines.map((line) => {
-                        const sc = STATUS_CONFIG[line.status];
-                        return (
-                          <tr key={line.materialId} style={{
-                            background: line.status === "ORDER" ? "#fffafa" : "transparent",
-                          }}>
-                            <td style={{ ...tdStyle, fontFamily: "monospace", fontWeight: 600, fontSize: "0.78rem", color: "#374151" }}>
-                              {line.matCode}
-                            </td>
-                            <td style={{ ...tdStyle, fontWeight: 500, maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {line.matName}
-                            </td>
-                            <td style={{ ...tdStyle, color: "#6b7280" }}>{line.matUnit}</td>
-                            <td style={{ ...tdStyle, textAlign: "right", fontFamily: "monospace" }}>{fmt(line.grossRequired)}</td>
-                            <td style={{ ...tdStyle, textAlign: "right", fontFamily: "monospace", color: line.onHand === 0 ? "#9ca3af" : "#111827" }}>
-                              {fmt(line.onHand)}
-                            </td>
-                            <td style={{ ...tdStyle, textAlign: "right", fontFamily: "monospace", color: line.reserved === 0 ? "#9ca3af" : "#111827" }}>
-                              {fmt(line.reserved)}
-                            </td>
-                            <td style={{ ...tdStyle, textAlign: "right", fontFamily: "monospace", fontWeight: 600, color: line.available === 0 ? "#9ca3af" : "#166534" }}>
-                              {fmt(line.available)}
-                            </td>
-                            <td style={{
-                              ...tdStyle, textAlign: "right", fontFamily: "monospace",
-                              fontWeight: line.netNeeded > 0 ? 700 : 400,
-                              color: line.netNeeded > 0 ? "#b91c1c" : "#9ca3af",
-                            }}>
-                              {line.netNeeded > 0 ? fmt(line.netNeeded) : "—"}
-                            </td>
-                            <td style={{
-                              ...tdStyle, textAlign: "right", fontFamily: "monospace",
-                              fontWeight: line.estCost > 0 ? 700 : 400,
-                              color: line.estCost > 0 ? "#b91c1c" : "#9ca3af",
-                            }}>
-                              {line.estCost > 0 ? fmtCost(line.estCost) : "—"}
-                            </td>
-                            <td style={{ ...tdStyle, color: "#6b7280", fontSize: "0.75rem", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {line.preferredSupplier ?? <span style={{ color: "#d1d5db" }}>—</span>}
-                            </td>
-                            <td style={tdStyle}>
-                              <span style={{
-                                display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px",
-                                fontSize: "0.7rem", fontWeight: 700,
-                                background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`,
-                                whiteSpace: "nowrap",
-                              }}>
-                                {sc.label}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Help text */}
-        {mrpByProject.size > 0 && (
-          <p style={{ marginTop: "1.5rem", fontSize: "0.78rem", color: "#9ca3af", textAlign: "center" }}>
-            Gross Required = BOM qty per unit × active unit count per model/type · Available = On Hand − Reserved
-            · Net Needed = max(0, Gross − Available) · Est. Cost uses admin price from Materials Master
+        <div>
+          <p className="text-xs text-slate-400 mb-1">
+            <a href="/planning" className="hover:text-white transition-colors">← Planning &amp; Engineering</a>
           </p>
-        )}
+          <h1 className="text-2xl font-bold text-white">MRP Queue — Material Requirements</h1>
+          <p className="text-sm text-slate-400 mt-0.5">
+            Resource forecasts of type MATERIAL generated from approved BOM entries on NTP issuance.
+          </p>
+        </div>
 
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {kpis.map((kpi) => (
+            <div key={kpi.label} className={`bg-slate-800 rounded-xl border border-slate-700 border-t-4 ${kpi.color} p-5`}>
+              <div className={`text-3xl font-extrabold ${kpi.text} leading-none`}>
+                {kpi.value.toLocaleString()}
+              </div>
+              <div className="text-sm font-semibold text-white mt-2">{kpi.label}</div>
+              <div className="text-xs text-slate-400 mt-0.5">forecast lines</div>
+            </div>
+          ))}
+        </div>
+
+        {projectMap.size === 0 ? (
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-12 text-center">
+            <p className="text-slate-400 text-sm mb-2">No material forecast lines found.</p>
+            <p className="text-slate-500 text-xs">
+              Resource forecasts are created automatically when an NTP is issued for a project with approved BOM entries.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {Array.from(projectMap.values()).map((proj) => {
+              const projPending = proj.rows.filter((r) => r.status === "PENDING_PR").length;
+              return (
+                <div key={proj.projId} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+                  <div className="px-5 py-3 bg-slate-900 border-b border-slate-700 flex items-center gap-3 flex-wrap">
+                    <span className="font-bold text-white">{proj.projName}</span>
+                    <span className="text-xs text-slate-500">{proj.rows.length} line{proj.rows.length !== 1 ? "s" : ""}</span>
+                    {projPending > 0 && (
+                      <span className="text-xs bg-red-900/60 text-red-300 px-2 py-0.5 rounded-full font-semibold">
+                        {projPending} pending PR
+                      </span>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-700">
+                          {["Unit Code", "Model / Type", "Material", "Unit", "Gross Qty", "Consumed", "Remaining", "Status", "PR"].map((h) => (
+                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700/40">
+                        {proj.rows.map((row) => {
+                          const gross     = Number(row.grossQuantity);
+                          const consumed  = Number(row.quantityConsumed);
+                          const remaining = Math.max(0, gross - consumed);
+                          const remainingPct = gross > 0 ? Math.round((remaining / gross) * 100) : 0;
+                          return (
+                            <tr key={row.id} className="hover:bg-slate-700/20 transition-colors">
+                              <td className="px-4 py-3 font-mono text-xs text-slate-200 font-semibold whitespace-nowrap">
+                                {row.unitCode ?? <span className="text-slate-500">—</span>}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className="text-slate-300 text-xs">{row.unitModel ?? "—"}</span>
+                                {row.unitType && (
+                                  <span className="ml-1.5 text-xs text-indigo-300 bg-indigo-900/40 px-1.5 py-0.5 rounded">
+                                    {row.unitType}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-white font-medium">
+                                {row.matCode && (
+                                  <span className="font-mono text-slate-400 text-xs mr-1">{row.matCode}</span>
+                                )}
+                                {row.matName ?? <span className="text-slate-500">—</span>}
+                              </td>
+                              <td className="px-4 py-3 text-slate-400 text-xs">{row.matUnit ?? "—"}</td>
+                              <td className="px-4 py-3 font-mono text-slate-200 text-xs whitespace-nowrap">
+                                {gross.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                              </td>
+                              <td className="px-4 py-3 font-mono text-slate-400 text-xs whitespace-nowrap">
+                                {consumed > 0
+                                  ? consumed.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                                  : <span className="text-slate-600">0</span>}
+                              </td>
+                              <td className="px-4 py-3 text-xs whitespace-nowrap">
+                                <span className={`font-mono font-semibold ${
+                                  remaining === 0 ? "text-slate-500" : remainingPct < 20 ? "text-red-400" : "text-green-400"
+                                }`}>
+                                  {remaining.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                                </span>
+                                {gross > 0 && (
+                                  <span className="text-slate-500 ml-1">({remainingPct}%)</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <ForecastStatusBadge status={row.status} />
+                              </td>
+                              <td className="px-4 py-3 text-xs">
+                                {row.purchaseRequisitionId ? (
+                                  <a
+                                    href={`/procurement/purchase-requisitions/${row.purchaseRequisitionId}`}
+                                    className="text-blue-400 hover:text-blue-300 font-mono text-xs underline">
+                                    View PR →
+                                  </a>
+                                ) : (
+                                  <span className="text-slate-600">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </main>
   );

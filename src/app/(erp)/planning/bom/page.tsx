@@ -1,100 +1,144 @@
 export const dynamic = "force-dynamic";
-import { getAuthUser } from "@/lib/supabase-server";
+
+import Link from "next/link";
 import { db } from "@/db";
-import { bomStandards, activityDefinitions, projects, materials } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { masterBomEntries, activityDefinitions, projects, materials } from "@/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { BomSubmitActions, BomReviewActions } from "./BomApprovalActions";
 
-const ACCENT = "#1a56db";
+function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
+  return Promise.race([
+    p.catch(() => fallback),
+    new Promise<T>((r) => setTimeout(() => r(fallback), ms)),
+  ]);
+}
 
-const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  DRAFT:          { bg: "#f3f4f6", color: "#374151",  label: "Draft" },
-  PENDING_REVIEW: { bg: "#fef3c7", color: "#92400e",  label: "Pending BOD" },
-  APPROVED:       { bg: "#dcfce7", color: "#14532d",  label: "Approved" },
-  REJECTED:       { bg: "#fee2e2", color: "#7f1d1d",  label: "Rejected" },
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_STYLES[status] ?? { bg: "#f3f4f6", color: "#374151", label: status };
+function Badge({ label, color }: { label: string; color: string }) {
   return (
-    <span style={{
-      fontSize: "0.68rem", fontWeight: 700, padding: "0.15rem 0.45rem",
-      borderRadius: "999px", background: s.bg, color: s.color,
-      textTransform: "uppercase", letterSpacing: "0.03em",
-    }}>
-      {s.label}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${color}`}>
+      {label}
     </span>
   );
 }
 
-export default async function BomRegisterPage() {
-  await getAuthUser();
+function BomStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; color: string }> = {
+    DRAFT:          { label: "Draft",          color: "bg-slate-700 text-slate-300" },
+    PENDING_REVIEW: { label: "Pending Review", color: "bg-yellow-900/70 text-yellow-300" },
+    APPROVED:       { label: "Approved",       color: "bg-green-900/70 text-green-300" },
+    REJECTED:       { label: "Rejected",       color: "bg-red-900/70 text-red-300" },
+  };
+  const s = map[status] ?? { label: status, color: "bg-slate-700 text-slate-300" };
+  return <Badge label={s.label} color={s.color} />;
+}
 
-  let rows: Array<{
-    id: string; unitModel: string; unitType: string; quantityPerUnit: string;
-    version: number; isActive: boolean; status: string; createdAt: Date;
-    activityDefId: string | null; activityCode: string | null; activityName: string | null;
-    scopeName: string | null; projId: string | null; projName: string | null;
-    matCode: string | null; matName: string | null; matUnit: string | null;
-  }> = [];
-  let dbError: string | null = null;
+type BomRow = {
+  id: string;
+  unitModel: string;
+  unitType: string;
+  quantityPerUnit: string;
+  version: number;
+  isActive: boolean;
+  status: string;
+  createdAt: Date;
+  equipmentType: string | null;
+  activityDefId: string | null;
+  activityCode: string | null;
+  activityName: string | null;
+  scopeCode: string | null;
+  scopeName: string | null;
+  projId: string | null;
+  projName: string | null;
+  matCode: string | null;
+  matName: string | null;
+  matUnit: string | null;
+};
 
-  try {
-    rows = await db
+export default async function BomRegisterPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const filterStatus = typeof sp.status === "string" ? sp.status : "";
+
+  const rows = await safe(
+    db
       .select({
-        id:               bomStandards.id,
-        unitModel:        bomStandards.unitModel,
-        unitType:         bomStandards.unitType,
-        quantityPerUnit:  bomStandards.quantityPerUnit,
-        version:          bomStandards.version,
-        isActive:         bomStandards.isActive,
-        status:           bomStandards.status,
-        createdAt:        bomStandards.createdAt,
-        activityDefId:    activityDefinitions.id,
-        activityCode:     activityDefinitions.activityCode,
-        activityName:     activityDefinitions.activityName,
-        scopeName:        activityDefinitions.scopeName,
-        projId:           projects.id,
-        projName:         projects.name,
-        matCode:          materials.code,
-        matName:          materials.name,
-        matUnit:          materials.unit,
+        id:              masterBomEntries.id,
+        unitModel:       masterBomEntries.unitModel,
+        unitType:        masterBomEntries.unitType,
+        quantityPerUnit: masterBomEntries.quantityPerUnit,
+        version:         masterBomEntries.version,
+        isActive:        masterBomEntries.isActive,
+        status:          masterBomEntries.status,
+        createdAt:       masterBomEntries.createdAt,
+        equipmentType:   masterBomEntries.equipmentType,
+        activityDefId:   activityDefinitions.id,
+        activityCode:    activityDefinitions.activityCode,
+        activityName:    activityDefinitions.activityName,
+        scopeCode:       activityDefinitions.scopeCode,
+        scopeName:       activityDefinitions.scopeName,
+        projId:          projects.id,
+        projName:        projects.name,
+        matCode:         materials.code,
+        matName:         materials.name,
+        matUnit:         materials.unit,
       })
-      .from(bomStandards)
-      .leftJoin(activityDefinitions, eq(bomStandards.activityDefId, activityDefinitions.id))
-      .leftJoin(projects,            eq(activityDefinitions.projectId, projects.id))
-      .leftJoin(materials,           eq(bomStandards.materialId, materials.id))
-      .orderBy(projects.name, activityDefinitions.sequenceOrder, bomStandards.unitModel, bomStandards.unitType);
-  } catch (err) {
-    dbError = err instanceof Error ? err.message : "Database query failed.";
-  }
+      .from(masterBomEntries)
+      .leftJoin(activityDefinitions, eq(masterBomEntries.activityDefId, activityDefinitions.id))
+      .leftJoin(projects, eq(activityDefinitions.projectId, projects.id))
+      .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
+      .where(eq(masterBomEntries.isActive, true))
+      .orderBy(projects.name, activityDefinitions.scopeCode, activityDefinitions.activityCode, masterBomEntries.unitModel, desc(masterBomEntries.createdAt)),
+    [] as BomRow[],
+  );
 
-  // Group: project → activityDef → unitModel+unitType → lines
-  type BomLine = typeof rows[number];
-  type UnitGroup = { unitModel: string; unitType: string; lines: BomLine[] };
-  type ActivityGroup = { activityDefId: string; activityCode: string; activityName: string; scopeName: string; unitGroups: Map<string, UnitGroup> };
-  type ProjectGroup  = { projId: string; projName: string; activities: Map<string, ActivityGroup> };
+  const displayed = filterStatus ? rows.filter((r) => r.status === filterStatus) : rows;
+
+  type UnitGroup = { unitModel: string; unitType: string; lines: BomRow[] };
+  type ActivityGroup = {
+    activityDefId: string;
+    activityCode: string;
+    activityName: string;
+    unitGroups: Map<string, UnitGroup>;
+  };
+  type ScopeGroup = {
+    scopeCode: string;
+    scopeName: string;
+    activities: Map<string, ActivityGroup>;
+  };
+  type ProjectGroup = {
+    projId: string;
+    projName: string;
+    scopes: Map<string, ScopeGroup>;
+  };
 
   const projectMap = new Map<string, ProjectGroup>();
 
-  for (const row of rows) {
+  for (const row of displayed) {
     const pid = row.projId ?? "unknown";
     if (!projectMap.has(pid)) {
-      projectMap.set(pid, { projId: pid, projName: row.projName ?? "Unknown Project", activities: new Map() });
+      projectMap.set(pid, { projId: pid, projName: row.projName ?? "Unknown Project", scopes: new Map() });
     }
     const proj = projectMap.get(pid)!;
 
+    const sc = row.scopeCode ?? "unknown";
+    if (!proj.scopes.has(sc)) {
+      proj.scopes.set(sc, { scopeCode: sc, scopeName: row.scopeName ?? sc, activities: new Map() });
+    }
+    const scope = proj.scopes.get(sc)!;
+
     const aid = row.activityDefId ?? "unknown";
-    if (!proj.activities.has(aid)) {
-      proj.activities.set(aid, {
+    if (!scope.activities.has(aid)) {
+      scope.activities.set(aid, {
         activityDefId: aid,
         activityCode:  row.activityCode ?? "",
         activityName:  row.activityName ?? "",
-        scopeName:     row.scopeName ?? "",
         unitGroups:    new Map(),
       });
     }
-    const act = proj.activities.get(aid)!;
+    const act = scope.activities.get(aid)!;
 
     const ugKey = `${row.unitModel}::${row.unitType}`;
     if (!act.unitGroups.has(ugKey)) {
@@ -103,172 +147,188 @@ export default async function BomRegisterPage() {
     act.unitGroups.get(ugKey)!.lines.push(row);
   }
 
-  const activeCount   = rows.filter((r) => r.isActive).length;
-  const archivedCount = rows.filter((r) => !r.isActive).length;
-  const draftCount    = rows.filter((r) => r.status === "DRAFT").length;
-  const pendingCount  = rows.filter((r) => r.status === "PENDING_REVIEW").length;
+  const totalCount    = rows.length;
   const approvedCount = rows.filter((r) => r.status === "APPROVED").length;
+  const pendingCount  = rows.filter((r) => r.status === "PENDING_REVIEW").length;
+  const draftCount    = rows.filter((r) => r.status === "DRAFT").length;
+  const rejectedCount = rows.filter((r) => r.status === "REJECTED").length;
+
+  const STATUS_FILTERS = [
+    { value: "",               label: "All",            count: totalCount },
+    { value: "DRAFT",          label: "Draft",          count: draftCount },
+    { value: "PENDING_REVIEW", label: "Pending Review", count: pendingCount },
+    { value: "APPROVED",       label: "Approved",       count: approvedCount },
+    { value: "REJECTED",       label: "Rejected",       count: rejectedCount },
+  ];
 
   return (
-    <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "1100px" }}>
-        <div style={{ marginBottom: "1.5rem" }}>
-          <a href="/planning" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>← Planning & Engineering</a>
-        </div>
+    <main className="min-h-screen bg-slate-950 p-6 font-sans">
+      <div className="max-w-7xl mx-auto space-y-5">
 
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.5rem" }}>
-          <div>
-            <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Bill of Materials</h1>
-            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
-              {activeCount} active line{activeCount !== 1 ? "s" : ""}
-              {archivedCount > 0 && ` · ${archivedCount} archived`}
-              {draftCount > 0 && ` · `}
-              {draftCount > 0 && <span style={{ color: "#92400e" }}>{draftCount} draft</span>}
-              {pendingCount > 0 && ` · `}
-              {pendingCount > 0 && <span style={{ color: "#d97706" }}>{pendingCount} pending BOD</span>}
-              {approvedCount > 0 && ` · `}
-              {approvedCount > 0 && <span style={{ color: "#16a34a" }}>{approvedCount} approved</span>}
-            </p>
+        <div>
+          <p className="text-xs text-slate-400 mb-1">
+            <a href="/planning" className="hover:text-white transition-colors">← Planning &amp; Engineering</a>
+          </p>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Master BOM Register</h1>
+              <p className="text-sm text-slate-400 mt-0.5">
+                {totalCount} active line{totalCount !== 1 ? "s" : ""}
+                {approvedCount > 0 && <span className="ml-2 text-green-400">· {approvedCount} approved</span>}
+                {pendingCount  > 0 && <span className="ml-2 text-yellow-400">· {pendingCount} pending review</span>}
+                {draftCount    > 0 && <span className="ml-2 text-slate-400">· {draftCount} draft</span>}
+                {rejectedCount > 0 && <span className="ml-2 text-red-400">· {rejectedCount} rejected</span>}
+              </p>
+            </div>
+            <Link
+              href="/planning/bom/new"
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors">
+              + New Entry
+            </Link>
           </div>
-          <a href="/planning/bom/new" style={{
-            padding: "0.55rem 1.1rem", borderRadius: "6px", background: ACCENT,
-            color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
-          }}>+ New BOM Entry</a>
         </div>
 
-        {/* Workflow guide */}
-        <div style={{
-          padding: "0.75rem 1rem", marginBottom: "1.5rem", borderRadius: "8px",
-          background: "#eff6ff", border: "1px solid #bfdbfe", fontSize: "0.8rem", color: "#1e40af",
-        }}>
-          <strong>Approval workflow:</strong> New BOM entries start as <strong>Draft</strong>.
-          Planning submits them for BOD review → BOD approves or rejects.
-          Any changes to approved entries must go through a <a href="/planning/change-orders" style={{ color: ACCENT }}>Change Order</a>.
+        {/* Status filter chips */}
+        <div className="flex gap-2 flex-wrap">
+          {STATUS_FILTERS.map((f) => (
+            <Link
+              key={f.value}
+              href={f.value ? `/planning/bom?status=${f.value}` : "/planning/bom"}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                filterStatus === f.value
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700"
+              }`}>
+              {f.label}
+              <span className="ml-1.5 opacity-70">{f.count}</span>
+            </Link>
+          ))}
         </div>
 
-        {dbError && (
-          <div style={{
-            padding: "1rem 1.25rem", marginBottom: "1.5rem", borderRadius: "8px",
-            background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", fontSize: "0.875rem",
-          }}>
-            <strong>Database error:</strong> {dbError}
-            <br /><span style={{ fontSize: "0.8rem", color: "#b91c1c" }}>
-              The <code>bom_standards</code> and <code>activity_definitions</code> tables may not exist yet.
-              Run the pending migrations in Supabase SQL Editor.
-            </span>
-          </div>
-        )}
+        <div className="bg-blue-900/30 border border-blue-800/60 rounded-lg px-4 py-3 text-xs text-blue-300">
+          <strong className="text-blue-200">Approval workflow:</strong> DRAFT entries are submitted for Planning review, then approved or rejected by Admin / BOD.
+          Approved lines trigger resource forecast generation on NTP issuance. Changes to approved lines require a{" "}
+          <a href="/planning/variance-requests/new" className="underline hover:text-white">Variance Request</a>.
+        </div>
 
         {projectMap.size === 0 ? (
-          <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>
-            No BOM entries yet. <a href="/planning/bom/new" style={{ color: ACCENT }}>Add first BOM →</a>
+          <div className="bg-slate-800 rounded-xl border border-slate-700 p-12 text-center">
+            <p className="text-slate-400 text-sm mb-2">
+              {filterStatus ? `No BOM entries with status "${filterStatus}".` : "No active BOM entries found."}
+            </p>
+            <Link href="/planning/bom/new" className="text-blue-400 hover:text-blue-300 text-sm font-medium">
+              Add first entry →
+            </Link>
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          <div className="space-y-5">
             {Array.from(projectMap.values()).map((proj) => (
-              <div key={proj.projId} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                {/* Project header */}
-                <div style={{ padding: "0.85rem 1.25rem", background: "#f0f5ff", borderBottom: "1px solid #dbeafe", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                  <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "#1e3a8a" }}>{proj.projName}</span>
-                  <a href={`/master-list/projects/${proj.projId}`} style={{ fontSize: "0.75rem", color: ACCENT, textDecoration: "none" }}>View project →</a>
+              <div key={proj.projId} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+
+                <div className="px-5 py-3 bg-slate-900 border-b border-slate-700 flex items-center gap-3">
+                  <span className="font-bold text-white">{proj.projName}</span>
+                  <span className="text-xs text-slate-500">
+                    {Array.from(proj.scopes.values()).reduce(
+                      (sum, sc) =>
+                        sum + Array.from(sc.activities.values()).reduce(
+                          (s2, act) => s2 + Array.from(act.unitGroups.values()).reduce((s3, ug) => s3 + ug.lines.length, 0),
+                          0,
+                        ),
+                      0,
+                    )}{" "}
+                    lines across {proj.scopes.size} scope{proj.scopes.size !== 1 ? "s" : ""}
+                  </span>
                 </div>
 
-                {Array.from(proj.activities.values()).map((act) => (
-                  <div key={act.activityDefId} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    {/* Activity sub-header */}
-                    <div style={{ padding: "0.6rem 1.25rem", background: "#f9fafb", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                      <span style={{ fontFamily: "monospace", fontSize: "0.78rem", fontWeight: 700, color: "#374151", background: "#e5e7eb", padding: "0.1rem 0.45rem", borderRadius: "4px" }}>
-                        {act.activityCode}
+                {Array.from(proj.scopes.values()).map((scope) => (
+                  <div key={scope.scopeCode}>
+                    <div className="px-5 py-2 bg-slate-700/40 border-b border-slate-600/40 flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-slate-200 bg-slate-600 px-2 py-0.5 rounded">
+                        {scope.scopeCode}
                       </span>
-                      <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#374151" }}>{act.activityName}</span>
-                      <span style={{ fontSize: "0.78rem", color: "#9ca3af" }}>— {act.scopeName}</span>
+                      <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
+                        {scope.scopeName}
+                      </span>
                     </div>
 
-                    {Array.from(act.unitGroups.values()).map((ug) => {
-                      const activeLines   = ug.lines.filter((l) => l.isActive);
-                      const archivedLines = ug.lines.filter((l) => !l.isActive);
-                      const draftIds      = activeLines.filter((l) => l.status === "DRAFT").map((l) => l.id);
-                      return (
-                        <div key={`${ug.unitModel}::${ug.unitType}`} style={{ padding: "0.75rem 1.25rem 0.75rem 2rem", borderBottom: "1px solid #f3f4f6" }}>
-                          {/* Unit model / type badge */}
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-                            <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#374151" }}>{ug.unitModel}</span>
-                            <span style={{ fontSize: "0.72rem", fontWeight: 600, padding: "0.1rem 0.4rem", borderRadius: "999px", background: "#e0e7ff", color: "#3730a3" }}>
-                              {ug.unitType}
-                            </span>
-                            {activeLines.length > 0 && (
-                              <span style={{ fontSize: "0.72rem", color: "#166534" }}>{activeLines.length} active line{activeLines.length !== 1 ? "s" : ""}</span>
-                            )}
-                            {archivedLines.length > 0 && (
-                              <span style={{ fontSize: "0.72rem", color: "#9ca3af" }}>· {archivedLines.length} archived</span>
-                            )}
-                          </div>
-
-                          {/* Active lines */}
-                          {activeLines.length > 0 && (
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
-                              <thead>
-                                <tr>
-                                  {["Material Code", "Material Name", "Unit", "Qty / Unit", "Ver.", "Status", ""].map((h, i) => (
-                                    <th key={i} style={{ padding: "0.3rem 0.5rem", textAlign: i === 3 ? "right" : "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {activeLines.map((line) => (
-                                  <tr key={line.id} style={{ background: line.status === "REJECTED" ? "#fff5f5" : "transparent" }}>
-                                    <td style={{ padding: "0.3rem 0.5rem", fontFamily: "monospace", fontSize: "0.78rem", fontWeight: 600, color: "#374151" }}>{line.matCode}</td>
-                                    <td style={{ padding: "0.3rem 0.5rem", color: "#111827" }}>{line.matName}</td>
-                                    <td style={{ padding: "0.3rem 0.5rem", color: "#6b7280" }}>{line.matUnit}</td>
-                                    <td style={{ padding: "0.3rem 0.5rem", textAlign: "right", fontWeight: 700, color: "#111827" }}>
-                                      {Number(line.quantityPerUnit).toFixed(4)}
-                                    </td>
-                                    <td style={{ padding: "0.3rem 0.5rem", color: "#9ca3af", textAlign: "center" }}>v{line.version}</td>
-                                    <td style={{ padding: "0.3rem 0.5rem" }}>
-                                      <StatusBadge status={line.status} />
-                                    </td>
-                                    <td style={{ padding: "0.3rem 0.5rem" }}>
-                                      {line.status === "PENDING_REVIEW" && (
-                                        <BomReviewActions id={line.id} />
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          )}
-
-                          {/* Submit DRAFT lines for approval */}
-                          {draftIds.length > 0 && (
-                            <BomSubmitActions ids={draftIds} />
-                          )}
-
-                          {/* Archived lines (collapsed) */}
-                          {archivedLines.length > 0 && (
-                            <details style={{ marginTop: "0.4rem" }}>
-                              <summary style={{ fontSize: "0.75rem", color: "#9ca3af", cursor: "pointer", userSelect: "none" }}>
-                                {archivedLines.length} archived line{archivedLines.length !== 1 ? "s" : ""}
-                              </summary>
-                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem", marginTop: "0.4rem", opacity: 0.6 }}>
-                                <tbody>
-                                  {archivedLines.map((line) => (
-                                    <tr key={line.id}>
-                                      <td style={{ padding: "0.25rem 0.5rem", fontFamily: "monospace", color: "#374151" }}>{line.matCode}</td>
-                                      <td style={{ padding: "0.25rem 0.5rem", color: "#374151" }}>{line.matName}</td>
-                                      <td style={{ padding: "0.25rem 0.5rem", color: "#6b7280" }}>{line.matUnit}</td>
-                                      <td style={{ padding: "0.25rem 0.5rem", textAlign: "right" }}>{Number(line.quantityPerUnit).toFixed(4)}</td>
-                                      <td style={{ padding: "0.25rem 0.5rem", color: "#9ca3af", textAlign: "center" }}>v{line.version}</td>
-                                      <td style={{ padding: "0.25rem 0.5rem" }}><StatusBadge status={line.status} /></td>
-                                      <td />
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </details>
-                          )}
+                    {Array.from(scope.activities.values()).map((act) => (
+                      <div key={act.activityDefId} className="border-b border-slate-700/40 last:border-0">
+                        <div className="px-5 py-2 bg-slate-800/60 border-b border-slate-700/20 flex items-center gap-2">
+                          <span className="text-xs font-mono font-semibold text-indigo-300 bg-indigo-900/40 px-2 py-0.5 rounded">
+                            {act.activityCode}
+                          </span>
+                          <span className="text-xs text-slate-300 font-medium">{act.activityName}</span>
                         </div>
-                      );
-                    })}
+
+                        {Array.from(act.unitGroups.values()).map((ug) => {
+                          const draftIds = ug.lines
+                            .filter((l) => l.status === "DRAFT")
+                            .map((l) => l.id);
+
+                          return (
+                            <div key={`${ug.unitModel}::${ug.unitType}`} className="px-5 py-3 border-b border-slate-700/10 last:border-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs font-bold text-white">{ug.unitModel}</span>
+                                <span className="text-xs font-semibold text-indigo-300 bg-indigo-900/40 px-1.5 py-0.5 rounded">
+                                  {ug.unitType}
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                  {ug.lines.length} material line{ug.lines.length !== 1 ? "s" : ""}
+                                </span>
+                              </div>
+
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-slate-700/50">
+                                      {["Material", "Unit", "Qty / Unit", "Equipment Type", "Ver.", "Status", "Actions"].map((h) => (
+                                        <th key={h} className="pb-1.5 text-left font-semibold text-slate-500 uppercase tracking-wide pr-4 whitespace-nowrap">
+                                          {h}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-700/10">
+                                    {ug.lines.map((line) => (
+                                      <tr key={line.id} className={`hover:bg-slate-700/10 ${line.status === "REJECTED" ? "opacity-50" : ""}`}>
+                                        <td className="py-1.5 pr-4 text-white font-medium">
+                                          {line.matCode && (
+                                            <span className="font-mono text-slate-400 mr-1.5">{line.matCode}</span>
+                                          )}
+                                          {line.matName ?? <span className="text-slate-500">—</span>}
+                                        </td>
+                                        <td className="py-1.5 pr-4 text-slate-400">{line.matUnit ?? "—"}</td>
+                                        <td className="py-1.5 pr-4 font-mono text-slate-200 font-semibold">
+                                          {Number(line.quantityPerUnit).toFixed(4)}
+                                        </td>
+                                        <td className="py-1.5 pr-4 text-slate-400">
+                                          {line.equipmentType ?? <span className="text-slate-600">—</span>}
+                                        </td>
+                                        <td className="py-1.5 pr-4 text-slate-500 font-mono">v{line.version}</td>
+                                        <td className="py-1.5 pr-4">
+                                          <BomStatusBadge status={line.status} />
+                                        </td>
+                                        <td className="py-1.5">
+                                          {line.status === "PENDING_REVIEW" && (
+                                            <BomReviewActions id={line.id} />
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {draftIds.length > 0 && (
+                                <div className="mt-2">
+                                  <BomSubmitActions ids={draftIds} />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveBomEntries } from "@/actions/planning";
+import { saveMasterBomEntries } from "@/actions/planning";
 
 type Project    = { id: string; name: string };
 type SowItem    = { id: string; projectId: string; scopeCode: string; scopeName: string; activityCode: string; activityName: string };
@@ -90,7 +90,8 @@ export function BomEntryForm({ projects, sowItems, unitModels, materials, vendor
     }
 
     startTransition(async () => {
-      const result = await saveBomEntries({
+      const result = await saveMasterBomEntries({
+        projectId: selectedProject,
         activityDefId: selectedActivity,
         unitModel,
         unitType: unitType as "BEG" | "MID" | "END" | "SHOP",
