@@ -6,7 +6,7 @@ import {
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits, projectUnitModels,
   developerRateCards, developerRateCardDeductions,
   materialPriceHistory, subcontractorRateCards, subcontractorRateCardDeductions,
-  bomStandards, costCenters, materialSuppliers, departments,
+  bomStandards, costCenters, materialSuppliers, vendorPriceHistory, departments,
   phaseCategories, phaseScopes, phaseActivities, phaseBillingMilestones,
   globalSettings,
 } from "@/db/schema";
@@ -959,30 +959,51 @@ export async function addVendorPriceEntry(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
   const d = parsed.data;
   try {
-    // Archive all existing current entries for this vendor-material pair
-    await db.update(materialSuppliers)
-      .set({ isCurrent: false })
+    const [existing] = await db
+      .select()
+      .from(materialSuppliers)
       .where(and(
         eq(materialSuppliers.supplierId, vendorId),
         eq(materialSuppliers.materialId, d.materialId),
-        eq(materialSuppliers.isCurrent, true),
       ));
-    // Insert new current entry
-    await db.insert(materialSuppliers).values({
-      supplierId:      vendorId,
-      materialId:      d.materialId,
-      unitPrice:       String(d.unitPrice),
-      uom:             d.uom ?? null,
-      minimumQuantity: d.minimumQuantity != null ? String(d.minimumQuantity) : null,
-      effectiveDate:   d.effectiveDate ?? null,
-      notes:           d.notes ?? null,
-      isCurrent:       true,
-    });
+
+    if (existing) {
+      // Copy current price to history, then update the row
+      await db.insert(vendorPriceHistory).values({
+        supplierId:      vendorId,
+        materialId:      d.materialId,
+        unitPrice:       existing.unitPrice ?? null,
+        uom:             existing.uom ?? null,
+        minimumQuantity: existing.minimumQuantity ?? null,
+        effectiveDate:   existing.effectiveDate ?? null,
+        notes:           existing.notes ?? null,
+      });
+      await db.update(materialSuppliers)
+        .set({
+          unitPrice:       String(d.unitPrice),
+          uom:             d.uom ?? null,
+          minimumQuantity: d.minimumQuantity != null ? String(d.minimumQuantity) : null,
+          effectiveDate:   d.effectiveDate ?? null,
+          notes:           d.notes ?? null,
+        })
+        .where(eq(materialSuppliers.id, existing.id));
+    } else {
+      await db.insert(materialSuppliers).values({
+        supplierId:      vendorId,
+        materialId:      d.materialId,
+        unitPrice:       String(d.unitPrice),
+        uom:             d.uom ?? null,
+        minimumQuantity: d.minimumQuantity != null ? String(d.minimumQuantity) : null,
+        effectiveDate:   d.effectiveDate ?? null,
+        notes:           d.notes ?? null,
+        isCurrent:       true,
+      });
+    }
     revalidatePath(`/master-list/vendors/${vendorId}`);
     revalidatePath(`/master-list/materials/${d.materialId}`);
     return { success: true };
-  } catch {
-    return { success: false, error: "Failed to save price entry." };
+  } catch (e) {
+    return { success: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -1006,8 +1027,8 @@ export async function updateVendorPriceEntry(
     revalidatePath(`/master-list/vendors/${vendorId}`);
     revalidatePath(`/master-list/materials/${materialId}`);
     return { success: true };
-  } catch {
-    return { success: false, error: "Update failed." };
+  } catch (e) {
+    return { success: false, error: `Update failed: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -1018,6 +1039,21 @@ export async function deleteVendorPriceEntry(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     await db.delete(materialSuppliers).where(eq(materialSuppliers.id, id));
+    revalidatePath(`/master-list/vendors/${vendorId}`);
+    revalidatePath(`/master-list/materials/${materialId}`);
+    return { success: true };
+  } catch {
+    return { success: false, error: "Delete failed." };
+  }
+}
+
+export async function deleteVendorPriceHistoryEntry(
+  id: string,
+  vendorId: string,
+  materialId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await db.delete(vendorPriceHistory).where(eq(vendorPriceHistory.id, id));
     revalidatePath(`/master-list/vendors/${vendorId}`);
     revalidatePath(`/master-list/materials/${materialId}`);
     return { success: true };

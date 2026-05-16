@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addVendorPriceEntry, deleteVendorPriceEntry } from "@/actions/master-list";
+import { addVendorPriceEntry, deleteVendorPriceEntry, deleteVendorPriceHistoryEntry } from "@/actions/master-list";
 
 type VendorRow = {
   id: string;
@@ -13,7 +13,18 @@ type VendorRow = {
   minimumQuantity: string | null;
   effectiveDate: string | null;
   notes: string | null;
-  isCurrent: boolean;
+};
+
+type HistoryRow = {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  unitPrice: string | null;
+  uom: string | null;
+  minimumQuantity: string | null;
+  effectiveDate: string | null;
+  notes: string | null;
+  supersededAt: string;
 };
 
 type SupplierOption = { id: string; name: string };
@@ -145,14 +156,14 @@ function AddVendorPriceForm({ materialId, suppliers, existingSupplierIds }: { ma
   );
 }
 
-function HistorySection({ rows, materialId }: { rows: VendorRow[]; materialId: string }) {
+function HistorySection({ rows, materialId }: { rows: HistoryRow[]; materialId: string }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function del(id: string, supplierId: string) {
     startTransition(async () => {
-      await deleteVendorPriceEntry(id, supplierId, materialId);
+      await deleteVendorPriceHistoryEntry(id, supplierId, materialId);
       router.refresh();
     });
   }
@@ -175,7 +186,7 @@ function HistorySection({ rows, materialId }: { rows: VendorRow[]; materialId: s
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f9fafb" }}>
-                {["Vendor / Supplier", "Unit Price", "UOM", "Min. Qty", "Effective Date", "Notes", ""].map((h, i) => (
+                {["Vendor / Supplier", "Unit Price", "UOM", "Min. Qty", "Effective Date", "Superseded On", "Notes", ""].map((h, i) => (
                   <th key={i} style={{ ...TH, color: "#9ca3af" }}>{h}</th>
                 ))}
               </tr>
@@ -190,7 +201,8 @@ function HistorySection({ rows, materialId }: { rows: VendorRow[]; materialId: s
                   <td style={{ ...TD, color: "#9ca3af" }}>{row.uom ?? "—"}</td>
                   <td style={{ ...TD, color: "#9ca3af" }}>{row.minimumQuantity ? Number(row.minimumQuantity).toLocaleString("en-PH", { maximumFractionDigits: 4 }) : "—"}</td>
                   <td style={{ ...TD, color: "#9ca3af" }}>{row.effectiveDate ?? "—"}</td>
-                  <td style={{ ...TD, color: "#9ca3af", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.notes ?? "—"}</td>
+                  <td style={{ ...TD, color: "#9ca3af" }}>{new Date(row.supersededAt).toLocaleDateString("en-PH", { dateStyle: "medium" })}</td>
+                  <td style={{ ...TD, color: "#9ca3af", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.notes ?? "—"}</td>
                   <td style={{ ...TD, whiteSpace: "nowrap" }}>
                     <button onClick={() => del(row.id, row.supplierId)} disabled={pending} style={BTN_SM("#ef4444")}>Delete</button>
                   </td>
@@ -204,13 +216,10 @@ function HistorySection({ rows, materialId }: { rows: VendorRow[]; materialId: s
   );
 }
 
-export default function MaterialVendors({ materialId, rows, allSuppliers }: { materialId: string; rows: VendorRow[]; allSuppliers: SupplierOption[] }) {
-  const current = rows.filter(r => r.isCurrent);
-  const history = rows.filter(r => !r.isCurrent);
+export default function MaterialVendors({ materialId, rows, historyRows, allSuppliers }: { materialId: string; rows: VendorRow[]; historyRows: HistoryRow[]; allSuppliers: SupplierOption[] }) {
+  const existingSupplierIds = new Set(rows.map(r => r.supplierId));
 
-  const existingSupplierIds = new Set(current.map(r => r.supplierId));
-
-  const priced = current.filter(r => r.unitPrice != null && Number(r.unitPrice) > 0);
+  const priced = rows.filter(r => r.unitPrice != null && Number(r.unitPrice) > 0);
   const bestPrice = priced.length > 0 ? Math.min(...priced.map(r => Number(r.unitPrice))) : null;
   const bestId = bestPrice != null ? priced.find(r => Number(r.unitPrice) === bestPrice)?.id : null;
 
@@ -219,7 +228,7 @@ export default function MaterialVendors({ materialId, rows, allSuppliers }: { ma
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
         <div>
           <h2 style={{ margin: "0 0 0.2rem", fontSize: "1rem", fontWeight: 700, color: "#374151" }}>
-            Vendor Price List ({current.length} vendors)
+            Vendor Price List ({rows.length} vendors)
           </h2>
           {bestPrice != null && (
             <p style={{ margin: 0, fontSize: "0.78rem", color: "#6b7280" }}>
@@ -230,7 +239,7 @@ export default function MaterialVendors({ materialId, rows, allSuppliers }: { ma
         <AddVendorPriceForm materialId={materialId} suppliers={allSuppliers} existingSupplierIds={existingSupplierIds} />
       </div>
 
-      {current.length === 0 ? (
+      {rows.length === 0 ? (
         <div style={{ padding: "1.5rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af", fontSize: "0.875rem" }}>
           No vendor prices recorded yet. Add vendors via "+ Add Vendor Price" or from each vendor's Price List page.
         </div>
@@ -245,7 +254,7 @@ export default function MaterialVendors({ materialId, rows, allSuppliers }: { ma
               </tr>
             </thead>
             <tbody>
-              {[...current].sort((a, b) => Number(a.unitPrice ?? 9e9) - Number(b.unitPrice ?? 9e9)).map(row => (
+              {[...rows].sort((a, b) => Number(a.unitPrice ?? 9e9) - Number(b.unitPrice ?? 9e9)).map(row => (
                 <VendorEntry key={row.id} row={row} materialId={materialId} isBest={row.id === bestId} />
               ))}
             </tbody>
@@ -253,7 +262,7 @@ export default function MaterialVendors({ materialId, rows, allSuppliers }: { ma
         </div>
       )}
 
-      {history.length > 0 && <HistorySection rows={history} materialId={materialId} />}
+      {historyRows.length > 0 && <HistorySection rows={historyRows} materialId={materialId} />}
     </div>
   );
 }
