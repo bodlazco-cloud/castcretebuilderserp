@@ -10,8 +10,10 @@ type VendorRow = {
   supplierName: string;
   unitPrice: string | null;
   uom: string | null;
+  minimumQuantity: string | null;
   effectiveDate: string | null;
   notes: string | null;
+  isCurrent: boolean;
 };
 
 type SupplierOption = { id: string; name: string };
@@ -52,6 +54,7 @@ function VendorEntry({ row, materialId, isBest }: { row: VendorRow; materialId: 
       </td>
       <td style={{ ...TD, fontWeight: isBest ? 700 : 500, color: isBest ? "#166534" : "#111827" }}>{fmt(row.unitPrice)}</td>
       <td style={{ ...TD, color: "#6b7280" }}>{row.uom ?? "—"}</td>
+      <td style={{ ...TD, color: "#6b7280" }}>{row.minimumQuantity ? Number(row.minimumQuantity).toLocaleString("en-PH", { maximumFractionDigits: 4 }) : "—"}</td>
       <td style={{ ...TD, color: "#6b7280" }}>{row.effectiveDate ?? "—"}</td>
       <td style={{ ...TD, color: "#6b7280", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.notes ?? "—"}</td>
       <td style={{ ...TD, whiteSpace: "nowrap" }}>
@@ -71,6 +74,7 @@ function AddVendorPriceForm({ materialId, suppliers, existingSupplierIds }: { ma
   const [supId, setSupId] = useState("");
   const [price, setPrice] = useState("");
   const [uom, setUom] = useState("");
+  const [minQty, setMinQty] = useState("");
   const [date, setDate] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
@@ -83,8 +87,14 @@ function AddVendorPriceForm({ materialId, suppliers, existingSupplierIds }: { ma
     const p = parseFloat(price);
     if (!p || p <= 0) { setErr("Enter a valid price"); return; }
     startTransition(async () => {
-      const res = await addVendorPriceEntry(supId, { materialId, unitPrice: p, uom: uom || undefined, effectiveDate: date || undefined, notes: notes || undefined });
-      if (res.success) { router.refresh(); setOpen(false); setSupId(""); setPrice(""); setUom(""); setDate(""); setNotes(""); }
+      const res = await addVendorPriceEntry(supId, {
+        materialId, unitPrice: p,
+        uom: uom || undefined,
+        minimumQuantity: minQty ? parseFloat(minQty) : undefined,
+        effectiveDate: date || undefined,
+        notes: notes || undefined,
+      });
+      if (res.success) { router.refresh(); setOpen(false); setSupId(""); setPrice(""); setUom(""); setMinQty(""); setDate(""); setNotes(""); }
       else setErr(res.error ?? "Error");
     });
   }
@@ -97,7 +107,7 @@ function AddVendorPriceForm({ materialId, suppliers, existingSupplierIds }: { ma
 
   return (
     <div style={{ background: "#f8f9ff", border: "1px solid #e0e7ff", borderRadius: "8px", padding: "1rem", marginTop: "0.75rem" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 2fr", gap: "0.5rem", marginBottom: "0.5rem" }}>
         <div>
           <label style={{ fontSize: "0.72rem", fontWeight: 600, color: "#6b7280", display: "block", marginBottom: "0.2rem" }}>Vendor / Supplier *</label>
           <select value={supId} onChange={e => setSupId(e.target.value)} style={INPUT}>
@@ -112,6 +122,10 @@ function AddVendorPriceForm({ materialId, suppliers, existingSupplierIds }: { ma
         <div>
           <label style={{ fontSize: "0.72rem", fontWeight: 600, color: "#6b7280", display: "block", marginBottom: "0.2rem" }}>UOM</label>
           <input style={INPUT} value={uom} onChange={e => setUom(e.target.value)} placeholder="bag, cu.m…" />
+        </div>
+        <div>
+          <label style={{ fontSize: "0.72rem", fontWeight: 600, color: "#6b7280", display: "block", marginBottom: "0.2rem" }}>Min. Quantity</label>
+          <input style={INPUT} type="number" step="0.0001" value={minQty} onChange={e => setMinQty(e.target.value)} placeholder="0" />
         </div>
         <div>
           <label style={{ fontSize: "0.72rem", fontWeight: 600, color: "#6b7280", display: "block", marginBottom: "0.2rem" }}>Effective Date</label>
@@ -131,11 +145,72 @@ function AddVendorPriceForm({ materialId, suppliers, existingSupplierIds }: { ma
   );
 }
 
-export default function MaterialVendors({ materialId, rows, allSuppliers }: { materialId: string; rows: VendorRow[]; allSuppliers: SupplierOption[] }) {
-  const existingSupplierIds = new Set(rows.map(r => r.supplierId));
+function HistorySection({ rows, materialId }: { rows: VendorRow[]; materialId: string }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
 
-  // Determine best price vendor (lowest unit price among rows that have a price)
-  const priced = rows.filter(r => r.unitPrice != null && Number(r.unitPrice) > 0);
+  function del(id: string, supplierId: string) {
+    startTransition(async () => {
+      await deleteVendorPriceEntry(id, supplierId, materialId);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div style={{ marginTop: "1.5rem" }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{ display: "flex", alignItems: "center", gap: "0.4rem", background: "none", border: "none", cursor: "pointer", padding: 0, color: "#6b7280", fontSize: "0.85rem", fontWeight: 600 }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transition: "transform 0.2s", transform: open ? "rotate(90deg)" : "rotate(0deg)" }}>
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+        Price History ({rows.length} archived {rows.length === 1 ? "entry" : "entries"})
+      </button>
+
+      {open && (
+        <div style={{ marginTop: "0.75rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden", opacity: 0.85 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#f9fafb" }}>
+                {["Vendor / Supplier", "Unit Price", "UOM", "Min. Qty", "Effective Date", "Notes", ""].map((h, i) => (
+                  <th key={i} style={{ ...TH, color: "#9ca3af" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => (
+                <tr key={row.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                  <td style={{ ...TD, color: "#6b7280" }}>
+                    <a href={`/master-list/vendors/${row.supplierId}`} style={{ color: "#9ca3af", textDecoration: "none" }}>{row.supplierName}</a>
+                  </td>
+                  <td style={{ ...TD, color: "#6b7280" }}>{fmt(row.unitPrice)}</td>
+                  <td style={{ ...TD, color: "#9ca3af" }}>{row.uom ?? "—"}</td>
+                  <td style={{ ...TD, color: "#9ca3af" }}>{row.minimumQuantity ? Number(row.minimumQuantity).toLocaleString("en-PH", { maximumFractionDigits: 4 }) : "—"}</td>
+                  <td style={{ ...TD, color: "#9ca3af" }}>{row.effectiveDate ?? "—"}</td>
+                  <td style={{ ...TD, color: "#9ca3af", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.notes ?? "—"}</td>
+                  <td style={{ ...TD, whiteSpace: "nowrap" }}>
+                    <button onClick={() => del(row.id, row.supplierId)} disabled={pending} style={BTN_SM("#ef4444")}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function MaterialVendors({ materialId, rows, allSuppliers }: { materialId: string; rows: VendorRow[]; allSuppliers: SupplierOption[] }) {
+  const current = rows.filter(r => r.isCurrent);
+  const history = rows.filter(r => !r.isCurrent);
+
+  const existingSupplierIds = new Set(current.map(r => r.supplierId));
+
+  const priced = current.filter(r => r.unitPrice != null && Number(r.unitPrice) > 0);
   const bestPrice = priced.length > 0 ? Math.min(...priced.map(r => Number(r.unitPrice))) : null;
   const bestId = bestPrice != null ? priced.find(r => Number(r.unitPrice) === bestPrice)?.id : null;
 
@@ -144,39 +219,41 @@ export default function MaterialVendors({ materialId, rows, allSuppliers }: { ma
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
         <div>
           <h2 style={{ margin: "0 0 0.2rem", fontSize: "1rem", fontWeight: 700, color: "#374151" }}>
-            Vendor Price List ({rows.length} vendors)
+            Vendor Price List ({current.length} vendors)
           </h2>
           {bestPrice != null && (
             <p style={{ margin: 0, fontSize: "0.78rem", color: "#6b7280" }}>
-              Best price suggestion based on lowest unit price — <strong style={{ color: "#166534" }}>PHP {bestPrice.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
+              Best price suggestion — <strong style={{ color: "#166534" }}>PHP {bestPrice.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
             </p>
           )}
         </div>
         <AddVendorPriceForm materialId={materialId} suppliers={allSuppliers} existingSupplierIds={existingSupplierIds} />
       </div>
 
-      {rows.length === 0 ? (
+      {current.length === 0 ? (
         <div style={{ padding: "1.5rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af", fontSize: "0.875rem" }}>
-          No vendor prices recorded yet. Add vendors via the "+ Add Vendor Price" button or from each vendor's Price List page.
+          No vendor prices recorded yet. Add vendors via "+ Add Vendor Price" or from each vendor's Price List page.
         </div>
       ) : (
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f9fafb" }}>
-                {["Vendor / Supplier", "Unit Price", "UOM", "Effective Date", "Notes", ""].map((h, i) => (
+                {["Vendor / Supplier", "Unit Price", "UOM", "Min. Qty", "Effective Date", "Notes", ""].map((h, i) => (
                   <th key={i} style={TH}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {[...rows].sort((a, b) => Number(a.unitPrice ?? 9e9) - Number(b.unitPrice ?? 9e9)).map(row => (
+              {[...current].sort((a, b) => Number(a.unitPrice ?? 9e9) - Number(b.unitPrice ?? 9e9)).map(row => (
                 <VendorEntry key={row.id} row={row} materialId={materialId} isBest={row.id === bestId} />
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {history.length > 0 && <HistorySection rows={history} materialId={materialId} />}
     </div>
   );
 }

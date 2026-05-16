@@ -943,11 +943,12 @@ export async function removeMaterialSupplier(id: string, materialId: string): Pr
 // ─── Vendor Price List ────────────────────────────────────────────────────────
 
 const VendorPriceEntrySchema = z.object({
-  materialId:    z.string().uuid(),
-  unitPrice:     z.coerce.number().positive(),
-  uom:           z.string().max(30).optional(),
-  effectiveDate: z.string().optional(),
-  notes:         z.string().max(500).optional(),
+  materialId:      z.string().uuid(),
+  unitPrice:       z.coerce.number().positive(),
+  uom:             z.string().max(30).optional(),
+  minimumQuantity: z.coerce.number().min(0).optional(),
+  effectiveDate:   z.string().optional(),
+  notes:           z.string().max(500).optional(),
 });
 
 export async function addVendorPriceEntry(
@@ -958,21 +959,25 @@ export async function addVendorPriceEntry(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
   const d = parsed.data;
   try {
-    const [existing] = await db
-      .select({ id: materialSuppliers.id })
-      .from(materialSuppliers)
-      .where(and(eq(materialSuppliers.supplierId, vendorId), eq(materialSuppliers.materialId, d.materialId)));
-    if (existing) {
-      await db.update(materialSuppliers)
-        .set({ unitPrice: String(d.unitPrice), uom: d.uom ?? null, effectiveDate: d.effectiveDate ?? null, notes: d.notes ?? null })
-        .where(eq(materialSuppliers.id, existing.id));
-    } else {
-      await db.insert(materialSuppliers).values({
-        supplierId: vendorId, materialId: d.materialId,
-        unitPrice: String(d.unitPrice), uom: d.uom ?? null,
-        effectiveDate: d.effectiveDate ?? null, notes: d.notes ?? null,
-      });
-    }
+    // Archive all existing current entries for this vendor-material pair
+    await db.update(materialSuppliers)
+      .set({ isCurrent: false })
+      .where(and(
+        eq(materialSuppliers.supplierId, vendorId),
+        eq(materialSuppliers.materialId, d.materialId),
+        eq(materialSuppliers.isCurrent, true),
+      ));
+    // Insert new current entry
+    await db.insert(materialSuppliers).values({
+      supplierId:      vendorId,
+      materialId:      d.materialId,
+      unitPrice:       String(d.unitPrice),
+      uom:             d.uom ?? null,
+      minimumQuantity: d.minimumQuantity != null ? String(d.minimumQuantity) : null,
+      effectiveDate:   d.effectiveDate ?? null,
+      notes:           d.notes ?? null,
+      isCurrent:       true,
+    });
     revalidatePath(`/master-list/vendors/${vendorId}`);
     revalidatePath(`/master-list/materials/${d.materialId}`);
     return { success: true };
@@ -985,12 +990,18 @@ export async function updateVendorPriceEntry(
   id: string,
   vendorId: string,
   materialId: string,
-  input: { unitPrice: number; uom?: string; effectiveDate?: string; notes?: string },
+  input: { unitPrice: number; uom?: string; minimumQuantity?: number; effectiveDate?: string; notes?: string },
 ): Promise<{ success: boolean; error?: string }> {
   if (!input.unitPrice || input.unitPrice <= 0) return { success: false, error: "Unit price must be positive." };
   try {
     await db.update(materialSuppliers)
-      .set({ unitPrice: String(input.unitPrice), uom: input.uom ?? null, effectiveDate: input.effectiveDate ?? null, notes: input.notes ?? null })
+      .set({
+        unitPrice:       String(input.unitPrice),
+        uom:             input.uom ?? null,
+        minimumQuantity: input.minimumQuantity != null ? String(input.minimumQuantity) : null,
+        effectiveDate:   input.effectiveDate ?? null,
+        notes:           input.notes ?? null,
+      })
       .where(eq(materialSuppliers.id, id));
     revalidatePath(`/master-list/vendors/${vendorId}`);
     revalidatePath(`/master-list/materials/${materialId}`);
