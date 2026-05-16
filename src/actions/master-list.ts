@@ -981,8 +981,12 @@ export async function addVendorPriceEntry(
     revalidatePath(`/master-list/vendors/${vendorId}`);
     revalidatePath(`/master-list/materials/${d.materialId}`);
     return { success: true };
-  } catch {
-    return { success: false, error: "Failed to save price entry." };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("column") && msg.includes("is_current")) {
+      return { success: false, error: "Migration required: run ALTER TABLE material_suppliers ADD COLUMN is_current … in Supabase." };
+    }
+    return { success: false, error: `Failed to save price entry: ${msg}` };
   }
 }
 
