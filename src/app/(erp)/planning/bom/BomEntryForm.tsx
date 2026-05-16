@@ -42,7 +42,7 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
 
   const [selectedProject,  setSelectedProject]  = useState("");
   const [selectedScope,    setSelectedScope]    = useState("");   // phaseScope id
-  const [selectedActivity, setSelectedActivity] = useState("");   // phaseActivity id
+  const [selectedActivity, setSelectedActivity] = useState("");   // phaseActivity id (optional)
   const [unitModel,        setUnitModel]        = useState("");
   const [unitType,         setUnitType]         = useState("");
   const [lines, setLines] = useState<LineItem[]>([
@@ -82,15 +82,16 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
         preferredSupplierId: l.preferredSupplierId || undefined,
       }));
 
-    if (!selectedActivity || !unitModel || !unitType || items.length === 0) {
+    if (!selectedScope || !unitModel || !unitType || items.length === 0) {
       setError("Please fill in all required fields and at least one material line.");
       return;
     }
 
     startTransition(async () => {
       const result = await saveMasterBomEntries({
-        projectId: selectedProject,
-        phaseActivityId: selectedActivity,
+        projectId:       selectedProject,
+        phaseScopeId:    selectedScope,
+        phaseActivityId: selectedActivity || undefined,
         unitModel,
         unitType: unitType as "BEG" | "MID" | "END" | "SHOP",
         items,
@@ -145,11 +146,11 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
           </select>
         </label>
         <label>
-          <span style={labelStyle}>Activity *</span>
-          <select required style={inputStyle} value={selectedActivity}
+          <span style={labelStyle}>Activity <span style={{ fontWeight: 400, color: "#9ca3af" }}>(optional)</span></span>
+          <select style={inputStyle} value={selectedActivity}
             onChange={(e) => setSelectedActivity(e.target.value)}
             disabled={!selectedScope}>
-            <option value="">Select activity…</option>
+            <option value="">— No specific activity</option>
             {scopeActivities.map((a) => (
               <option key={a.id} value={a.id}>[{a.code}] {a.name}</option>
             ))}
