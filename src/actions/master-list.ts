@@ -10,7 +10,7 @@ import {
   phaseCategories, phaseScopes, phaseActivities, phaseBillingMilestones,
   globalSettings,
 } from "@/db/schema";
-import { eq, count } from "drizzle-orm";
+import { eq, count, and } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
@@ -938,6 +938,81 @@ export async function removeMaterialSupplier(id: string, materialId: string): Pr
   await db.delete(materialSuppliers).where(eq(materialSuppliers.id, id));
   revalidatePath(`/admin/materials/${materialId}`);
   return { success: true };
+}
+
+// ─── Vendor Price List ────────────────────────────────────────────────────────
+
+const VendorPriceEntrySchema = z.object({
+  materialId:    z.string().uuid(),
+  unitPrice:     z.coerce.number().positive(),
+  uom:           z.string().max(30).optional(),
+  effectiveDate: z.string().optional(),
+  notes:         z.string().max(500).optional(),
+});
+
+export async function addVendorPriceEntry(
+  vendorId: string,
+  input: z.infer<typeof VendorPriceEntrySchema>,
+): Promise<{ success: boolean; error?: string }> {
+  const parsed = VendorPriceEntrySchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  try {
+    const [existing] = await db
+      .select({ id: materialSuppliers.id })
+      .from(materialSuppliers)
+      .where(and(eq(materialSuppliers.supplierId, vendorId), eq(materialSuppliers.materialId, d.materialId)));
+    if (existing) {
+      await db.update(materialSuppliers)
+        .set({ unitPrice: String(d.unitPrice), uom: d.uom ?? null, effectiveDate: d.effectiveDate ?? null, notes: d.notes ?? null })
+        .where(eq(materialSuppliers.id, existing.id));
+    } else {
+      await db.insert(materialSuppliers).values({
+        supplierId: vendorId, materialId: d.materialId,
+        unitPrice: String(d.unitPrice), uom: d.uom ?? null,
+        effectiveDate: d.effectiveDate ?? null, notes: d.notes ?? null,
+      });
+    }
+    revalidatePath(`/master-list/vendors/${vendorId}`);
+    revalidatePath(`/master-list/materials/${d.materialId}`);
+    return { success: true };
+  } catch {
+    return { success: false, error: "Failed to save price entry." };
+  }
+}
+
+export async function updateVendorPriceEntry(
+  id: string,
+  vendorId: string,
+  materialId: string,
+  input: { unitPrice: number; uom?: string; effectiveDate?: string; notes?: string },
+): Promise<{ success: boolean; error?: string }> {
+  if (!input.unitPrice || input.unitPrice <= 0) return { success: false, error: "Unit price must be positive." };
+  try {
+    await db.update(materialSuppliers)
+      .set({ unitPrice: String(input.unitPrice), uom: input.uom ?? null, effectiveDate: input.effectiveDate ?? null, notes: input.notes ?? null })
+      .where(eq(materialSuppliers.id, id));
+    revalidatePath(`/master-list/vendors/${vendorId}`);
+    revalidatePath(`/master-list/materials/${materialId}`);
+    return { success: true };
+  } catch {
+    return { success: false, error: "Update failed." };
+  }
+}
+
+export async function deleteVendorPriceEntry(
+  id: string,
+  vendorId: string,
+  materialId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await db.delete(materialSuppliers).where(eq(materialSuppliers.id, id));
+    revalidatePath(`/master-list/vendors/${vendorId}`);
+    revalidatePath(`/master-list/materials/${materialId}`);
+    return { success: true };
+  } catch {
+    return { success: false, error: "Delete failed." };
+  }
 }
 
 // ─── Phase Categories ──────────────────────────────────────────────────────
