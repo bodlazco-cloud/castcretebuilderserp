@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { materials, suppliers, bomStandards, activityDefinitions } from "@/db/schema";
+import { materials, suppliers, bomStandards, activityDefinitions, materialSuppliers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { EditMaterialForm } from "./EditMaterialForm";
+import MaterialVendors from "./MaterialVendors";
 
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" };
 const VALUE: React.CSSProperties = { fontSize: "0.95rem", color: "#111827", fontWeight: 500 };
@@ -33,30 +34,44 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
 
   if (!mat) notFound();
 
-  const supplierRows = await db
-    .select({ id: suppliers.id, name: suppliers.name })
-    .from(suppliers)
-    .where(eq(suppliers.isActive, true))
-    .orderBy(suppliers.name);
+  const [supplierRows, vendorPriceRows, bomRows] = await Promise.all([
+    db.select({ id: suppliers.id, name: suppliers.name })
+      .from(suppliers)
+      .where(eq(suppliers.isActive, true))
+      .orderBy(suppliers.name),
 
-  const bomRows = await db
-    .select({
-      id:              bomStandards.id,
-      unitModel:       bomStandards.unitModel,
-      unitType:        bomStandards.unitType,
-      quantityPerUnit: bomStandards.quantityPerUnit,
-      isActive:        bomStandards.isActive,
-      scopeName:       activityDefinitions.scopeName,
-      activityCode:    activityDefinitions.activityCode,
-    })
-    .from(bomStandards)
-    .leftJoin(activityDefinitions, eq(bomStandards.activityDefId, activityDefinitions.id))
-    .where(eq(bomStandards.materialId, id))
-    .orderBy(bomStandards.isActive);
+    db.select({
+        id:            materialSuppliers.id,
+        supplierId:    materialSuppliers.supplierId,
+        supplierName:  suppliers.name,
+        unitPrice:     materialSuppliers.unitPrice,
+        uom:           materialSuppliers.uom,
+        effectiveDate: materialSuppliers.effectiveDate,
+        notes:         materialSuppliers.notes,
+      })
+      .from(materialSuppliers)
+      .innerJoin(suppliers, eq(materialSuppliers.supplierId, suppliers.id))
+      .where(eq(materialSuppliers.materialId, id))
+      .orderBy(suppliers.name),
+
+    db.select({
+        id:              bomStandards.id,
+        unitModel:       bomStandards.unitModel,
+        unitType:        bomStandards.unitType,
+        quantityPerUnit: bomStandards.quantityPerUnit,
+        isActive:        bomStandards.isActive,
+        scopeName:       activityDefinitions.scopeName,
+        activityCode:    activityDefinitions.activityCode,
+      })
+      .from(bomStandards)
+      .leftJoin(activityDefinitions, eq(bomStandards.activityDefId, activityDefinitions.id))
+      .where(eq(bomStandards.materialId, id))
+      .orderBy(bomStandards.isActive),
+  ]);
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ maxWidth: "860px" }}>
+      <div style={{ maxWidth: "1000px" }}>
         <div style={{ marginBottom: "1.5rem" }}>
           <a href="/master-list/materials" style={{ fontSize: "0.8rem", color: "#6366f1", textDecoration: "none" }}>← Materials Master</a>
         </div>
@@ -99,6 +114,20 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
             </div>
             <div><div style={LABEL}>Added</div><div style={VALUE}>{new Date(mat.createdAt).toLocaleDateString("en-PH", { dateStyle: "long" })}</div></div>
           </div>
+        </div>
+
+        <div style={{ marginBottom: "2rem" }}>
+          <MaterialVendors
+            materialId={id}
+            rows={vendorPriceRows.map(r => ({
+              ...r,
+              unitPrice: r.unitPrice ?? null,
+              uom: r.uom ?? null,
+              effectiveDate: r.effectiveDate ?? null,
+              notes: r.notes ?? null,
+            }))}
+            allSuppliers={supplierRows}
+          />
         </div>
 
         <h2 style={{ margin: "0 0 0.75rem", fontSize: "1rem", fontWeight: 700, color: "#374151" }}>

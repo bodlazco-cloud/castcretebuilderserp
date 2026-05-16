@@ -120,9 +120,13 @@ export const developerRateCardDeductions = pgTable("developer_rate_card_deductio
 });
 
 export const materialSuppliers = pgTable("material_suppliers", {
-  id:          uuid("id").primaryKey().defaultRandom(),
-  materialId:  uuid("material_id").notNull().references(() => materials.id),
-  supplierId:  uuid("supplier_id").notNull().references(() => suppliers.id),
-  isPreferred: boolean("is_preferred").notNull().default(false),
-  createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  id:            uuid("id").primaryKey().defaultRandom(),
+  materialId:    uuid("material_id").notNull().references(() => materials.id),
+  supplierId:    uuid("supplier_id").notNull().references(() => suppliers.id),
+  isPreferred:   boolean("is_preferred").notNull().default(false),
+  unitPrice:     numeric("unit_price", { precision: 12, scale: 2 }),
+  uom:           varchar("uom", { length: 30 }),
+  effectiveDate: date("effective_date"),
+  notes:         text("notes"),
+  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
