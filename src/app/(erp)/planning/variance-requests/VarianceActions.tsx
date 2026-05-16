@@ -29,45 +29,63 @@ export function VarianceActions({ id }: { id: string }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 flex-wrap">
-      {error && <span className="text-xs text-red-400">{error}</span>}
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+      {error && <span style={{ fontSize: "0.72rem", color: "#b91c1c" }}>{error}</span>}
       {!showReject ? (
         <>
           <button
             onClick={handleApprove}
             disabled={isPending}
-            className="px-2 py-1 rounded text-xs font-semibold bg-green-700 hover:bg-green-600 text-white disabled:opacity-50 transition-colors"
-          >
+            style={{
+              padding: "0.2rem 0.6rem", borderRadius: "4px",
+              background: isPending ? "#86efac" : "#16a34a",
+              color: "#fff", border: "none", fontSize: "0.72rem",
+              fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer",
+            }}>
             {isPending ? "…" : "Approve"}
           </button>
           <button
             onClick={() => setShowReject(true)}
             disabled={isPending}
-            className="px-2 py-1 rounded text-xs font-semibold border border-red-700 text-red-400 hover:bg-red-900/30 transition-colors"
-          >
+            style={{
+              padding: "0.2rem 0.6rem", borderRadius: "4px",
+              background: "#fef2f2", color: "#b91c1c",
+              border: "1px solid #fecaca", fontSize: "0.72rem",
+              fontWeight: 600, cursor: "pointer",
+            }}>
             Reject
           </button>
         </>
       ) : (
-        <span className="inline-flex items-center gap-1.5 flex-wrap">
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
           <input
             type="text"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="Rejection reason…"
-            className="px-2 py-1 rounded text-xs bg-zinc-800 border border-zinc-700 text-zinc-100 w-36 focus:outline-none focus:border-red-500"
+            style={{
+              padding: "0.2rem 0.5rem", border: "1px solid #fca5a5",
+              borderRadius: "4px", fontSize: "0.72rem", width: "160px",
+            }}
           />
           <button
             onClick={handleReject}
             disabled={isPending}
-            className="px-2 py-1 rounded text-xs font-semibold bg-red-700 hover:bg-red-600 text-white disabled:opacity-50 transition-colors"
-          >
+            style={{
+              padding: "0.2rem 0.6rem", borderRadius: "4px",
+              background: "#dc2626", color: "#fff",
+              border: "none", fontSize: "0.72rem",
+              fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer",
+            }}>
             {isPending ? "…" : "Confirm"}
           </button>
           <button
             onClick={() => { setShowReject(false); setError(null); }}
-            className="px-2 py-1 rounded text-xs border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colors"
-          >
+            style={{
+              padding: "0.2rem 0.5rem", borderRadius: "4px",
+              background: "#f9fafb", border: "1px solid #d1d5db",
+              color: "#374151", fontSize: "0.72rem", cursor: "pointer",
+            }}>
             Cancel
           </button>
         </span>

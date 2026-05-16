@@ -12,11 +12,11 @@ function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   ]);
 }
 
-const STATUS_CFG: Record<string, { label: string; cls: string }> = {
-  PENDING_PR: { label: "Pending PR",  cls: "bg-red-900/50 text-red-300" },
-  PR_CREATED: { label: "PR Created",  cls: "bg-yellow-900/50 text-yellow-300" },
-  PO_ISSUED:  { label: "PO Issued",   cls: "bg-blue-900/50 text-blue-300" },
-  ISSUED:     { label: "Issued",      cls: "bg-green-900/50 text-green-300" },
+const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  PENDING_PR: { bg: "#fef2f2", color: "#b91c1c",  label: "Pending PR" },
+  PR_CREATED: { bg: "#fef9c3", color: "#713f12",  label: "PR Created" },
+  PO_ISSUED:  { bg: "#eff6ff", color: "#1e40af",  label: "PO Issued" },
+  ISSUED:     { bg: "#dcfce7", color: "#166534",  label: "Issued" },
 };
 
 export default async function BatchingForecastPage() {
@@ -45,96 +45,116 @@ export default async function BatchingForecastPage() {
     }[],
   );
 
-  const totalGross = rows.reduce((a, r) => a + Number(r.grossQty), 0);
-  const totalIssued = rows.filter((r) => r.status === "ISSUED").reduce((a, r) => a + Number(r.grossQty), 0);
+  const totalGross   = rows.reduce((a, r) => a + Number(r.grossQty), 0);
+  const totalIssued  = rows.filter((r) => r.status === "ISSUED").reduce((a, r) => a + Number(r.grossQty), 0);
   const totalPending = rows.filter((r) => r.status === "PENDING_PR").length;
 
+  const card: React.CSSProperties = {
+    background: "#fff", borderRadius: "10px", padding: "1.25rem 1.5rem",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+  };
+
+  const kpis = [
+    { label: "Total Lines",    value: rows.length,                                                                           sub: "concrete forecast lines", accent: "#e3a008" },
+    { label: "Total Volume",   value: totalGross.toLocaleString("en-PH", { maximumFractionDigits: 2 }),                      sub: "gross units",             accent: "#0694a2" },
+    { label: "Issued Volume",  value: totalIssued.toLocaleString("en-PH", { maximumFractionDigits: 2 }),                     sub: "units issued",            accent: "#057a55" },
+    { label: "Pending PR",     value: totalPending,                                                                           sub: "awaiting procurement",    accent: "#dc2626" },
+  ];
+
   return (
-    <div className="p-6 space-y-6 bg-zinc-950 min-h-screen text-white">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Batching Forecast</h1>
-        <p className="text-sm text-zinc-400 mt-0.5">
-          Concrete volume requirements derived from NTP-triggered BOM entries
-        </p>
-      </div>
+    <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <div className="text-xs text-zinc-400 uppercase tracking-wide">Total Lines</div>
-          <div className="text-3xl font-bold text-cyan-400 mt-1">{rows.length}</div>
+        {/* Header */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <p style={{ marginBottom: "0.25rem" }}>
+            <a href="/planning" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none" }}>
+              ← Planning &amp; Engineering
+            </a>
+          </p>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>Batching Forecast</h1>
+          <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>
+            Concrete volume requirements derived from NTP-triggered BOM entries
+          </p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <div className="text-xs text-zinc-400 uppercase tracking-wide">Total Volume</div>
-          <div className="text-3xl font-bold text-white mt-1">{totalGross.toLocaleString("en-PH", { maximumFractionDigits: 2 })}</div>
-          <div className="text-xs text-zinc-500">gross units</div>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <div className="text-xs text-zinc-400 uppercase tracking-wide">Issued Volume</div>
-          <div className="text-3xl font-bold text-green-400 mt-1">{totalIssued.toLocaleString("en-PH", { maximumFractionDigits: 2 })}</div>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-          <div className="text-xs text-zinc-400 uppercase tracking-wide">Pending PR</div>
-          <div className="text-3xl font-bold text-red-400 mt-1">{totalPending}</div>
-        </div>
-      </div>
 
-      {/* Info callout */}
-      <div className="bg-cyan-900/20 border border-cyan-800/40 rounded-xl p-4 text-sm text-cyan-300">
-        Concrete forecasts are auto-generated when a project unit status is set to <strong>NTP_ISSUED</strong>.
-        Materials with category <strong>CONCRETE</strong> in the approved Master BOM trigger these forecast lines.
-        Production planning is managed in the Batching Plant section.
-      </div>
-
-      {/* Table */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-zinc-800">
-          <h2 className="text-sm font-semibold text-zinc-200">Concrete Forecast Lines</h2>
+        {/* KPI Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+          {kpis.map((kpi) => (
+            <div key={kpi.label} style={{ ...card, borderTop: `3px solid ${kpi.accent}` }}>
+              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#111827", lineHeight: 1 }}>
+                {typeof kpi.value === "number" ? kpi.value.toLocaleString() : kpi.value}
+              </div>
+              <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#111827", marginTop: "0.3rem" }}>{kpi.label}</div>
+              <div style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: "0.2rem" }}>{kpi.sub}</div>
+            </div>
+          ))}
         </div>
-        {rows.length === 0 ? (
-          <div className="text-center py-16 text-zinc-500 text-sm">
-            No concrete forecast lines yet. Approve BOM entries with concrete materials, then issue NTPs to generate forecasts.
+
+        {/* Info callout */}
+        <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "8px", padding: "0.75rem 1rem", fontSize: "0.8rem", color: "#065f46", marginBottom: "1.25rem" }}>
+          Concrete forecasts are auto-generated when a project unit status is set to <strong>NTP_ISSUED</strong>.
+          Materials with category <strong>CONCRETE</strong> in the approved Master BOM trigger these forecast lines.
+          Production planning is managed in the Batching Plant section.
+        </div>
+
+        {/* Table */}
+        <div style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+          <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #e5e7eb" }}>
+            <p style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af", margin: 0 }}>
+              Concrete Forecast Lines
+            </p>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800">
-                  {["Project", "Unit Code", "Concrete Mix / Material", "Unit", "Gross Volume", "Consumed", "Remaining", "Status"].map((h) => (
-                    <th key={h} className="text-left py-3 px-4 text-xs text-zinc-400 font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const gross = Number(row.grossQty);
-                  const consumed = Number(row.consumed);
-                  const remaining = gross - consumed;
-                  const badge = STATUS_CFG[row.status] ?? { label: row.status, cls: "bg-zinc-700 text-zinc-200" };
-                  return (
-                    <tr key={row.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
-                      <td className="py-3 px-4 text-zinc-300">{row.projectName ?? "—"}</td>
-                      <td className="py-3 px-4 text-zinc-100 font-mono text-xs">{row.unitCode ?? "—"}</td>
-                      <td className="py-3 px-4 text-zinc-100">{row.matName ?? "—"}</td>
-                      <td className="py-3 px-4 text-zinc-400">{row.matUnit ?? "—"}</td>
-                      <td className="py-3 px-4 text-zinc-100 font-medium">{gross.toLocaleString("en-PH", { maximumFractionDigits: 4 })}</td>
-                      <td className="py-3 px-4 text-zinc-400">{consumed.toLocaleString("en-PH", { maximumFractionDigits: 4 })}</td>
-                      <td className={`py-3 px-4 font-medium ${remaining <= 0 ? "text-green-400" : "text-white"}`}>
-                        {remaining.toLocaleString("en-PH", { maximumFractionDigits: 4 })}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badge.cls}`}>
-                          {badge.label}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {rows.length === 0 ? (
+            <div style={{ padding: "3rem", textAlign: "center", color: "#6b7280", fontSize: "0.875rem" }}>
+              No concrete forecast lines yet. Approve BOM entries with concrete materials, then issue NTPs to generate forecasts.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                <thead>
+                  <tr>
+                    {["Project", "Unit Code", "Concrete Mix / Material", "Unit", "Gross Volume", "Consumed", "Remaining", "Status"].map((h) => (
+                      <th key={h} style={{
+                        background: "#f9fafb", borderBottom: "1px solid #e5e7eb",
+                        fontSize: "0.75rem", fontWeight: 600, color: "#6b7280",
+                        textTransform: "uppercase", letterSpacing: "0.05em",
+                        padding: "0.75rem 1rem", textAlign: "left", whiteSpace: "nowrap",
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const gross     = Number(row.grossQty);
+                    const consumed  = Number(row.consumed);
+                    const remaining = gross - consumed;
+                    const s = STATUS_BADGE[row.status] ?? { bg: "#f3f4f6", color: "#6b7280", label: row.status };
+                    return (
+                      <tr key={row.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>{row.projectName ?? "—"}</td>
+                        <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.78rem", color: "#374151", fontWeight: 600 }}>{row.unitCode ?? "—"}</td>
+                        <td style={{ padding: "0.65rem 1rem", color: "#111827", fontWeight: 600 }}>{row.matName ?? "—"}</td>
+                        <td style={{ padding: "0.65rem 1rem", color: "#6b7280", fontSize: "0.82rem" }}>{row.matUnit ?? "—"}</td>
+                        <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", color: "#374151", fontWeight: 600 }}>{gross.toLocaleString("en-PH", { maximumFractionDigits: 4 })}</td>
+                        <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", color: "#9ca3af" }}>{consumed.toLocaleString("en-PH", { maximumFractionDigits: 4 })}</td>
+                        <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontWeight: 600, color: remaining <= 0 ? "#057a55" : "#111827" }}>
+                          {remaining.toLocaleString("en-PH", { maximumFractionDigits: 4 })}
+                        </td>
+                        <td style={{ padding: "0.65rem 1rem" }}>
+                          <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: s.bg, color: s.color }}>
+                            {s.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

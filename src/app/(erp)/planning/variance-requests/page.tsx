@@ -14,16 +14,16 @@ function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   ]);
 }
 
-const TYPE_CFG: Record<string, { label: string; cls: string }> = {
-  BOM_CHANGE:            { label: "BOM Change",            cls: "bg-purple-900/50 text-purple-300" },
-  PROCUREMENT_VARIANCE:  { label: "Procurement Variance",  cls: "bg-blue-900/50 text-blue-300" },
+const TYPE_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  BOM_CHANGE:           { bg: "#f5f3ff", color: "#5b21b6", label: "BOM Change" },
+  PROCUREMENT_VARIANCE: { bg: "#eff6ff", color: "#1e40af", label: "Procurement Variance" },
 };
 
-const STATUS_CFG: Record<string, { label: string; cls: string }> = {
-  DRAFT:          { label: "Draft",           cls: "bg-zinc-700 text-zinc-200" },
-  PENDING_REVIEW: { label: "Pending Review",  cls: "bg-yellow-900/50 text-yellow-300" },
-  APPROVED:       { label: "Approved",        cls: "bg-green-900/50 text-green-300" },
-  REJECTED:       { label: "Rejected",        cls: "bg-red-900/50 text-red-300" },
+const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  DRAFT:          { bg: "#f3f4f6", color: "#6b7280",  label: "Draft" },
+  PENDING_REVIEW: { bg: "#fef9c3", color: "#713f12",  label: "Pending Review" },
+  APPROVED:       { bg: "#dcfce7", color: "#166534",  label: "Approved" },
+  REJECTED:       { bg: "#fef2f2", color: "#b91c1c",  label: "Rejected" },
 };
 
 export default async function VarianceRequestsPage(props: {
@@ -58,135 +58,154 @@ export default async function VarianceRequestsPage(props: {
     }[],
   );
 
-  const filtered = filterType === "ALL" ? rows : rows.filter((r) => r.requestType === filterType);
+  const filtered     = filterType === "ALL" ? rows : rows.filter((r) => r.requestType === filterType);
   const pendingCount = rows.filter((r) => r.status === "PENDING_REVIEW").length;
-  const bodRequired = rows.filter((r) => r.isMinOrderQtyIssue).length;
+  const bodRequired  = rows.filter((r) => r.isMinOrderQtyIssue).length;
+  const approvedCount = rows.filter((r) => r.status === "APPROVED").length;
+
+  const card: React.CSSProperties = {
+    background: "#fff", borderRadius: "10px", padding: "1.25rem 1.5rem",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+  };
 
   return (
-    <div className="p-6 space-y-6 bg-zinc-950 min-h-screen text-white">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Variance Requests</h1>
-          <p className="text-sm text-zinc-400 mt-0.5">BOM changes and procurement overages requiring approval</p>
-        </div>
-        <Link
-          href="/planning/variance-requests/new"
-          className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
-        >
-          + New Request
-        </Link>
-      </div>
+    <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div className="text-xs text-zinc-400 uppercase tracking-wide">Total Requests</div>
-          <div className="text-3xl font-bold text-white mt-1">{rows.length}</div>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div className="text-xs text-zinc-400 uppercase tracking-wide">Pending Review</div>
-          <div className="text-3xl font-bold text-yellow-400 mt-1">{pendingCount}</div>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div className="text-xs text-zinc-400 uppercase tracking-wide">BOD Required</div>
-          <div className="text-3xl font-bold text-red-400 mt-1">{bodRequired}</div>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-          <div className="text-xs text-zinc-400 uppercase tracking-wide">Approved</div>
-          <div className="text-3xl font-bold text-green-400 mt-1">{rows.filter((r) => r.status === "APPROVED").length}</div>
-        </div>
-      </div>
-
-      {/* Filter chips */}
-      <div className="flex gap-2 flex-wrap">
-        {[
-          { key: "ALL",                   label: "All" },
-          { key: "BOM_CHANGE",            label: "BOM Changes" },
-          { key: "PROCUREMENT_VARIANCE",  label: "Procurement Variances" },
-        ].map(({ key, label }) => (
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", marginBottom: "1.5rem" }}>
+          <div>
+            <p style={{ marginBottom: "0.25rem" }}>
+              <a href="/planning" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none" }}>
+                ← Planning &amp; Engineering
+              </a>
+            </p>
+            <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>Variance Requests</h1>
+            <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>BOM changes and procurement overages requiring approval</p>
+          </div>
           <Link
-            key={key}
-            href={key === "ALL" ? "/planning/variance-requests" : `/planning/variance-requests?type=${key}`}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              filterType === key
-                ? "bg-blue-600 text-white"
-                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-            }`}
-          >
-            {label}
+            href="/planning/variance-requests/new"
+            style={{ padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#1a56db", color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none" }}>
+            + New Request
           </Link>
-        ))}
-      </div>
+        </div>
 
-      {/* Table */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="text-center py-16 text-zinc-500 text-sm">
-            No variance requests found.{" "}
-            <Link href="/planning/variance-requests/new" className="text-blue-400 hover:underline">
-              Create one →
-            </Link>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800">
-                  {["Type", "Project", "Summary", "Status", "BOD Required", "Submitted", "Actions"].map((h) => (
-                    <th key={h} className="text-left py-3 px-4 text-xs text-zinc-400 font-medium whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => {
-                  const typeBadge = TYPE_CFG[row.requestType] ?? { label: row.requestType, cls: "bg-zinc-700 text-zinc-200" };
-                  const statusBadge = STATUS_CFG[row.status] ?? { label: row.status, cls: "bg-zinc-700 text-zinc-200" };
-                  const summary = row.bomChangeType
-                    ? `${row.bomChangeType}: ${row.oldQuantity ?? "—"} → ${row.newQuantity ?? "—"}`
-                    : row.reason.slice(0, 60) + (row.reason.length > 60 ? "…" : "");
+        {/* KPI Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+          {[
+            { label: "Total Requests",  value: rows.length,    accent: "#1a56db" },
+            { label: "Pending Review",  value: pendingCount,   accent: "#e3a008" },
+            { label: "BOD Required",    value: bodRequired,    accent: "#dc2626" },
+            { label: "Approved",        value: approvedCount,  accent: "#057a55" },
+          ].map((kpi) => (
+            <div key={kpi.label} style={{ ...card, borderTop: `3px solid ${kpi.accent}` }}>
+              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#111827", lineHeight: 1 }}>
+                {kpi.value.toLocaleString()}
+              </div>
+              <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#111827", marginTop: "0.3rem" }}>{kpi.label}</div>
+            </div>
+          ))}
+        </div>
 
-                  return (
-                    <tr key={row.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${typeBadge.cls}`}>
-                          {typeBadge.label}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-zinc-300 whitespace-nowrap">{row.projectName ?? "—"}</td>
-                      <td className="py-3 px-4 text-zinc-400 max-w-xs truncate" title={row.reason}>{summary}</td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusBadge.cls}`}>
-                          {statusBadge.label}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        {row.isMinOrderQtyIssue ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-900/50 text-red-300">
-                            BOD Only
+        {/* Filter chips */}
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+          {[
+            { key: "ALL",                  label: "All" },
+            { key: "BOM_CHANGE",           label: "BOM Changes" },
+            { key: "PROCUREMENT_VARIANCE", label: "Procurement Variances" },
+          ].map(({ key, label }) => {
+            const active = filterType === key;
+            return (
+              <Link
+                key={key}
+                href={key === "ALL" ? "/planning/variance-requests" : `/planning/variance-requests?type=${key}`}
+                style={{
+                  padding: "0.3rem 0.75rem", borderRadius: "999px", fontSize: "0.78rem", fontWeight: 600,
+                  textDecoration: "none",
+                  background: active ? "#1a56db" : "#fff",
+                  color: active ? "#fff" : "#374151",
+                  border: active ? "1px solid #1a56db" : "1px solid #d1d5db",
+                }}>
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* Table */}
+        <div style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "3rem", textAlign: "center" }}>
+              <p style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "0.5rem" }}>No variance requests found.</p>
+              <Link href="/planning/variance-requests/new" style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
+                Create one →
+              </Link>
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                <thead>
+                  <tr>
+                    {["Type", "Project", "Summary", "Status", "BOD Required", "Submitted", "Actions"].map((h) => (
+                      <th key={h} style={{
+                        background: "#f9fafb", borderBottom: "1px solid #e5e7eb",
+                        fontSize: "0.75rem", fontWeight: 600, color: "#6b7280",
+                        textTransform: "uppercase", letterSpacing: "0.05em",
+                        padding: "0.75rem 1rem", textAlign: "left", whiteSpace: "nowrap",
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((row) => {
+                    const typeBadge   = TYPE_BADGE[row.requestType]   ?? { bg: "#f3f4f6", color: "#6b7280", label: row.requestType };
+                    const statusBadge = STATUS_BADGE[row.status]      ?? { bg: "#f3f4f6", color: "#6b7280", label: row.status };
+                    const summary = row.bomChangeType
+                      ? `${row.bomChangeType}: ${row.oldQuantity ?? "—"} → ${row.newQuantity ?? "—"}`
+                      : row.reason.slice(0, 60) + (row.reason.length > 60 ? "…" : "");
+
+                    return (
+                      <tr key={row.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "0.65rem 1rem" }}>
+                          <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: typeBadge.bg, color: typeBadge.color }}>
+                            {typeBadge.label}
                           </span>
-                        ) : (
-                          <span className="text-zinc-600 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-zinc-500 text-xs whitespace-nowrap">
-                        {row.submittedAt
-                          ? new Date(row.submittedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })
-                          : "Draft"}
-                      </td>
-                      <td className="py-3 px-4">
-                        {row.status === "PENDING_REVIEW" && (
-                          <VarianceActions id={row.id} />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                        </td>
+                        <td style={{ padding: "0.65rem 1rem", color: "#374151", whiteSpace: "nowrap" }}>{row.projectName ?? "—"}</td>
+                        <td style={{ padding: "0.65rem 1rem", color: "#6b7280", maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.reason}>{summary}</td>
+                        <td style={{ padding: "0.65rem 1rem" }}>
+                          <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: statusBadge.bg, color: statusBadge.color }}>
+                            {statusBadge.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: "0.65rem 1rem" }}>
+                          {row.isMinOrderQtyIssue ? (
+                            <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: "#fef2f2", color: "#b91c1c" }}>
+                              BOD Only
+                            </span>
+                          ) : (
+                            <span style={{ color: "#d1d5db", fontSize: "0.82rem" }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: "0.65rem 1rem", color: "#9ca3af", fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                          {row.submittedAt
+                            ? new Date(row.submittedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })
+                            : "Draft"}
+                        </td>
+                        <td style={{ padding: "0.65rem 1rem" }}>
+                          {row.status === "PENDING_REVIEW" && (
+                            <VarianceActions id={row.id} />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

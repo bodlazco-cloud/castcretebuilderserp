@@ -7,6 +7,7 @@ import { projects } from "./projects";
 import { projectUnits } from "./units";
 import { activityDefinitions, materials } from "./admin";
 import { purchaseRequisitions } from "./procurement";
+import { phaseActivities } from "./phases";
 import {
   unitTypeEnum,
   bomStatusEnum,
@@ -20,7 +21,8 @@ export const masterBomEntries = pgTable("master_bom_entries", {
   projectId:        uuid("project_id").notNull().references(() => projects.id),
   unitModel:        varchar("unit_model", { length: 50 }).notNull(),
   unitType:         unitTypeEnum("unit_type").notNull(),
-  activityDefId:    uuid("activity_def_id").notNull().references(() => activityDefinitions.id),
+  activityDefId:    uuid("activity_def_id").references(() => activityDefinitions.id),
+  phaseActivityId:  uuid("phase_activity_id").references(() => phaseActivities.id),
   materialId:       uuid("material_id").notNull().references(() => materials.id),
   quantityPerUnit:  numeric("quantity_per_unit", { precision: 15, scale: 4 }).notNull(),
   equipmentType:    varchar("equipment_type", { length: 100 }),

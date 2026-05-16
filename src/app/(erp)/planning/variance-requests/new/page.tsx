@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { projects, masterBomEntries, materials, activityDefinitions } from "@/db/schema";
+import { projects, masterBomEntries, materials } from "@/db/schema";
+import { phaseActivities } from "@/db/schema/phases";
 import { eq, and } from "drizzle-orm";
 import { NewVarianceForm } from "./NewVarianceForm";
 
@@ -25,11 +26,11 @@ export default async function NewVarianceRequestPage() {
         unitType:     masterBomEntries.unitType,
         status:       masterBomEntries.status,
         materialName: materials.name,
-        activityName: activityDefinitions.activityName,
+        activityName: phaseActivities.name,
       })
         .from(masterBomEntries)
-        .leftJoin(materials,           eq(masterBomEntries.materialId,    materials.id))
-        .leftJoin(activityDefinitions, eq(masterBomEntries.activityDefId, activityDefinitions.id))
+        .leftJoin(materials,       eq(masterBomEntries.materialId,       materials.id))
+        .leftJoin(phaseActivities, eq(masterBomEntries.phaseActivityId,  phaseActivities.id))
         .where(and(eq(masterBomEntries.isActive, true), eq(masterBomEntries.status, "APPROVED")))
         .orderBy(masterBomEntries.unitModel),
       [] as { id: string; projectId: string; unitModel: string; unitType: string; status: string; materialName: string | null; activityName: string | null }[],
@@ -44,16 +45,23 @@ export default async function NewVarianceRequestPage() {
   ]);
 
   return (
-    <div className="p-6 bg-zinc-950 min-h-screen text-white">
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">New Variance Request</h1>
-          <p className="text-sm text-zinc-400 mt-0.5">Submit a BOM change or procurement overage for approval</p>
+    <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
+      <div style={{ maxWidth: "700px", margin: "0 auto" }}>
+        <div style={{ marginBottom: "1.5rem" }}>
+          <p style={{ marginBottom: "0.25rem" }}>
+            <a href="/planning/variance-requests" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none" }}>
+              ← Variance Requests
+            </a>
+          </p>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>New Variance Request</h1>
+          <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>
+            Submit a BOM change or procurement overage for approval
+          </p>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+        <div style={{ background: "#fff", borderRadius: "10px", padding: "1.5rem 2rem", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
           <NewVarianceForm projects={projectList} bomEntries={bomEntries} materials={materialList} />
         </div>
       </div>
-    </div>
+    </main>
   );
 }

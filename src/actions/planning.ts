@@ -5,7 +5,7 @@ import {
   masterBomEntries,
   resourceForecasts,
   planningVarianceRequests,
-  activityDefinitions,
+  constructionManpowerLogs,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -29,11 +29,11 @@ const BomLineSchema = z.object({
 });
 
 const SaveMasterBomSchema = z.object({
-  projectId:     z.string().uuid(),
-  activityDefId: z.string().uuid(),
-  unitModel:     z.string().min(1).max(50),
-  unitType:      z.enum(["BEG", "MID", "END", "SHOP"]),
-  items:         z.array(BomLineSchema).min(1, "At least one material line is required"),
+  projectId:       z.string().uuid(),
+  phaseActivityId: z.string().uuid(),
+  unitModel:       z.string().min(1).max(50),
+  unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
+  items:           z.array(BomLineSchema).min(1, "At least one material line is required"),
 });
 
 export type SaveBomResult =
@@ -54,14 +54,7 @@ export async function saveMasterBomEntries(
     return { success: false, error: "Only Planning, Admin, or BOD may create BOM entries." };
   }
 
-  const { projectId, activityDefId, unitModel, unitType, items } = parsed.data;
-
-  const [activity] = await db
-    .select({ id: activityDefinitions.id })
-    .from(activityDefinitions)
-    .where(and(eq(activityDefinitions.id, activityDefId), eq(activityDefinitions.projectId, projectId)));
-
-  if (!activity) return { success: false, error: "Activity definition not found for this project." };
+  const { projectId, phaseActivityId, unitModel, unitType, items } = parsed.data;
 
   // Deactivate existing DRAFT entries for same scope (soft version bump)
   await db
@@ -70,7 +63,7 @@ export async function saveMasterBomEntries(
     .where(
       and(
         eq(masterBomEntries.projectId, projectId),
-        eq(masterBomEntries.activityDefId, activityDefId),
+        eq(masterBomEntries.phaseActivityId, phaseActivityId),
         eq(masterBomEntries.unitModel, unitModel),
         eq(masterBomEntries.unitType, unitType),
         eq(masterBomEntries.isActive, true),
@@ -81,7 +74,8 @@ export async function saveMasterBomEntries(
   await db.insert(masterBomEntries).values(
     items.map((item) => ({
       projectId,
-      activityDefId,
+      activityDefId:   null,
+      phaseActivityId,
       unitModel,
       unitType,
       materialId:      item.materialId,
@@ -319,4 +313,47 @@ export async function reviewVarianceRequest(
 
   revalidatePath("/planning/variance-requests");
   return { success: true };
+}
+
+// ─── Manpower Logs (kept for resource-forecasting page) ───────────────────────
+
+const CreateManpowerLogSchema = z.object({
+  projectId:        z.string().uuid(),
+  logDate:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  activityDefId:    z.string().uuid().optional(),
+  subconId:         z.string().uuid().optional(),
+  subconHeadcount:  z.number().int().min(0),
+  directStaffCount: z.number().int().min(0),
+  remarks:          z.string().max(1000).optional(),
+});
+
+export type CreateManpowerLogResult = { success: true; id: string } | { success: false; error: string };
+
+export async function createManpowerLog(
+  input: z.infer<typeof CreateManpowerLogSchema>,
+): Promise<CreateManpowerLogResult> {
+  const parsed = CreateManpowerLogSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const { projectId, logDate, activityDefId, subconId, subconHeadcount, directStaffCount, remarks } = parsed.data;
+
+  const [row] = await db
+    .insert(constructionManpowerLogs)
+    .values({
+      projectId,
+      logDate,
+      activityDefId:    activityDefId ?? null,
+      subconId:         subconId      ?? null,
+      subconHeadcount,
+      directStaffCount,
+      remarks:          remarks       ?? null,
+      recordedBy:       user.id,
+    })
+    .returning({ id: constructionManpowerLogs.id });
+
+  revalidatePath("/planning/resource-forecasting");
+  return { success: true, id: row.id };
 }
