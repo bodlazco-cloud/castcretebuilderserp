@@ -30,7 +30,8 @@ const BomLineSchema = z.object({
 
 const SaveMasterBomSchema = z.object({
   projectId:       z.string().uuid(),
-  phaseActivityId: z.string().uuid(),
+  phaseScopeId:    z.string().uuid(),
+  phaseActivityId: z.string().uuid().optional(),
   unitModel:       z.string().min(1).max(50),
   unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
   items:           z.array(BomLineSchema).min(1, "At least one material line is required"),
@@ -54,7 +55,7 @@ export async function saveMasterBomEntries(
     return { success: false, error: "Only Planning, Admin, or BOD may create BOM entries." };
   }
 
-  const { projectId, phaseActivityId, unitModel, unitType, items } = parsed.data;
+  const { projectId, phaseScopeId, phaseActivityId, unitModel, unitType, items } = parsed.data;
 
   // Deactivate existing DRAFT entries for same scope (soft version bump)
   await db
@@ -63,7 +64,7 @@ export async function saveMasterBomEntries(
     .where(
       and(
         eq(masterBomEntries.projectId, projectId),
-        eq(masterBomEntries.phaseActivityId, phaseActivityId),
+        eq(masterBomEntries.phaseScopeId, phaseScopeId),
         eq(masterBomEntries.unitModel, unitModel),
         eq(masterBomEntries.unitType, unitType),
         eq(masterBomEntries.isActive, true),
@@ -75,7 +76,8 @@ export async function saveMasterBomEntries(
     items.map((item) => ({
       projectId,
       activityDefId:   null,
-      phaseActivityId,
+      phaseScopeId,
+      phaseActivityId: phaseActivityId ?? null,
       unitModel,
       unitType,
       materialId:      item.materialId,
