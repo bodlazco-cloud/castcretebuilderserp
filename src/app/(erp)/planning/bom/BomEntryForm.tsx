@@ -3,11 +3,12 @@
 import { useState, useTransition } from "react";
 import { saveMasterBomEntries } from "@/actions/planning";
 
-type Project    = { id: string; name: string };
-type SowItem    = { id: string; projectId: string; scopeCode: string; scopeName: string; activityCode: string; activityName: string };
-type UnitModel  = { projectId: string; unitModel: string };
-type Material   = { id: string; code: string; name: string; unit: string };
-type Vendor     = { id: string; name: string };
+type Project       = { id: string; name: string };
+type PhaseScope    = { id: string; code: string; name: string; categoryId: string };
+type PhaseActivity = { id: string; scopeId: string; code: string; name: string };
+type UnitModel     = { projectId: string; unitModel: string };
+type Material      = { id: string; code: string; name: string; unit: string };
+type Vendor        = { id: string; name: string };
 
 const ACCENT = "#1a56db";
 const inputStyle: React.CSSProperties = {
@@ -27,33 +28,30 @@ const UNIT_TYPES = [
 
 type LineItem = { materialId: string; qty: string; unitPrice: string; preferredSupplierId: string };
 
-export function BomEntryForm({ projects, sowItems, unitModels, materials, vendors }: {
-  projects:   Project[];
-  sowItems:   SowItem[];
-  unitModels: UnitModel[];
-  materials:  Material[];
-  vendors:    Vendor[];
+export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModels, materials, vendors }: {
+  projects:        Project[];
+  phaseScopes:     PhaseScope[];
+  phaseActivities: PhaseActivity[];
+  unitModels:      UnitModel[];
+  materials:       Material[];
+  vendors:         Vendor[];
 }) {
   const [isPending, startTransition] = useTransition();
   const [error,   setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const [selectedProject,  setSelectedProject]  = useState("");
-  const [selectedScope,    setSelectedScope]    = useState("");   // scopeCode
-  const [selectedActivity, setSelectedActivity] = useState("");   // activityDef id
+  const [selectedScope,    setSelectedScope]    = useState("");   // phaseScope id
+  const [selectedActivity, setSelectedActivity] = useState("");   // phaseActivity id
   const [unitModel,        setUnitModel]        = useState("");
   const [unitType,         setUnitType]         = useState("");
   const [lines, setLines] = useState<LineItem[]>([
     { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" },
   ]);
 
-  // Derived lists from selections
-  const projectSows = sowItems.filter((s) => s.projectId === selectedProject);
-  const distinctScopes = Array.from(
-    new Map(projectSows.map((s) => [s.scopeCode, { code: s.scopeCode, name: s.scopeName }])).values()
-  );
-  const scopeActivities = projectSows.filter((s) => s.scopeCode === selectedScope);
-  const projectUnitModels = Array.from(
+  // Derived lists from selections — scopes are global (not project-specific)
+  const scopeActivities = phaseActivities.filter((a) => a.scopeId === selectedScope);
+  const projectUnitModelList = Array.from(
     new Set(unitModels.filter((u) => u.projectId === selectedProject).map((u) => u.unitModel))
   );
 
@@ -92,7 +90,7 @@ export function BomEntryForm({ projects, sowItems, unitModels, materials, vendor
     startTransition(async () => {
       const result = await saveMasterBomEntries({
         projectId: selectedProject,
-        activityDefId: selectedActivity,
+        phaseActivityId: selectedActivity,
         unitModel,
         unitType: unitType as "BEG" | "MID" | "END" | "SHOP",
         items,
@@ -127,23 +125,22 @@ export function BomEntryForm({ projects, sowItems, unitModels, materials, vendor
         <select required style={inputStyle} value={selectedProject}
           onChange={(e) => {
             setSelectedProject(e.target.value);
-            setSelectedScope(""); setSelectedActivity(""); setUnitModel("");
+            setUnitModel("");
           }}>
           <option value="">Select project…</option>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </label>
 
-      {/* Row 2: Scope of Work + Activity */}
+      {/* Row 2: Scope of Work + Activity (from Construction Phases master list) */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Scope of Work *</span>
           <select required style={inputStyle} value={selectedScope}
-            onChange={(e) => { setSelectedScope(e.target.value); setSelectedActivity(""); }}
-            disabled={!selectedProject}>
+            onChange={(e) => { setSelectedScope(e.target.value); setSelectedActivity(""); }}>
             <option value="">Select scope…</option>
-            {distinctScopes.map((s) => (
-              <option key={s.code} value={s.code}>{s.name}</option>
+            {phaseScopes.map((s) => (
+              <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>
             ))}
           </select>
         </label>
@@ -154,7 +151,7 @@ export function BomEntryForm({ projects, sowItems, unitModels, materials, vendor
             disabled={!selectedScope}>
             <option value="">Select activity…</option>
             {scopeActivities.map((a) => (
-              <option key={a.id} value={a.id}>[{a.activityCode}] {a.activityName}</option>
+              <option key={a.id} value={a.id}>[{a.code}] {a.name}</option>
             ))}
           </select>
         </label>
@@ -164,12 +161,12 @@ export function BomEntryForm({ projects, sowItems, unitModels, materials, vendor
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Unit Model *</span>
-          {projectUnitModels.length > 0 ? (
+          {projectUnitModelList.length > 0 ? (
             <select required style={inputStyle} value={unitModel}
               onChange={(e) => setUnitModel(e.target.value)}
               disabled={!selectedProject}>
               <option value="">Select unit model…</option>
-              {projectUnitModels.map((m) => <option key={m} value={m}>{m}</option>)}
+              {projectUnitModelList.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           ) : (
             <input
@@ -177,7 +174,7 @@ export function BomEntryForm({ projects, sowItems, unitModels, materials, vendor
               style={inputStyle} value={unitModel}
               onChange={(e) => setUnitModel(e.target.value)} />
           )}
-          {selectedProject && projectUnitModels.length === 0 && (
+          {selectedProject && projectUnitModelList.length === 0 && (
             <span style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: "0.2rem", display: "block" }}>
               No units defined for this project yet — type a model name manually.
             </span>

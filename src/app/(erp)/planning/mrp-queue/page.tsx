@@ -11,23 +11,23 @@ function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   ]);
 }
 
-function Badge({ label, color }: { label: string; color: string }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${color}`}>
-      {label}
-    </span>
-  );
-}
+const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  PENDING_PR: { bg: "#fef2f2", color: "#b91c1c",  label: "Pending PR" },
+  PR_CREATED: { bg: "#fef9c3", color: "#713f12",  label: "PR Created" },
+  PO_ISSUED:  { bg: "#eff6ff", color: "#1e40af",  label: "PO Issued" },
+  ISSUED:     { bg: "#dcfce7", color: "#166534",  label: "Issued" },
+};
 
 function ForecastStatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; color: string }> = {
-    PENDING_PR: { label: "Pending PR", color: "bg-red-900/70 text-red-300" },
-    PR_CREATED: { label: "PR Created", color: "bg-yellow-900/70 text-yellow-300" },
-    PO_ISSUED:  { label: "PO Issued",  color: "bg-blue-900/70 text-blue-300" },
-    ISSUED:     { label: "Issued",     color: "bg-green-900/70 text-green-300" },
-  };
-  const s = map[status] ?? { label: status, color: "bg-slate-700 text-slate-300" };
-  return <Badge label={s.label} color={s.color} />;
+  const s = STATUS_BADGE[status] ?? { bg: "#f3f4f6", color: "#6b7280", label: status };
+  return (
+    <span style={{
+      display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px",
+      fontSize: "0.72rem", fontWeight: 600, background: s.bg, color: s.color,
+    }}>
+      {s.label}
+    </span>
+  );
 }
 
 type MrpRow = {
@@ -101,127 +101,137 @@ export default async function MrpQueuePage() {
   }
 
   const kpis = [
-    { label: "Pending PR",  value: pendingPr, color: "border-red-500",    text: "text-red-400" },
-    { label: "PR Created",  value: prCreated, color: "border-yellow-500", text: "text-yellow-400" },
-    { label: "PO Issued",   value: poIssued,  color: "border-blue-500",   text: "text-blue-400" },
-    { label: "Issued",      value: issued,    color: "border-green-500",  text: "text-green-400" },
+    { label: "Pending PR",  value: pendingPr, accent: "#dc2626" },
+    { label: "PR Created",  value: prCreated, accent: "#e3a008" },
+    { label: "PO Issued",   value: poIssued,  accent: "#1a56db" },
+    { label: "Issued",      value: issued,    accent: "#057a55" },
   ];
 
-  return (
-    <main className="min-h-screen bg-slate-950 p-6 font-sans">
-      <div className="max-w-7xl mx-auto space-y-5">
+  const card: React.CSSProperties = {
+    background: "#fff", borderRadius: "10px", padding: "1.25rem 1.5rem",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+  };
 
-        <div>
-          <p className="text-xs text-slate-400 mb-1">
-            <a href="/planning" className="hover:text-white transition-colors">← Planning &amp; Engineering</a>
+  return (
+    <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+
+        {/* Header */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <p style={{ marginBottom: "0.25rem" }}>
+            <a href="/planning" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none" }}>
+              ← Planning &amp; Engineering
+            </a>
           </p>
-          <h1 className="text-2xl font-bold text-white">MRP Queue — Material Requirements</h1>
-          <p className="text-sm text-slate-400 mt-0.5">
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>MRP Queue — Material Requirements</h1>
+          <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>
             Resource forecasts of type MATERIAL generated from approved BOM entries on NTP issuance.
           </p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* KPI Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
           {kpis.map((kpi) => (
-            <div key={kpi.label} className={`bg-slate-800 rounded-xl border border-slate-700 border-t-4 ${kpi.color} p-5`}>
-              <div className={`text-3xl font-extrabold ${kpi.text} leading-none`}>
+            <div key={kpi.label} style={{ ...card, borderTop: `3px solid ${kpi.accent}` }}>
+              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#111827", lineHeight: 1 }}>
                 {kpi.value.toLocaleString()}
               </div>
-              <div className="text-sm font-semibold text-white mt-2">{kpi.label}</div>
-              <div className="text-xs text-slate-400 mt-0.5">forecast lines</div>
+              <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#111827", marginTop: "0.3rem" }}>{kpi.label}</div>
+              <div style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: "0.2rem" }}>forecast lines</div>
             </div>
           ))}
         </div>
 
         {projectMap.size === 0 ? (
-          <div className="bg-slate-800 rounded-xl border border-slate-700 p-12 text-center">
-            <p className="text-slate-400 text-sm mb-2">No material forecast lines found.</p>
-            <p className="text-slate-500 text-xs">
+          <div style={{ ...card, padding: "3rem", textAlign: "center" }}>
+            <p style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "0.5rem" }}>No material forecast lines found.</p>
+            <p style={{ color: "#9ca3af", fontSize: "0.78rem" }}>
               Resource forecasts are created automatically when an NTP is issued for a project with approved BOM entries.
             </p>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             {Array.from(projectMap.values()).map((proj) => {
               const projPending = proj.rows.filter((r) => r.status === "PENDING_PR").length;
               return (
-                <div key={proj.projId} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-                  <div className="px-5 py-3 bg-slate-900 border-b border-slate-700 flex items-center gap-3 flex-wrap">
-                    <span className="font-bold text-white">{proj.projName}</span>
-                    <span className="text-xs text-slate-500">{proj.rows.length} line{proj.rows.length !== 1 ? "s" : ""}</span>
+                <div key={proj.projId} style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                  <div style={{ padding: "0.75rem 1.25rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700, color: "#111827" }}>{proj.projName}</span>
+                    <span style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{proj.rows.length} line{proj.rows.length !== 1 ? "s" : ""}</span>
                     {projPending > 0 && (
-                      <span className="text-xs bg-red-900/60 text-red-300 px-2 py-0.5 rounded-full font-semibold">
+                      <span style={{ fontSize: "0.72rem", background: "#fef2f2", color: "#b91c1c", padding: "0.2rem 0.55rem", borderRadius: "999px", fontWeight: 600 }}>
                         {projPending} pending PR
                       </span>
                     )}
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
                       <thead>
-                        <tr className="border-b border-slate-700">
+                        <tr>
                           {["Unit Code", "Model / Type", "Material", "Unit", "Gross Qty", "Consumed", "Remaining", "Status", "PR"].map((h) => (
-                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide whitespace-nowrap">
-                              {h}
-                            </th>
+                            <th key={h} style={{
+                              background: "#f9fafb", borderBottom: "1px solid #e5e7eb",
+                              fontSize: "0.75rem", fontWeight: 600, color: "#6b7280",
+                              textTransform: "uppercase", letterSpacing: "0.05em",
+                              padding: "0.75rem 1rem", textAlign: "left", whiteSpace: "nowrap",
+                            }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-700/40">
+                      <tbody>
                         {proj.rows.map((row) => {
                           const gross     = Number(row.grossQuantity);
                           const consumed  = Number(row.quantityConsumed);
                           const remaining = Math.max(0, gross - consumed);
                           const remainingPct = gross > 0 ? Math.round((remaining / gross) * 100) : 0;
                           return (
-                            <tr key={row.id} className="hover:bg-slate-700/20 transition-colors">
-                              <td className="px-4 py-3 font-mono text-xs text-slate-200 font-semibold whitespace-nowrap">
-                                {row.unitCode ?? <span className="text-slate-500">—</span>}
+                            <tr key={row.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                              <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.78rem", color: "#374151", fontWeight: 600, whiteSpace: "nowrap" }}>
+                                {row.unitCode ?? <span style={{ color: "#9ca3af" }}>—</span>}
                               </td>
-                              <td className="px-4 py-3 whitespace-nowrap">
-                                <span className="text-slate-300 text-xs">{row.unitModel ?? "—"}</span>
+                              <td style={{ padding: "0.65rem 1rem", whiteSpace: "nowrap" }}>
+                                <span style={{ color: "#374151", fontSize: "0.82rem" }}>{row.unitModel ?? "—"}</span>
                                 {row.unitType && (
-                                  <span className="ml-1.5 text-xs text-indigo-300 bg-indigo-900/40 px-1.5 py-0.5 rounded">
+                                  <span style={{ marginLeft: "0.4rem", fontSize: "0.72rem", background: "#eff6ff", color: "#1e40af", padding: "0.15rem 0.4rem", borderRadius: "4px", fontWeight: 600 }}>
                                     {row.unitType}
                                   </span>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-white font-medium">
+                              <td style={{ padding: "0.65rem 1rem", color: "#111827", fontWeight: 600 }}>
                                 {row.matCode && (
-                                  <span className="font-mono text-slate-400 text-xs mr-1">{row.matCode}</span>
+                                  <span style={{ fontFamily: "monospace", color: "#6b7280", fontSize: "0.75rem", marginRight: "0.35rem" }}>{row.matCode}</span>
                                 )}
-                                {row.matName ?? <span className="text-slate-500">—</span>}
+                                {row.matName ?? <span style={{ color: "#9ca3af" }}>—</span>}
                               </td>
-                              <td className="px-4 py-3 text-slate-400 text-xs">{row.matUnit ?? "—"}</td>
-                              <td className="px-4 py-3 font-mono text-slate-200 text-xs whitespace-nowrap">
+                              <td style={{ padding: "0.65rem 1rem", color: "#6b7280", fontSize: "0.82rem" }}>{row.matUnit ?? "—"}</td>
+                              <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", color: "#374151", fontSize: "0.82rem", whiteSpace: "nowrap" }}>
                                 {gross.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                               </td>
-                              <td className="px-4 py-3 font-mono text-slate-400 text-xs whitespace-nowrap">
+                              <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", color: "#9ca3af", fontSize: "0.82rem", whiteSpace: "nowrap" }}>
                                 {consumed > 0
                                   ? consumed.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })
-                                  : <span className="text-slate-600">0</span>}
+                                  : <span style={{ color: "#d1d5db" }}>0</span>}
                               </td>
-                              <td className="px-4 py-3 text-xs whitespace-nowrap">
-                                <span className={`font-mono font-semibold ${
-                                  remaining === 0 ? "text-slate-500" : remainingPct < 20 ? "text-red-400" : "text-green-400"
-                                }`}>
+                              <td style={{ padding: "0.65rem 1rem", fontSize: "0.82rem", whiteSpace: "nowrap" }}>
+                                <span style={{ fontFamily: "monospace", fontWeight: 600, color: remaining === 0 ? "#9ca3af" : remainingPct < 20 ? "#b91c1c" : "#166534" }}>
                                   {remaining.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                                 </span>
                                 {gross > 0 && (
-                                  <span className="text-slate-500 ml-1">({remainingPct}%)</span>
+                                  <span style={{ color: "#9ca3af", marginLeft: "0.25rem" }}>({remainingPct}%)</span>
                                 )}
                               </td>
-                              <td className="px-4 py-3">
+                              <td style={{ padding: "0.65rem 1rem" }}>
                                 <ForecastStatusBadge status={row.status} />
                               </td>
-                              <td className="px-4 py-3 text-xs">
+                              <td style={{ padding: "0.65rem 1rem", fontSize: "0.82rem" }}>
                                 {row.purchaseRequisitionId ? (
                                   <a
                                     href={`/procurement/purchase-requisitions/${row.purchaseRequisitionId}`}
-                                    className="text-blue-400 hover:text-blue-300 font-mono text-xs underline">
+                                    style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
                                     View PR →
                                   </a>
                                 ) : (
-                                  <span className="text-slate-600">—</span>
+                                  <span style={{ color: "#d1d5db" }}>—</span>
                                 )}
                               </td>
                             </tr>

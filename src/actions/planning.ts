@@ -5,7 +5,6 @@ import {
   masterBomEntries,
   resourceForecasts,
   planningVarianceRequests,
-  activityDefinitions,
   constructionManpowerLogs,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
@@ -30,11 +29,11 @@ const BomLineSchema = z.object({
 });
 
 const SaveMasterBomSchema = z.object({
-  projectId:     z.string().uuid(),
-  activityDefId: z.string().uuid(),
-  unitModel:     z.string().min(1).max(50),
-  unitType:      z.enum(["BEG", "MID", "END", "SHOP"]),
-  items:         z.array(BomLineSchema).min(1, "At least one material line is required"),
+  projectId:       z.string().uuid(),
+  phaseActivityId: z.string().uuid(),
+  unitModel:       z.string().min(1).max(50),
+  unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
+  items:           z.array(BomLineSchema).min(1, "At least one material line is required"),
 });
 
 export type SaveBomResult =
@@ -55,14 +54,7 @@ export async function saveMasterBomEntries(
     return { success: false, error: "Only Planning, Admin, or BOD may create BOM entries." };
   }
 
-  const { projectId, activityDefId, unitModel, unitType, items } = parsed.data;
-
-  const [activity] = await db
-    .select({ id: activityDefinitions.id })
-    .from(activityDefinitions)
-    .where(and(eq(activityDefinitions.id, activityDefId), eq(activityDefinitions.projectId, projectId)));
-
-  if (!activity) return { success: false, error: "Activity definition not found for this project." };
+  const { projectId, phaseActivityId, unitModel, unitType, items } = parsed.data;
 
   // Deactivate existing DRAFT entries for same scope (soft version bump)
   await db
@@ -71,7 +63,7 @@ export async function saveMasterBomEntries(
     .where(
       and(
         eq(masterBomEntries.projectId, projectId),
-        eq(masterBomEntries.activityDefId, activityDefId),
+        eq(masterBomEntries.phaseActivityId, phaseActivityId),
         eq(masterBomEntries.unitModel, unitModel),
         eq(masterBomEntries.unitType, unitType),
         eq(masterBomEntries.isActive, true),
@@ -82,7 +74,8 @@ export async function saveMasterBomEntries(
   await db.insert(masterBomEntries).values(
     items.map((item) => ({
       projectId,
-      activityDefId,
+      activityDefId:   null,
+      phaseActivityId,
       unitModel,
       unitType,
       materialId:      item.materialId,

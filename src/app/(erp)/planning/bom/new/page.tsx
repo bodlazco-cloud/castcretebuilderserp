@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
-import { projects, activityDefinitions, materials, projectUnitModels, suppliers } from "@/db/schema";
+import { projects, materials, projectUnitModels, suppliers } from "@/db/schema";
+import { phaseScopes, phaseActivities } from "@/db/schema/phases";
 import { eq } from "drizzle-orm";
 import { BomEntryForm } from "../BomEntryForm";
 
@@ -13,7 +14,7 @@ function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
 }
 
 export default async function NewBomEntryPage() {
-  const [projectRows, sowRows, unitModelRows, materialRows, vendorRows] = await Promise.all([
+  const [projectRows, scopeRows, activityRows, unitModelRows, materialRows, vendorRows] = await Promise.all([
     safe(
       db
         .select({ id: projects.id, name: projects.name })
@@ -24,17 +25,28 @@ export default async function NewBomEntryPage() {
     safe(
       db
         .select({
-          id:           activityDefinitions.id,
-          projectId:    activityDefinitions.projectId,
-          scopeCode:    activityDefinitions.scopeCode,
-          scopeName:    activityDefinitions.scopeName,
-          activityCode: activityDefinitions.activityCode,
-          activityName: activityDefinitions.activityName,
+          id:         phaseScopes.id,
+          code:       phaseScopes.code,
+          name:       phaseScopes.name,
+          categoryId: phaseScopes.categoryId,
         })
-        .from(activityDefinitions)
-        .where(eq(activityDefinitions.isActive, true))
-        .orderBy(activityDefinitions.scopeCode, activityDefinitions.sequenceOrder),
-      [] as { id: string; projectId: string; scopeCode: string; scopeName: string; activityCode: string; activityName: string }[],
+        .from(phaseScopes)
+        .where(eq(phaseScopes.isActive, true))
+        .orderBy(phaseScopes.sequenceOrder, phaseScopes.code),
+      [] as { id: string; code: string; name: string; categoryId: string }[],
+    ),
+    safe(
+      db
+        .select({
+          id:      phaseActivities.id,
+          scopeId: phaseActivities.scopeId,
+          code:    phaseActivities.code,
+          name:    phaseActivities.name,
+        })
+        .from(phaseActivities)
+        .where(eq(phaseActivities.isActive, true))
+        .orderBy(phaseActivities.sequenceOrder, phaseActivities.code),
+      [] as { id: string; scopeId: string; code: string; name: string }[],
     ),
     safe(
       db
@@ -62,22 +74,25 @@ export default async function NewBomEntryPage() {
   ]);
 
   return (
-    <main className="min-h-screen bg-slate-950 p-6 font-sans">
-      <div className="max-w-4xl mx-auto space-y-5">
-        <div>
-          <p className="text-xs text-slate-400 mb-1">
-            <a href="/planning/bom" className="hover:text-white transition-colors">← BOM Register</a>
+    <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
+      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+        <div style={{ marginBottom: "1.5rem" }}>
+          <p style={{ marginBottom: "0.25rem" }}>
+            <a href="/planning/bom" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none" }}>
+              ← BOM Register
+            </a>
           </p>
-          <h1 className="text-2xl font-bold text-white">New BOM Entry</h1>
-          <p className="text-sm text-slate-400 mt-0.5">
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>New BOM Entry</h1>
+          <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>
             Define material quantities per scope of work, activity, unit model, and unit type.
           </p>
         </div>
 
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+        <div style={{ background: "#fff", borderRadius: "10px", padding: "1.5rem 2rem", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
           <BomEntryForm
             projects={projectRows}
-            sowItems={sowRows}
+            phaseScopes={scopeRows}
+            phaseActivities={activityRows}
             unitModels={unitModelRows}
             materials={materialRows}
             vendors={vendorRows}

@@ -8,8 +8,15 @@ type Project   = { id: string; name: string };
 type BomEntry  = { id: string; projectId: string; unitModel: string; unitType: string; status: string; materialName: string | null; activityName: string | null };
 type Material  = { id: string; name: string; unit: string; code: string };
 
-const inputCls = "block w-full px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 text-sm focus:outline-none focus:border-blue-500 placeholder-zinc-500";
-const labelCls = "block text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-1.5";
+const inputStyle: React.CSSProperties = {
+  display: "block", width: "100%", padding: "0.6rem 0.8rem",
+  border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "0.875rem",
+  boxSizing: "border-box", color: "#374151", background: "#fff",
+};
+const labelStyle: React.CSSProperties = {
+  display: "block", fontSize: "0.8rem", fontWeight: 600, color: "#374151",
+  textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "0.4rem",
+};
 
 export function NewVarianceForm({ projects, bomEntries, materials }: {
   projects: Project[];
@@ -70,15 +77,17 @@ export function NewVarianceForm({ projects, bomEntries, materials }: {
   }
 
   return (
-    <form className="space-y-5">
+    <form style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {error && (
-        <div className="bg-red-900/30 border border-red-700/50 rounded-lg px-4 py-3 text-sm text-red-300">{error}</div>
+        <div style={{ padding: "0.85rem 1rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.875rem" }}>
+          {error}
+        </div>
       )}
 
       {/* Project */}
       <div>
-        <label className={labelCls}>Project *</label>
-        <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setBomEntryId(""); }} className={inputCls} required>
+        <label style={labelStyle}>Project *</label>
+        <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setBomEntryId(""); }} style={inputStyle} required>
           <option value="">Select project…</option>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
@@ -86,16 +95,20 @@ export function NewVarianceForm({ projects, bomEntries, materials }: {
 
       {/* Request Type */}
       <div>
-        <label className={labelCls}>Request Type *</label>
-        <div className="flex gap-3">
+        <label style={labelStyle}>Request Type *</label>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
           {(["BOM_CHANGE", "PROCUREMENT_VARIANCE"] as const).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setRequestType(t)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                requestType === t ? "bg-blue-600 text-white" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-              }`}
+              style={{
+                padding: "0.55rem 1.1rem", borderRadius: "6px", fontSize: "0.875rem", fontWeight: 600,
+                cursor: "pointer", border: "1px solid",
+                background: requestType === t ? "#1a56db" : "#fff",
+                color: requestType === t ? "#fff" : "#374151",
+                borderColor: requestType === t ? "#1a56db" : "#d1d5db",
+              }}
             >
               {t === "BOM_CHANGE" ? "BOM Change" : "Procurement Variance"}
             </button>
@@ -106,8 +119,8 @@ export function NewVarianceForm({ projects, bomEntries, materials }: {
       {requestType === "BOM_CHANGE" && (
         <>
           <div>
-            <label className={labelCls}>Affected BOM Entry (optional)</label>
-            <select value={bomEntryId} onChange={(e) => setBomEntryId(e.target.value)} className={inputCls} disabled={!projectId}>
+            <label style={labelStyle}>Affected BOM Entry (optional)</label>
+            <select value={bomEntryId} onChange={(e) => setBomEntryId(e.target.value)} style={inputStyle} disabled={!projectId}>
               <option value="">Select approved BOM entry…</option>
               {projectBomEntries.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -116,27 +129,27 @@ export function NewVarianceForm({ projects, bomEntries, materials }: {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
             <div>
-              <label className={labelCls}>Change Type</label>
-              <select value={bomChangeType} onChange={(e) => setBomChangeType(e.target.value as "ADD" | "MODIFY" | "REMOVE")} className={inputCls}>
+              <label style={labelStyle}>Change Type</label>
+              <select value={bomChangeType} onChange={(e) => setBomChangeType(e.target.value as "ADD" | "MODIFY" | "REMOVE")} style={inputStyle}>
                 <option value="ADD">Add</option>
                 <option value="MODIFY">Modify</option>
                 <option value="REMOVE">Remove</option>
               </select>
             </div>
             <div>
-              <label className={labelCls}>Old Quantity</label>
-              <input type="number" value={oldQty} onChange={(e) => setOldQty(e.target.value)} placeholder="0.0000" step="0.0001" min="0" className={inputCls} />
+              <label style={labelStyle}>Old Quantity</label>
+              <input type="number" value={oldQty} onChange={(e) => setOldQty(e.target.value)} placeholder="0.0000" step="0.0001" min="0" style={inputStyle} />
             </div>
             <div>
-              <label className={labelCls}>New Quantity</label>
-              <input type="number" value={newQty} onChange={(e) => setNewQty(e.target.value)} placeholder="0.0000" step="0.0001" min="0" className={inputCls} />
+              <label style={labelStyle}>New Quantity</label>
+              <input type="number" value={newQty} onChange={(e) => setNewQty(e.target.value)} placeholder="0.0000" step="0.0001" min="0" style={inputStyle} />
             </div>
           </div>
           <div>
-            <label className={labelCls}>New Material (if replacing)</label>
-            <select value={newMaterialId} onChange={(e) => setNewMaterialId(e.target.value)} className={inputCls}>
+            <label style={labelStyle}>New Material (if replacing)</label>
+            <select value={newMaterialId} onChange={(e) => setNewMaterialId(e.target.value)} style={inputStyle}>
               <option value="">No material change</option>
               {materials.map((m) => <option key={m.id} value={m.id}>{m.code} — {m.name} ({m.unit})</option>)}
             </select>
@@ -147,20 +160,20 @@ export function NewVarianceForm({ projects, bomEntries, materials }: {
       {requestType === "PROCUREMENT_VARIANCE" && (
         <>
           <div>
-            <label className={labelCls}>Requested Quantity (overage)</label>
-            <input type="number" value={requestedQty} onChange={(e) => setRequestedQty(e.target.value)} placeholder="0.0000" step="0.0001" min="0" className={inputCls} />
+            <label style={labelStyle}>Requested Quantity (overage)</label>
+            <input type="number" value={requestedQty} onChange={(e) => setRequestedQty(e.target.value)} placeholder="0.0000" step="0.0001" min="0" style={inputStyle} />
           </div>
-          <div className="flex items-center gap-3">
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
             <input
               type="checkbox"
               id="minOrderQty"
               checked={isMinOrderQty}
               onChange={(e) => setIsMinOrderQty(e.target.checked)}
-              className="w-4 h-4 accent-red-500"
+              style={{ width: "1rem", height: "1rem", accentColor: "#dc2626" }}
             />
-            <label htmlFor="minOrderQty" className="text-sm text-zinc-300">
+            <label htmlFor="minOrderQty" style={{ fontSize: "0.875rem", color: "#374151", cursor: "pointer" }}>
               This is a minimum order quantity issue{" "}
-              <span className="text-xs text-red-400">(requires BOD approval)</span>
+              <span style={{ fontSize: "0.78rem", color: "#b91c1c" }}>(requires BOD approval)</span>
             </label>
           </div>
         </>
@@ -168,39 +181,48 @@ export function NewVarianceForm({ projects, bomEntries, materials }: {
 
       {/* Reason */}
       <div>
-        <label className={labelCls}>Justification / Reason *</label>
+        <label style={labelStyle}>Justification / Reason *</label>
         <textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           rows={4}
           placeholder="Explain why this variance is needed…"
-          className={`${inputCls} resize-none`}
+          style={{ ...inputStyle, resize: "none" }}
           required
         />
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3 pt-2">
+      <div style={{ display: "flex", gap: "0.75rem", paddingTop: "0.5rem" }}>
         <button
           type="button"
           onClick={(e) => handleSubmit(e, false)}
           disabled={isPending}
-          className="px-4 py-2.5 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-        >
+          style={{
+            padding: "0.65rem 1.25rem", borderRadius: "6px", background: "#fff",
+            border: "1px solid #d1d5db", color: "#374151", fontSize: "0.875rem",
+            fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer",
+            opacity: isPending ? 0.6 : 1,
+          }}>
           Save as Draft
         </button>
         <button
           type="button"
           onClick={(e) => handleSubmit(e, true)}
           disabled={isPending}
-          className="px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-        >
+          style={{
+            padding: "0.65rem 1.25rem", borderRadius: "6px", background: isPending ? "#93c5fd" : "#1a56db",
+            border: "none", color: "#fff", fontSize: "0.875rem",
+            fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer",
+          }}>
           {isPending ? "Submitting…" : "Submit for Review"}
         </button>
         <a
           href="/planning/variance-requests"
-          className="px-4 py-2.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-sm font-medium transition-colors"
-        >
+          style={{
+            padding: "0.65rem 1.25rem", borderRadius: "6px", border: "1px solid #d1d5db",
+            color: "#374151", fontSize: "0.875rem", textDecoration: "none", display: "inline-flex", alignItems: "center",
+          }}>
           Cancel
         </a>
       </div>
