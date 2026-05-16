@@ -41,13 +41,15 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
       .orderBy(suppliers.name),
 
     db.select({
-        id:            materialSuppliers.id,
-        supplierId:    materialSuppliers.supplierId,
-        supplierName:  suppliers.name,
-        unitPrice:     materialSuppliers.unitPrice,
-        uom:           materialSuppliers.uom,
-        effectiveDate: materialSuppliers.effectiveDate,
-        notes:         materialSuppliers.notes,
+        id:              materialSuppliers.id,
+        supplierId:      materialSuppliers.supplierId,
+        supplierName:    suppliers.name,
+        unitPrice:       materialSuppliers.unitPrice,
+        uom:             materialSuppliers.uom,
+        minimumQuantity: materialSuppliers.minimumQuantity,
+        effectiveDate:   materialSuppliers.effectiveDate,
+        notes:           materialSuppliers.notes,
+        isCurrent:       materialSuppliers.isCurrent,
       })
       .from(materialSuppliers)
       .innerJoin(suppliers, eq(materialSuppliers.supplierId, suppliers.id))
@@ -121,10 +123,12 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
             materialId={id}
             rows={vendorPriceRows.map(r => ({
               ...r,
-              unitPrice: r.unitPrice ?? null,
-              uom: r.uom ?? null,
-              effectiveDate: r.effectiveDate ?? null,
-              notes: r.notes ?? null,
+              unitPrice:       r.unitPrice ?? null,
+              uom:             r.uom ?? null,
+              minimumQuantity: r.minimumQuantity ?? null,
+              effectiveDate:   r.effectiveDate ?? null,
+              notes:           r.notes ?? null,
+              isCurrent:       r.isCurrent,
             }))}
             allSuppliers={supplierRows}
           />

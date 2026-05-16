@@ -24,14 +24,16 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
   const [priceRows, allMaterials] = await Promise.all([
     db
       .select({
-        id:           materialSuppliers.id,
-        materialId:   materialSuppliers.materialId,
-        materialCode: materials.code,
-        materialName: materials.name,
-        unitPrice:    materialSuppliers.unitPrice,
-        uom:          materialSuppliers.uom,
-        effectiveDate: materialSuppliers.effectiveDate,
-        notes:        materialSuppliers.notes,
+        id:              materialSuppliers.id,
+        materialId:      materialSuppliers.materialId,
+        materialCode:    materials.code,
+        materialName:    materials.name,
+        unitPrice:       materialSuppliers.unitPrice,
+        uom:             materialSuppliers.uom,
+        minimumQuantity: materialSuppliers.minimumQuantity,
+        effectiveDate:   materialSuppliers.effectiveDate,
+        notes:           materialSuppliers.notes,
+        isCurrent:       materialSuppliers.isCurrent,
       })
       .from(materialSuppliers)
       .innerJoin(materials, eq(materialSuppliers.materialId, materials.id))
@@ -88,10 +90,12 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
           vendorId={id}
           rows={priceRows.map(r => ({
             ...r,
-            unitPrice: r.unitPrice ?? null,
-            uom: r.uom ?? null,
-            effectiveDate: r.effectiveDate ?? null,
-            notes: r.notes ?? null,
+            unitPrice:       r.unitPrice ?? null,
+            uom:             r.uom ?? null,
+            minimumQuantity: r.minimumQuantity ?? null,
+            effectiveDate:   r.effectiveDate ?? null,
+            notes:           r.notes ?? null,
+            isCurrent:       r.isCurrent,
           }))}
           allMaterials={allMaterials}
         />
