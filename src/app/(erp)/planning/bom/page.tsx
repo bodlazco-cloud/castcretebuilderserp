@@ -85,8 +85,8 @@ export default async function BomRegisterPage({
         matUnit:         materials.unit,
       })
       .from(masterBomEntries)
+      .leftJoin(phaseScopes, eq(masterBomEntries.phaseScopeId, phaseScopes.id))
       .leftJoin(phaseActivities, eq(masterBomEntries.phaseActivityId, phaseActivities.id))
-      .leftJoin(phaseScopes, eq(phaseActivities.scopeId, phaseScopes.id))
       .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
       .where(eq(masterBomEntries.isActive, true))
       .orderBy(phaseScopes.code, phaseActivities.code, masterBomEntries.unitModel, desc(masterBomEntries.createdAt)),
@@ -97,9 +97,9 @@ export default async function BomRegisterPage({
 
   type UnitGroup = { unitModel: string; unitType: string; lines: BomRow[] };
   type ActivityGroup = {
-    phaseActivityId: string;
-    activityCode: string;
-    activityName: string;
+    phaseActivityId: string | null;
+    activityCode: string | null;
+    activityName: string | null;
     unitGroups: Map<string, UnitGroup>;
   };
   type ScopeGroup = {
@@ -117,12 +117,13 @@ export default async function BomRegisterPage({
     }
     const scope = scopeMap.get(sc)!;
 
-    const aid = row.phaseActivityId ?? "unknown";
+    // Group by activity if present, otherwise use a sentinel key for scope-only entries
+    const aid = row.phaseActivityId ?? "__scope_only__";
     if (!scope.activities.has(aid)) {
       scope.activities.set(aid, {
-        phaseActivityId: aid,
-        activityCode:    row.activityCode ?? "",
-        activityName:    row.activityName ?? "",
+        phaseActivityId: row.phaseActivityId,
+        activityCode:    row.activityCode,
+        activityName:    row.activityName,
         unitGroups:      new Map(),
       });
     }
@@ -238,15 +239,17 @@ export default async function BomRegisterPage({
                 </div>
 
                 {Array.from(scope.activities.values()).map((act) => (
-                  <div key={act.phaseActivityId} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                  <div key={act.phaseActivityId ?? "__scope_only__"} style={{ borderBottom: "1px solid #f3f4f6" }}>
 
-                    {/* Activity sub-header */}
-                    <div style={{ padding: "0.55rem 1.25rem", background: "#fafafa", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <span style={{ fontFamily: "monospace", background: "#f3f4f6", color: "#374151", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 700 }}>
-                        {act.activityCode}
-                      </span>
-                      <span style={{ fontSize: "0.82rem", color: "#374151", fontWeight: 500 }}>{act.activityName}</span>
-                    </div>
+                    {/* Activity sub-header — only shown when an activity is linked */}
+                    {act.activityCode && (
+                      <div style={{ padding: "0.55rem 1.25rem", background: "#fafafa", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span style={{ fontFamily: "monospace", background: "#f3f4f6", color: "#374151", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 700 }}>
+                          {act.activityCode}
+                        </span>
+                        <span style={{ fontSize: "0.82rem", color: "#374151", fontWeight: 500 }}>{act.activityName}</span>
+                      </div>
+                    )}
 
                     {Array.from(act.unitGroups.values()).map((ug) => {
                       const draftIds = ug.lines
