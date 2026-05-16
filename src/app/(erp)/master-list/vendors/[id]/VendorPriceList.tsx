@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addVendorPriceEntry, updateVendorPriceEntry, deleteVendorPriceEntry } from "@/actions/master-list";
+import { addVendorPriceEntry, updateVendorPriceEntry, deleteVendorPriceEntry, deleteVendorPriceHistoryEntry } from "@/actions/master-list";
 
 type MaterialOption = { id: string; code: string; name: string; unit: string };
 
@@ -16,7 +16,19 @@ type PriceRow = {
   minimumQuantity: string | null;
   effectiveDate: string | null;
   notes: string | null;
-  isCurrent: boolean;
+};
+
+type HistoryRow = {
+  id: string;
+  materialId: string;
+  materialCode: string;
+  materialName: string;
+  unitPrice: string | null;
+  uom: string | null;
+  minimumQuantity: string | null;
+  effectiveDate: string | null;
+  notes: string | null;
+  supersededAt: string;
 };
 
 const TH: React.CSSProperties = { padding: "0.6rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb", fontSize: "0.8rem", whiteSpace: "nowrap" };
@@ -187,14 +199,14 @@ function AddPriceForm({ vendorId, materials }: { vendorId: string; materials: Ma
   );
 }
 
-function HistorySection({ rows, vendorId }: { rows: PriceRow[]; vendorId: string }) {
+function HistorySection({ rows, vendorId }: { rows: HistoryRow[]; vendorId: string }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function del(id: string, materialId: string) {
     startTransition(async () => {
-      await deleteVendorPriceEntry(id, vendorId, materialId);
+      await deleteVendorPriceHistoryEntry(id, vendorId, materialId);
       router.refresh();
     });
   }
@@ -217,7 +229,7 @@ function HistorySection({ rows, vendorId }: { rows: PriceRow[]; vendorId: string
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#f9fafb" }}>
-                {["Material", "Unit Price", "UOM", "Min. Qty", "Effective Date", "Notes", ""].map((h, i) => (
+                {["Material", "Unit Price", "UOM", "Min. Qty", "Effective Date", "Superseded On", "Notes", ""].map((h, i) => (
                   <th key={i} style={{ ...TH, color: "#9ca3af" }}>{h}</th>
                 ))}
               </tr>
@@ -233,7 +245,8 @@ function HistorySection({ rows, vendorId }: { rows: PriceRow[]; vendorId: string
                   <td style={{ ...TD, color: "#9ca3af" }}>{row.uom ?? "—"}</td>
                   <td style={{ ...TD, color: "#9ca3af" }}>{row.minimumQuantity ? Number(row.minimumQuantity).toLocaleString("en-PH", { maximumFractionDigits: 4 }) : "—"}</td>
                   <td style={{ ...TD, color: "#9ca3af" }}>{row.effectiveDate ?? "—"}</td>
-                  <td style={{ ...TD, color: "#9ca3af", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.notes ?? "—"}</td>
+                  <td style={{ ...TD, color: "#9ca3af" }}>{new Date(row.supersededAt).toLocaleDateString("en-PH", { dateStyle: "medium" })}</td>
+                  <td style={{ ...TD, color: "#9ca3af", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.notes ?? "—"}</td>
                   <td style={{ ...TD, whiteSpace: "nowrap" }}>
                     <button onClick={() => del(row.id, row.materialId)} disabled={pending} style={BTN_SM("#ef4444")}>Delete</button>
                   </td>
@@ -247,20 +260,17 @@ function HistorySection({ rows, vendorId }: { rows: PriceRow[]; vendorId: string
   );
 }
 
-export default function VendorPriceList({ vendorId, rows, allMaterials }: { vendorId: string; rows: PriceRow[]; allMaterials: MaterialOption[] }) {
+export default function VendorPriceList({ vendorId, rows, historyRows, allMaterials }: { vendorId: string; rows: PriceRow[]; historyRows: HistoryRow[]; allMaterials: MaterialOption[] }) {
   const [editing, setEditing] = useState<string | null>(null);
-
-  const current = rows.filter(r => r.isCurrent);
-  const history = rows.filter(r => !r.isCurrent);
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
-        <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#374151" }}>Price List Roster ({current.length} materials)</h2>
+        <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#374151" }}>Price List Roster ({rows.length} materials)</h2>
         <AddPriceForm vendorId={vendorId} materials={allMaterials} />
       </div>
 
-      {current.length === 0 ? (
+      {rows.length === 0 ? (
         <div style={{ padding: "1.5rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af", fontSize: "0.875rem" }}>
           No materials on this vendor's price list yet. Click "+ Add / Update Price" to start.
         </div>
@@ -275,7 +285,7 @@ export default function VendorPriceList({ vendorId, rows, allMaterials }: { vend
               </tr>
             </thead>
             <tbody>
-              {current.map(row =>
+              {rows.map(row =>
                 editing === row.id
                   ? <EditRow key={row.id} row={row} vendorId={vendorId} onDone={() => setEditing(null)} />
                   : <PriceRowView key={row.id} row={row} vendorId={vendorId} onEdit={() => setEditing(row.id)} />
@@ -285,7 +295,7 @@ export default function VendorPriceList({ vendorId, rows, allMaterials }: { vend
         </div>
       )}
 
-      {history.length > 0 && <HistorySection rows={history} vendorId={vendorId} />}
+      {historyRows.length > 0 && <HistorySection rows={historyRows} vendorId={vendorId} />}
     </div>
   );
 }

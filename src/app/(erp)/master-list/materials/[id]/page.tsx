@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { materials, suppliers, bomStandards, activityDefinitions, materialSuppliers } from "@/db/schema";
+import { materials, suppliers, bomStandards, activityDefinitions, materialSuppliers, vendorPriceHistory } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
@@ -34,7 +34,7 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
 
   if (!mat) notFound();
 
-  const [supplierRows, vendorPriceRows, bomRows] = await Promise.all([
+  const [supplierRows, vendorPriceRows, vendorHistoryRows, bomRows] = await Promise.all([
     db.select({ id: suppliers.id, name: suppliers.name })
       .from(suppliers)
       .where(eq(suppliers.isActive, true))
@@ -49,12 +49,27 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
         minimumQuantity: materialSuppliers.minimumQuantity,
         effectiveDate:   materialSuppliers.effectiveDate,
         notes:           materialSuppliers.notes,
-        isCurrent:       materialSuppliers.isCurrent,
       })
       .from(materialSuppliers)
       .innerJoin(suppliers, eq(materialSuppliers.supplierId, suppliers.id))
       .where(eq(materialSuppliers.materialId, id))
       .orderBy(suppliers.name),
+
+    db.select({
+        id:              vendorPriceHistory.id,
+        supplierId:      vendorPriceHistory.supplierId,
+        supplierName:    suppliers.name,
+        unitPrice:       vendorPriceHistory.unitPrice,
+        uom:             vendorPriceHistory.uom,
+        minimumQuantity: vendorPriceHistory.minimumQuantity,
+        effectiveDate:   vendorPriceHistory.effectiveDate,
+        notes:           vendorPriceHistory.notes,
+        supersededAt:    vendorPriceHistory.supersededAt,
+      })
+      .from(vendorPriceHistory)
+      .innerJoin(suppliers, eq(vendorPriceHistory.supplierId, suppliers.id))
+      .where(eq(vendorPriceHistory.materialId, id))
+      .orderBy(vendorPriceHistory.supersededAt),
 
     db.select({
         id:              bomStandards.id,
@@ -128,7 +143,15 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
               minimumQuantity: r.minimumQuantity ?? null,
               effectiveDate:   r.effectiveDate ?? null,
               notes:           r.notes ?? null,
-              isCurrent:       r.isCurrent,
+            }))}
+            historyRows={vendorHistoryRows.map(r => ({
+              ...r,
+              unitPrice:       r.unitPrice ?? null,
+              uom:             r.uom ?? null,
+              minimumQuantity: r.minimumQuantity ?? null,
+              effectiveDate:   r.effectiveDate ?? null,
+              notes:           r.notes ?? null,
+              supersededAt:    String(r.supersededAt),
             }))}
             allSuppliers={supplierRows}
           />

@@ -133,3 +133,15 @@ export const materialSuppliers = pgTable("material_suppliers", {
   isCurrent:       boolean("is_current").notNull().default(true),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const vendorPriceHistory = pgTable("vendor_price_history", {
+  id:              uuid("id").primaryKey().defaultRandom(),
+  supplierId:      uuid("supplier_id").notNull().references(() => suppliers.id, { onDelete: "cascade" }),
+  materialId:      uuid("material_id").notNull().references(() => materials.id, { onDelete: "cascade" }),
+  unitPrice:       numeric("unit_price", { precision: 12, scale: 2 }),
+  uom:             varchar("uom", { length: 30 }),
+  minimumQuantity: numeric("minimum_quantity", { precision: 12, scale: 4 }),
+  effectiveDate:   date("effective_date"),
+  notes:           text("notes"),
+  supersededAt:    timestamp("superseded_at", { withTimezone: true }).notNull().defaultNow(),
+});
