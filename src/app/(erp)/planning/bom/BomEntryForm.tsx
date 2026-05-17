@@ -7,7 +7,7 @@ type Project       = { id: string; name: string };
 type PhaseScope    = { id: string; code: string; name: string; categoryId: string };
 type PhaseActivity = { id: string; scopeId: string; code: string; name: string };
 type UnitModel     = { projectId: string; unitModel: string };
-type Material      = { id: string; code: string; name: string; unit: string };
+type Material      = { id: string; code: string; name: string; unit: string; adminPrice: string | null; preferredSupplierId: string | null };
 type Vendor        = { id: string; name: string };
 
 const ACCENT = "#1a56db";
@@ -62,11 +62,23 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
   function setLine(i: number, field: keyof LineItem, val: string) {
     setLines((l) => l.map((line, idx) => idx === i ? { ...line, [field]: val } : line));
   }
+  function setLineFields(i: number, fields: Partial<LineItem>) {
+    setLines((l) => l.map((line, idx) => idx === i ? { ...line, ...fields } : line));
+  }
   function lineTotal(line: LineItem) {
     const q = parseFloat(line.qty);
     const p = parseFloat(line.unitPrice);
     if (!isNaN(q) && !isNaN(p)) return (q * p).toLocaleString("en-PH", { minimumFractionDigits: 2 });
     return "—";
+  }
+
+  function handleMaterialChange(i: number, matId: string) {
+    const mat = materials.find((m) => m.id === matId);
+    setLineFields(i, {
+      materialId:          matId,
+      unitPrice:           mat?.adminPrice ?? "",
+      preferredSupplierId: mat?.preferredSupplierId ?? "",
+    });
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -218,7 +230,8 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
                 {lines.map((line, i) => (
                   <tr key={i} style={{ borderBottom: i < lines.length - 1 ? "1px solid #f3f4f6" : "none" }}>
                     <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <select value={line.materialId} onChange={(e) => setLine(i, "materialId", e.target.value)}
+                      <select value={line.materialId}
+                        onChange={(e) => handleMaterialChange(i, e.target.value)}
                         style={{ ...inputStyle, margin: 0 }}>
                         <option value="">Select material…</option>
                         {materials.map((m) => (
