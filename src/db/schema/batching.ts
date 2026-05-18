@@ -5,6 +5,7 @@ import { users } from "./core";
 import { projects } from "./projects";
 import { projectUnits } from "./units";
 import { unitTypeEnum } from "./enums";
+import { materials } from "./admin";
 
 export const mixDesigns = pgTable("mix_designs", {
   id:                  uuid("id").primaryKey().defaultRandom(),
@@ -72,6 +73,37 @@ export const standardMixes = pgTable("standard_mixes", {
   isActive:          boolean("is_active").notNull().default(true),
   createdBy:         uuid("created_by").references(() => users.id),
   createdAt:         timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const mixDesignBom = pgTable("mix_design_bom", {
+  id:               uuid("id").primaryKey().defaultRandom(),
+  mixDesignId:      uuid("mix_design_id").notNull().references(() => mixDesigns.id, { onDelete: "cascade" }),
+  materialId:       uuid("material_id").notNull().references(() => materials.id),
+  requiredQuantity: numeric("required_quantity", { precision: 10, scale: 4 }).notNull(),
+  unitOfMeasure:    varchar("unit_of_measure", { length: 10 }).notNull(),
+  sortOrder:        numeric("sort_order", { precision: 5, scale: 0 }).default("0"),
+  notes:            text("notes"),
+  createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// IPO status: PENDING → ACCEPTED → IN_PRODUCTION → DELIVERED → BILLED
+export const internalPurchaseOrders = pgTable("internal_purchase_orders", {
+  id:                uuid("id").primaryKey().defaultRandom(),
+  ipoNumber:         varchar("ipo_number", { length: 50 }).notNull().unique(),
+  projectId:         uuid("project_id").notNull().references(() => projects.id),
+  unitId:            uuid("unit_id").notNull().references(() => projectUnits.id),
+  mixDesignId:       uuid("mix_design_id").notNull().references(() => mixDesigns.id),
+  requestedVolumeM3: numeric("requested_volume_m3", { precision: 10, scale: 4 }).notNull(),
+  status:            varchar("status", { length: 20 }).notNull().default("PENDING"),
+  triggeredBy:       varchar("triggered_by", { length: 100 }),
+  internalRatePerM3: numeric("internal_rate_per_m3", { precision: 15, scale: 2 }),
+  requestedBy:       uuid("requested_by").references(() => users.id),
+  acceptedBy:        uuid("accepted_by").references(() => users.id),
+  acceptedAt:        timestamp("accepted_at", { withTimezone: true }),
+  productionLogId:   uuid("production_log_id").references(() => batchingProductionLogs.id),
+  notes:             text("notes"),
+  createdAt:         timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:         timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const batchingInternalSales = pgTable("batching_internal_sales", {
