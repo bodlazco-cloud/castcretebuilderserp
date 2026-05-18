@@ -10,6 +10,7 @@ type Material = {
   supId: string | null;
 };
 type Supplier = { id: string; name: string };
+type VendorPrice = { supplierId: string; unitPrice: string | null };
 
 const inputStyle: React.CSSProperties = {
   display: "block", width: "100%", padding: "0.55rem 0.8rem",
@@ -19,11 +20,33 @@ const labelStyle: React.CSSProperties = {
   display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#374151", marginBottom: "0.3rem",
 };
 
-export function EditMaterialForm({ material, suppliers }: { material: Material; suppliers: Supplier[] }) {
+export function EditMaterialForm({
+  material, suppliers, vendorPrices = [],
+}: {
+  material: Material;
+  suppliers: Supplier[];
+  vendorPrices?: VendorPrice[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const [supId, setSupId] = useState(material.supId ?? "");
+  const [adminPrice, setAdminPrice] = useState(material.adminPrice);
+  const [autoFilled, setAutoFilled] = useState(false);
+
+  function handleSupplierChange(newSupId: string) {
+    setSupId(newSupId);
+    setAutoFilled(false);
+    if (newSupId) {
+      const match = vendorPrices.find(v => v.supplierId === newSupId);
+      if (match?.unitPrice) {
+        setAdminPrice(Number(match.unitPrice).toFixed(2));
+        setAutoFilled(true);
+      }
+    }
+  }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,9 +58,9 @@ export function EditMaterialForm({ material, suppliers }: { material: Material; 
         id:                  material.id,
         name:                fd.get("name") as string,
         unit:                fd.get("unit") as string,
-        adminPrice:          Number(fd.get("adminPrice")),
+        adminPrice:          Number(adminPrice),
         minimumQuantity:     minQty ? Number(minQty) : undefined,
-        preferredSupplierId: (fd.get("preferredSupplierId") as string) || undefined,
+        preferredSupplierId: supId || undefined,
       });
       if (result.success) { setOpen(false); router.refresh(); }
       else setError(result.error ?? "Error saving.");
@@ -74,22 +97,41 @@ export function EditMaterialForm({ material, suppliers }: { material: Material; 
               </label>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-              <label>
-                <span style={labelStyle}>Admin Price (PHP) *</span>
-                <input name="adminPrice" type="number" min="0" step="0.01" required defaultValue={material.adminPrice} style={inputStyle} />
-              </label>
+              <div>
+                <label style={labelStyle}>Admin Price (PHP) *</label>
+                <input
+                  name="adminPrice" type="number" min="0" step="0.01" required
+                  value={adminPrice}
+                  onChange={e => { setAdminPrice(e.target.value); setAutoFilled(false); }}
+                  style={{ ...inputStyle, borderColor: autoFilled ? "#6366f1" : "#d1d5db" }}
+                />
+                {autoFilled && (
+                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.72rem", color: "#6366f1" }}>
+                    ✓ Auto-filled from vendor's price list
+                  </p>
+                )}
+              </div>
               <label>
                 <span style={labelStyle}>Minimum Quantity</span>
                 <input name="minimumQuantity" type="number" min="0" step="0.0001" defaultValue={material.minimumQuantity ?? ""} style={inputStyle} />
               </label>
             </div>
-            <label>
-              <span style={labelStyle}>Preferred Supplier</span>
-              <select name="preferredSupplierId" defaultValue={material.supId ?? ""} style={inputStyle}>
+            <div>
+              <label style={labelStyle}>Preferred Supplier</label>
+              <select
+                value={supId}
+                onChange={e => handleSupplierChange(e.target.value)}
+                style={inputStyle}
+              >
                 <option value="">— None —</option>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
-            </label>
+              {supId && !vendorPrices.find(v => v.supplierId === supId)?.unitPrice && (
+                <p style={{ margin: "0.25rem 0 0", fontSize: "0.72rem", color: "#9ca3af" }}>
+                  This vendor has no price listed for this material yet.
+                </p>
+              )}
+            </div>
             {error && (
               <div style={{ padding: "0.65rem 0.9rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.8rem" }}>{error}</div>
             )}

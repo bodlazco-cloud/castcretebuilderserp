@@ -105,6 +105,7 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
           <EditMaterialForm
             material={{ id: mat.id, name: mat.name, unit: mat.unit, adminPrice: mat.adminPrice, minimumQuantity: mat.minimumQuantity ?? null, supId: mat.supId ?? null }}
             suppliers={supplierRows}
+            vendorPrices={vendorPriceRows.map(r => ({ supplierId: r.supplierId, unitPrice: r.unitPrice ?? null }))}
           />
         </div>
 
