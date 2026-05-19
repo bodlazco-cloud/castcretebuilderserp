@@ -8,7 +8,7 @@ const ACCENT = "#1a56db";
 interface Props {
   projects: { id: string; name: string }[];
   mixDesigns: { id: string; code: string; name: string }[];
-  units: { id: string; unitLabel: string; projectId: string }[];
+  units: { id: string; unitCode: string; projectId: string }[];
   userId: string;
 }
 
@@ -103,7 +103,7 @@ export function CreateIPOForm({ projects, mixDesigns, units, userId }: Props) {
                     <label style={labelStyle}>Site Unit</label>
                     <select name="unitId" required style={inputStyle}>
                       <option value="">Select unit…</option>
-                      {filteredUnits.map((u) => <option key={u.id} value={u.id}>{u.unitLabel}</option>)}
+                      {filteredUnits.map((u) => <option key={u.id} value={u.id}>{u.unitCode}</option>)}
                     </select>
                   </div>
                   <div>

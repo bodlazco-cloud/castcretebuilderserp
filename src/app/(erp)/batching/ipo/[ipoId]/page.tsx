@@ -46,7 +46,7 @@ export default async function IPODetailPage({
       mixStatus:         mixDesigns.status,
       projName:          projects.name,
       projId:            projects.id,
-      unitLabel:         projectUnits.unitLabel,
+      unitCode:          projectUnits.unitCode,
     })
     .from(internalPurchaseOrders)
     .leftJoin(mixDesigns, eq(internalPurchaseOrders.mixDesignId, mixDesigns.id))
@@ -107,7 +107,7 @@ export default async function IPODetailPage({
                 {ipo.ipoNumber}
               </h1>
               <p style={{ margin: 0, color: "#6b7280", fontSize: "0.875rem" }}>
-                {ipo.projName} · Unit: {ipo.unitLabel ?? "—"}
+                {ipo.projName} · Unit: {ipo.unitCode ?? "—"}
               </p>
             </div>
             <span style={{

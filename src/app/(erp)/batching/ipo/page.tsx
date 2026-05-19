@@ -57,7 +57,7 @@ export default async function IPOPage() {
         mixCode:           mixDesigns.code,
         mixName:           mixDesigns.name,
         projName:          projects.name,
-        unitLabel:         projectUnits.unitLabel,
+        unitCode:          projectUnits.unitCode,
       })
       .from(internalPurchaseOrders)
       .leftJoin(mixDesigns, eq(internalPurchaseOrders.mixDesignId, mixDesigns.id))
@@ -72,9 +72,9 @@ export default async function IPOPage() {
       .where(eq(mixDesigns.isActive, true))
       .orderBy(mixDesigns.code),
     db
-      .select({ id: projectUnits.id, unitLabel: projectUnits.unitLabel, projectId: projectUnits.projectId })
+      .select({ id: projectUnits.id, unitCode: projectUnits.unitCode, projectId: projectUnits.projectId })
       .from(projectUnits)
-      .orderBy(projectUnits.unitLabel),
+      .orderBy(projectUnits.unitCode),
   ]);
 
   const byStatus = Object.fromEntries(kpiRows.map((r) => [r.status, Number(r.cnt)]));
@@ -178,7 +178,7 @@ export default async function IPOPage() {
                         <StatusPill status={row.status} />
                       </td>
                       <td style={{ padding: "0.65rem 1rem", color: "#374151", fontWeight: 500 }}>{row.projName ?? "—"}</td>
-                      <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>{row.unitLabel ?? "—"}</td>
+                      <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>{row.unitCode ?? "—"}</td>
                       <td style={{ padding: "0.65rem 1rem" }}>
                         <div style={{ fontFamily: "monospace", fontWeight: 600, fontSize: "0.8rem", color: "#374151" }}>{row.mixCode ?? "—"}</div>
                         <div style={{ fontSize: "0.72rem", color: "#9ca3af" }}>{row.mixName ?? ""}</div>
