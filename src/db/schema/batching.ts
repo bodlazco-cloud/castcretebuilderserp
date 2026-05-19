@@ -4,7 +4,7 @@ import {
 import { users } from "./core";
 import { projects } from "./projects";
 import { projectUnits } from "./units";
-import { unitTypeEnum } from "./enums";
+import { unitTypeEnum, bomStatusEnum } from "./enums";
 import { materials } from "./admin";
 
 export const mixDesigns = pgTable("mix_designs", {
@@ -17,9 +17,13 @@ export const mixDesigns = pgTable("mix_designs", {
   gravelKgPerM3:       numeric("gravel_kg_per_m3", { precision: 10, scale: 4 }).notNull(),
   waterLitersPerM3:    numeric("water_liters_per_m3", { precision: 8, scale: 4 }).notNull(),
   isActive:            boolean("is_active").notNull().default(true),
+  status:              bomStatusEnum("status").notNull().default("DRAFT"),
   createdBy:           uuid("created_by").notNull().references(() => users.id),
+  submittedBy:         uuid("submitted_by").references(() => users.id),
+  submittedAt:         timestamp("submitted_at", { withTimezone: true }),
   approvedBy:          uuid("approved_by").references(() => users.id),
   approvedAt:          timestamp("approved_at", { withTimezone: true }),
+  rejectionReason:     text("rejection_reason"),
   createdAt:           timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

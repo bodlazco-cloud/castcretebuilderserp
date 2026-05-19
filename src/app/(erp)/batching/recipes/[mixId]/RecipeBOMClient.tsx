@@ -25,6 +25,8 @@ interface Material {
 interface Props {
   mixId: string;
   mixCode: string;
+  isLocked?: boolean;
+  lockedReason?: string;
   initialItems: BomItem[];
   allMaterials: Material[];
 }
@@ -38,7 +40,7 @@ const labelStyle: React.CSSProperties = {
   display: "block", fontSize: "0.72rem", fontWeight: 600, color: "#6b7280", marginBottom: "0.2rem",
 };
 
-export function RecipeBOMClient({ mixId, mixCode, initialItems, allMaterials }: Props) {
+export function RecipeBOMClient({ mixId, mixCode, isLocked = false, lockedReason, initialItems, allMaterials }: Props) {
   const [items, setItems] = useState<BomItem[]>(initialItems);
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,20 +107,34 @@ export function RecipeBOMClient({ mixId, mixCode, initialItems, allMaterials }: 
             Raw material breakdown per 1 m³ of {mixCode}
           </p>
         </div>
-        <button
-          onClick={() => setShowAdd((v) => !v)}
-          style={{
-            padding: "0.45rem 0.85rem", background: showAdd ? "#f3f4f6" : ACCENT,
-            color: showAdd ? "#374151" : "#fff", border: "none", borderRadius: "6px",
-            fontSize: "0.78rem", fontWeight: 600, cursor: "pointer",
-          }}
-        >
-          {showAdd ? "Cancel" : "+ Add Ingredient"}
-        </button>
+        {!isLocked && (
+          <button
+            onClick={() => setShowAdd((v) => !v)}
+            style={{
+              padding: "0.45rem 0.85rem", background: showAdd ? "#f3f4f6" : ACCENT,
+              color: showAdd ? "#374151" : "#fff", border: "none", borderRadius: "6px",
+              fontSize: "0.78rem", fontWeight: 600, cursor: "pointer",
+            }}
+          >
+            {showAdd ? "Cancel" : "+ Add Ingredient"}
+          </button>
+        )}
+        {isLocked && (
+          <span style={{ fontSize: "0.72rem", color: "#9ca3af", fontStyle: "italic" }}>
+            🔒 Locked
+          </span>
+        )}
       </div>
 
+      {/* Locked notice */}
+      {isLocked && lockedReason && (
+        <div style={{ padding: "0.65rem 1.5rem", background: "#f9fafb", borderBottom: "1px solid #f3f4f6", fontSize: "0.78rem", color: "#6b7280" }}>
+          {lockedReason}
+        </div>
+      )}
+
       {/* Add form */}
-      {showAdd && (
+      {!isLocked && showAdd && (
         <form onSubmit={handleAdd} style={{ padding: "1rem 1.5rem", background: "#f9fafb", borderBottom: "1px solid #f3f4f6" }}>
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "0.65rem", alignItems: "end" }}>
             <div>
@@ -199,18 +215,20 @@ export function RecipeBOMClient({ mixId, mixCode, initialItems, allMaterials }: 
                     {item.notes ?? "—"}
                   </td>
                   <td style={{ padding: "0.65rem 0.75rem" }}>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      disabled={isPending}
-                      title="Remove ingredient"
-                      style={{
-                        padding: "0.2rem 0.45rem", background: "transparent",
-                        border: "1px solid #fca5a5", borderRadius: "4px",
-                        color: "#dc2626", fontSize: "0.7rem", cursor: "pointer",
-                      }}
-                    >
-                      ✕
-                    </button>
+                    {!isLocked && (
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        disabled={isPending}
+                        title="Remove ingredient"
+                        style={{
+                          padding: "0.2rem 0.45rem", background: "transparent",
+                          border: "1px solid #fca5a5", borderRadius: "4px",
+                          color: "#dc2626", fontSize: "0.7rem", cursor: "pointer",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

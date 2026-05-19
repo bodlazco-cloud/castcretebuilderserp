@@ -6,29 +6,41 @@ import { eq, asc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { RecipeBOMClient } from "./RecipeBOMClient";
+import { ApprovalBar } from "./ApprovalBar";
 
 const ACCENT = "#1a56db";
+
+const STATUS_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+  DRAFT:          { bg: "#f3f4f6", color: "#374151", label: "Draft" },
+  PENDING_REVIEW: { bg: "#fef3c7", color: "#92400e", label: "Pending Review" },
+  APPROVED:       { bg: "#ecfdf5", color: "#065f46", label: "Approved — Locked" },
+  REJECTED:       { bg: "#fef2f2", color: "#dc2626", label: "Rejected" },
+};
 
 export default async function RecipeDetailPage({
   params,
 }: {
   params: Promise<{ mixId: string }>;
 }) {
-  await getAuthUser();
+  const user = await getAuthUser();
   const { mixId } = await params;
 
   const [mix] = await db
     .select({
-      id:          mixDesigns.id,
-      code:        mixDesigns.code,
-      name:        mixDesigns.name,
-      isActive:    mixDesigns.isActive,
-      projName:    projects.name,
-      cementBags:  mixDesigns.cementBagsPerM3,
-      sandKg:      mixDesigns.sandKgPerM3,
-      gravelKg:    mixDesigns.gravelKgPerM3,
-      waterLiters: mixDesigns.waterLitersPerM3,
-      createdAt:   mixDesigns.createdAt,
+      id:             mixDesigns.id,
+      code:           mixDesigns.code,
+      name:           mixDesigns.name,
+      isActive:       mixDesigns.isActive,
+      status:         mixDesigns.status,
+      rejectionReason: mixDesigns.rejectionReason,
+      submittedAt:    mixDesigns.submittedAt,
+      approvedAt:     mixDesigns.approvedAt,
+      projName:       projects.name,
+      cementBags:     mixDesigns.cementBagsPerM3,
+      sandKg:         mixDesigns.sandKgPerM3,
+      gravelKg:       mixDesigns.gravelKgPerM3,
+      waterLiters:    mixDesigns.waterLitersPerM3,
+      createdAt:      mixDesigns.createdAt,
     })
     .from(mixDesigns)
     .leftJoin(projects, eq(mixDesigns.projectId, projects.id))
@@ -47,7 +59,6 @@ export default async function RecipeDetailPage({
       notes:            mixDesignBom.notes,
       materialName:     materials.name,
       materialCode:     materials.code,
-      materialUnit:     materials.unit,
     })
     .from(mixDesignBom)
     .leftJoin(materials, eq(mixDesignBom.materialId, materials.id))
@@ -59,6 +70,9 @@ export default async function RecipeDetailPage({
     .from(materials)
     .where(eq(materials.isActive, true))
     .orderBy(materials.name);
+
+  const statusStyle = STATUS_STYLES[mix.status] ?? STATUS_STYLES["DRAFT"];
+  const isLocked = mix.status === "APPROVED" || mix.status === "PENDING_REVIEW";
 
   return (
     <main style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui, sans-serif" }}>
@@ -72,23 +86,42 @@ export default async function RecipeDetailPage({
         {/* Mix Profile Card */}
         <div style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.25rem" }}>
           <div style={{ borderBottom: "1px solid #f3f4f6", paddingBottom: "1rem", marginBottom: "1.25rem" }}>
-            <span style={{ fontSize: "0.72rem", fontWeight: 700, color: ACCENT, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Master Mix Profile
-            </span>
-            <h1 style={{ margin: "0.2rem 0 0.15rem", fontSize: "1.6rem", fontWeight: 700, color: "#111827", fontFamily: "monospace" }}>
-              {mix.code}
-            </h1>
-            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.875rem" }}>{mix.name}</p>
-            {mix.projName && (
-              <p style={{ margin: "0.2rem 0 0", color: "#9ca3af", fontSize: "0.78rem" }}>
-                Project: {mix.projName}
-              </p>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+              <div>
+                <span style={{ fontSize: "0.72rem", fontWeight: 700, color: ACCENT, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  Master Mix Profile
+                </span>
+                <h1 style={{ margin: "0.2rem 0 0.15rem", fontSize: "1.6rem", fontWeight: 700, color: "#111827", fontFamily: "monospace" }}>
+                  {mix.code}
+                </h1>
+                <p style={{ margin: 0, color: "#6b7280", fontSize: "0.875rem" }}>{mix.name}</p>
+                {mix.projName && (
+                  <p style={{ margin: "0.2rem 0 0", color: "#9ca3af", fontSize: "0.78rem" }}>Project: {mix.projName}</p>
+                )}
+              </div>
+
+              {/* Status badge */}
+              <span style={{
+                display: "inline-block", padding: "0.35rem 0.85rem", borderRadius: "999px",
+                fontSize: "0.78rem", fontWeight: 700,
+                background: statusStyle.bg, color: statusStyle.color,
+                whiteSpace: "nowrap", alignSelf: "flex-start",
+              }}>
+                {statusStyle.label}
+              </span>
+            </div>
+
+            {/* Rejection banner */}
+            {mix.status === "REJECTED" && mix.rejectionReason && (
+              <div style={{ marginTop: "0.75rem", padding: "0.65rem 0.85rem", background: "#fef2f2", borderLeft: "3px solid #dc2626", borderRadius: "4px", fontSize: "0.8rem", color: "#dc2626" }}>
+                <strong>Rejection reason:</strong> {mix.rejectionReason}
+              </div>
             )}
           </div>
 
           {/* Legacy ratio grid */}
           <div>
-            <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#6b7280", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "0.65rem" }}>
+            <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#6b7280", letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: "0.65rem" }}>
               Design Ratios (per 1 m³)
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "0.65rem" }}>
@@ -107,10 +140,26 @@ export default async function RecipeDetailPage({
           </div>
         </div>
 
-        {/* Recipe BOM (client-side for add/delete) */}
+        {/* Approval action bar (client component) */}
+        <ApprovalBar
+          mixId={mix.id}
+          mixCode={mix.code}
+          status={mix.status}
+          userId={user?.id ?? ""}
+        />
+
+        {/* Recipe BOM (locked when APPROVED or PENDING_REVIEW) */}
         <RecipeBOMClient
           mixId={mix.id}
           mixCode={mix.code}
+          isLocked={isLocked}
+          lockedReason={
+            mix.status === "APPROVED"
+              ? "This mix design is approved and locked. Clone it as a new version to propose changes."
+              : mix.status === "PENDING_REVIEW"
+              ? "This mix design is under review and cannot be edited until a decision is made."
+              : undefined
+          }
           initialItems={bomItems.map((b) => ({
             id:               b.id,
             materialId:       b.materialId ?? "",

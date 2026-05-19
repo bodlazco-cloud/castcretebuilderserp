@@ -9,6 +9,133 @@ import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
+// ── Mix Design Approval Workflow ──────────────────────────────────────────────
+// Status flow: DRAFT → PENDING_REVIEW → APPROVED (locked) / REJECTED (editable)
+// APPROVED mix designs are immutable. To change one, clone it as a new version.
+
+export type MixDesignActionResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function submitMixDesignForApproval(
+  id: string,
+  submittedBy: string,
+): Promise<MixDesignActionResult> {
+  const [mix] = await db.select({ status: mixDesigns.status }).from(mixDesigns).where(eq(mixDesigns.id, id)).limit(1);
+  if (!mix) return { success: false, error: "Mix design not found." };
+  if (mix.status === "APPROVED") return { success: false, error: "Mix design is already approved and locked." };
+  if (mix.status === "PENDING_REVIEW") return { success: false, error: "Already submitted for review." };
+
+  await db.update(mixDesigns).set({
+    status:      "PENDING_REVIEW",
+    submittedBy,
+    submittedAt: new Date(),
+    rejectionReason: null,
+  }).where(eq(mixDesigns.id, id));
+
+  revalidatePath(`/batching/recipes/${id}`);
+  revalidatePath("/batching/recipes");
+  return { success: true };
+}
+
+export async function approveMixDesign(
+  id: string,
+  approvedBy: string,
+): Promise<MixDesignActionResult> {
+  const [mix] = await db.select({ status: mixDesigns.status }).from(mixDesigns).where(eq(mixDesigns.id, id)).limit(1);
+  if (!mix) return { success: false, error: "Mix design not found." };
+  if (mix.status !== "PENDING_REVIEW") return { success: false, error: "Mix design must be in PENDING_REVIEW to approve." };
+
+  await db.update(mixDesigns).set({
+    status:     "APPROVED",
+    approvedBy,
+    approvedAt: new Date(),
+    rejectionReason: null,
+  }).where(eq(mixDesigns.id, id));
+
+  revalidatePath(`/batching/recipes/${id}`);
+  revalidatePath("/batching/recipes");
+  return { success: true };
+}
+
+export async function rejectMixDesign(
+  id: string,
+  reason: string,
+): Promise<MixDesignActionResult> {
+  if (!reason?.trim()) return { success: false, error: "Rejection reason is required." };
+  const [mix] = await db.select({ status: mixDesigns.status }).from(mixDesigns).where(eq(mixDesigns.id, id)).limit(1);
+  if (!mix) return { success: false, error: "Mix design not found." };
+  if (mix.status !== "PENDING_REVIEW") return { success: false, error: "Only PENDING_REVIEW designs can be rejected." };
+
+  await db.update(mixDesigns).set({
+    status:          "REJECTED",
+    rejectionReason: reason.trim(),
+    approvedBy:      null,
+    approvedAt:      null,
+  }).where(eq(mixDesigns.id, id));
+
+  revalidatePath(`/batching/recipes/${id}`);
+  revalidatePath("/batching/recipes");
+  return { success: true };
+}
+
+// Clone an APPROVED mix design as a new DRAFT version (to propose edits).
+const CloneSchema = z.object({
+  sourceMixDesignId: z.string().uuid(),
+  newCode:           z.string().min(1).max(50),
+  newName:           z.string().min(1).max(100),
+  createdBy:         z.string().uuid(),
+});
+
+export type CloneResult =
+  | { success: true; id: string }
+  | { success: false; error: string };
+
+export async function cloneMixDesignAsDraft(
+  input: z.infer<typeof CloneSchema>,
+): Promise<CloneResult> {
+  const p = CloneSchema.safeParse(input);
+  if (!p.success) return { success: false, error: p.error.errors[0]?.message ?? "Invalid input." };
+  const d = p.data;
+
+  const [src] = await db.select().from(mixDesigns).where(eq(mixDesigns.id, d.sourceMixDesignId)).limit(1);
+  if (!src) return { success: false, error: "Source mix design not found." };
+
+  // Clone the mix design as DRAFT
+  const [newMix] = await db
+    .insert(mixDesigns)
+    .values({
+      projectId:        src.projectId,
+      code:             d.newCode,
+      name:             d.newName,
+      cementBagsPerM3:  src.cementBagsPerM3,
+      sandKgPerM3:      src.sandKgPerM3,
+      gravelKgPerM3:    src.gravelKgPerM3,
+      waterLitersPerM3: src.waterLitersPerM3,
+      status:           "DRAFT",
+      createdBy:        d.createdBy,
+    })
+    .returning({ id: mixDesigns.id });
+
+  // Copy BOM ingredients from source
+  const srcBom = await db.select().from(mixDesignBom).where(eq(mixDesignBom.mixDesignId, d.sourceMixDesignId));
+  if (srcBom.length > 0) {
+    await db.insert(mixDesignBom).values(
+      srcBom.map((b) => ({
+        mixDesignId:      newMix.id,
+        materialId:       b.materialId,
+        requiredQuantity: b.requiredQuantity,
+        unitOfMeasure:    b.unitOfMeasure,
+        sortOrder:        b.sortOrder,
+        notes:            b.notes,
+      }))
+    );
+  }
+
+  revalidatePath("/batching/recipes");
+  return { success: true, id: newMix.id };
+}
+
 // ── Mix Design ────────────────────────────────────────────────────────────────
 
 const CreateMixDesignSchema = z.object({
