@@ -138,14 +138,16 @@ export async function cloneMixDesignAsDraft(
 // ── Mix Design CRUD ───────────────────────────────────────────────────────────
 
 const CreateMixDesignSchema = z.object({
-  projectId:        z.string().uuid(),
-  code:             z.string().min(1).max(50),
-  name:             z.string().min(1).max(100),
-  cementBagsPerM3:  z.number().positive(),
-  sandKgPerM3:      z.number().positive(),
-  gravelKgPerM3:    z.number().positive(),
-  waterLitersPerM3: z.number().positive(),
-  createdBy:        z.string().uuid(),
+  projectId:            z.string().uuid(),
+  code:                 z.string().min(1).max(50),
+  name:                 z.string().min(1).max(100),
+  cementBagsPerM3:      z.number().positive(),
+  sandKgPerM3:          z.number().positive(),
+  gravelKgPerM3:        z.number().positive(),
+  gravelSpec:           z.string().max(500).optional(),
+  waterLitersPerM3:     z.number().positive(),
+  admixtureLitersPerM3: z.number().nonnegative().optional(),
+  createdBy:            z.string().uuid(),
 });
 
 export type MixDesignResult =
@@ -158,22 +160,31 @@ export async function createMixDesign(
   const p = CreateMixDesignSchema.safeParse(input);
   if (!p.success) return { success: false, error: p.error.errors[0]?.message ?? "Invalid input." };
   const d = p.data;
-  const [row] = await db
-    .insert(mixDesigns)
-    .values({
-      projectId:        d.projectId,
-      code:             d.code,
-      name:             d.name,
-      cementBagsPerM3:  String(d.cementBagsPerM3),
-      sandKgPerM3:      String(d.sandKgPerM3),
-      gravelKgPerM3:    String(d.gravelKgPerM3),
-      waterLitersPerM3: String(d.waterLitersPerM3),
-      createdBy:        d.createdBy,
-    })
-    .returning({ id: mixDesigns.id });
-
-  revalidatePath("/batching/recipes");
-  return { success: true, id: row.id };
+  try {
+    const [row] = await db
+      .insert(mixDesigns)
+      .values({
+        projectId:            d.projectId,
+        code:                 d.code,
+        name:                 d.name,
+        cementBagsPerM3:      String(d.cementBagsPerM3),
+        sandKgPerM3:          String(d.sandKgPerM3),
+        gravelKgPerM3:        String(d.gravelKgPerM3),
+        gravelSpec:           d.gravelSpec ?? null,
+        waterLitersPerM3:     String(d.waterLitersPerM3),
+        admixtureLitersPerM3: d.admixtureLitersPerM3 != null ? String(d.admixtureLitersPerM3) : null,
+        createdBy:            d.createdBy,
+      })
+      .returning({ id: mixDesigns.id });
+    revalidatePath("/batching/recipes");
+    return { success: true, id: row.id };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("unique") || msg.includes("duplicate")) {
+      return { success: false, error: `Mix code "${d.code}" already exists. Use a unique code.` };
+    }
+    return { success: false, error: "Failed to save mix design. Check server logs." };
+  }
 }
 
 // ── Recipe BOM Ingredients ────────────────────────────────────────────────────

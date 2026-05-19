@@ -40,7 +40,9 @@ export default async function RecipeDetailPage({
       cementBags:     mixDesigns.cementBagsPerM3,
       sandKg:         mixDesigns.sandKgPerM3,
       gravelKg:       mixDesigns.gravelKgPerM3,
+      gravelSpec:     mixDesigns.gravelSpec,
       waterLiters:    mixDesigns.waterLitersPerM3,
+      admixture:      mixDesigns.admixtureLitersPerM3,
       createdAt:      mixDesigns.createdAt,
     })
     .from(mixDesigns)
@@ -146,12 +148,18 @@ export default async function RecipeDetailPage({
               Design Ratios (per 1 m³)
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "0.65rem" }}>
-              {[
+              {([
                 { label: "Cement", value: `${Number(mix.cementBags).toFixed(3)} bags` },
-                { label: "Sand", value: `${Number(mix.sandKg).toFixed(1)} kg` },
-                { label: "Gravel", value: `${Number(mix.gravelKg).toFixed(1)} kg` },
+                { label: "Sand (Fine Aggregate)", value: `${Number(mix.sandKg).toFixed(1)} kg` },
+                {
+                  label: mix.gravelSpec ? `Gravel — ${mix.gravelSpec}` : "Gravel (Coarse Aggregate)",
+                  value: `${Number(mix.gravelKg).toFixed(1)} kg`,
+                },
                 { label: "Water", value: `${Number(mix.waterLiters).toFixed(1)} L` },
-              ].map((r) => (
+                ...(mix.admixture
+                  ? [{ label: "Admixture", value: `${Number(mix.admixture).toFixed(3)} L` }]
+                  : []),
+              ] as { label: string; value: string }[]).map((r) => (
                 <div key={r.label} style={{ padding: "0.65rem 0.85rem", background: "#f9fafb", borderRadius: "7px", border: "1px solid #e5e7eb" }}>
                   <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginBottom: "0.15rem" }}>{r.label}</div>
                   <div style={{ fontWeight: 700, color: "#111827", fontFamily: "monospace", fontSize: "0.92rem" }}>{r.value}</div>

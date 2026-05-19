@@ -17,6 +17,8 @@ export const mixDesigns = pgTable("mix_designs", {
   sandKgPerM3:         numeric("sand_kg_per_m3", { precision: 10, scale: 4 }).notNull(),
   gravelKgPerM3:       numeric("gravel_kg_per_m3", { precision: 10, scale: 4 }).notNull(),
   waterLitersPerM3:    numeric("water_liters_per_m3", { precision: 8, scale: 4 }).notNull(),
+  admixtureLitersPerM3: numeric("admixture_liters_per_m3", { precision: 8, scale: 4 }),
+  gravelSpec:          text("gravel_spec"),
   isActive:            boolean("is_active").notNull().default(true),
   status:              bomStatusEnum("status").notNull().default("DRAFT"),
   createdBy:           uuid("created_by").notNull().references(() => users.id),
