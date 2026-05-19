@@ -205,7 +205,7 @@ export function IPODetailClient({
             <p style={{ margin: "0.1rem 0 0", fontSize: "0.75rem", color: "#9ca3af" }}>
               {exploded
                 ? "Exploded from Recipe BOM × requested volume. These become Batching Plant PR line items."
-                : "Click "Explode BOM" to calculate raw material quantities from the mix design recipe."}
+                : 'Click "Explode BOM" to calculate raw material quantities from the mix design recipe.'}
             </p>
           </div>
           {exploded && (
