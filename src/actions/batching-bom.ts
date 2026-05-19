@@ -2,16 +2,18 @@
 
 import { db } from "@/db";
 import {
-  mixDesigns, mixDesignBom, internalPurchaseOrders, batchingProductionLogs,
+  mixDesigns, mixDesignBom, internalPurchaseOrders,
+  premixMaterialLinks, ipoRawMaterialRequirements, batchingPlantPRFlags,
   materials,
+} from "@/db/schema";
+import {
+  purchaseRequisitions, purchaseRequisitionItems,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
 // ── Mix Design Approval Workflow ──────────────────────────────────────────────
-// Status flow: DRAFT → PENDING_REVIEW → APPROVED (locked) / REJECTED (editable)
-// APPROVED mix designs are immutable. To change one, clone it as a new version.
 
 export type MixDesignActionResult =
   | { success: true }
@@ -27,9 +29,9 @@ export async function submitMixDesignForApproval(
   if (mix.status === "PENDING_REVIEW") return { success: false, error: "Already submitted for review." };
 
   await db.update(mixDesigns).set({
-    status:      "PENDING_REVIEW",
+    status:          "PENDING_REVIEW",
     submittedBy,
-    submittedAt: new Date(),
+    submittedAt:     new Date(),
     rejectionReason: null,
   }).where(eq(mixDesigns.id, id));
 
@@ -47,9 +49,9 @@ export async function approveMixDesign(
   if (mix.status !== "PENDING_REVIEW") return { success: false, error: "Mix design must be in PENDING_REVIEW to approve." };
 
   await db.update(mixDesigns).set({
-    status:     "APPROVED",
+    status:          "APPROVED",
     approvedBy,
-    approvedAt: new Date(),
+    approvedAt:      new Date(),
     rejectionReason: null,
   }).where(eq(mixDesigns.id, id));
 
@@ -79,7 +81,6 @@ export async function rejectMixDesign(
   return { success: true };
 }
 
-// Clone an APPROVED mix design as a new DRAFT version (to propose edits).
 const CloneSchema = z.object({
   sourceMixDesignId: z.string().uuid(),
   newCode:           z.string().min(1).max(50),
@@ -101,7 +102,6 @@ export async function cloneMixDesignAsDraft(
   const [src] = await db.select().from(mixDesigns).where(eq(mixDesigns.id, d.sourceMixDesignId)).limit(1);
   if (!src) return { success: false, error: "Source mix design not found." };
 
-  // Clone the mix design as DRAFT
   const [newMix] = await db
     .insert(mixDesigns)
     .values({
@@ -117,7 +117,6 @@ export async function cloneMixDesignAsDraft(
     })
     .returning({ id: mixDesigns.id });
 
-  // Copy BOM ingredients from source
   const srcBom = await db.select().from(mixDesignBom).where(eq(mixDesignBom.mixDesignId, d.sourceMixDesignId));
   if (srcBom.length > 0) {
     await db.insert(mixDesignBom).values(
@@ -136,7 +135,7 @@ export async function cloneMixDesignAsDraft(
   return { success: true, id: newMix.id };
 }
 
-// ── Mix Design ────────────────────────────────────────────────────────────────
+// ── Mix Design CRUD ───────────────────────────────────────────────────────────
 
 const CreateMixDesignSchema = z.object({
   projectId:        z.string().uuid(),
@@ -177,7 +176,7 @@ export async function createMixDesign(
   return { success: true, id: row.id };
 }
 
-// ── Recipe BOM ────────────────────────────────────────────────────────────────
+// ── Recipe BOM Ingredients ────────────────────────────────────────────────────
 
 const BomIngredientSchema = z.object({
   mixDesignId:      z.string().uuid(),
@@ -198,6 +197,13 @@ export async function addBomIngredient(
   const p = BomIngredientSchema.safeParse(input);
   if (!p.success) return { success: false, error: p.error.errors[0]?.message ?? "Invalid input." };
   const d = p.data;
+
+  // Guard: only editable statuses
+  const [mix] = await db.select({ status: mixDesigns.status }).from(mixDesigns).where(eq(mixDesigns.id, d.mixDesignId)).limit(1);
+  if (mix?.status === "APPROVED" || mix?.status === "PENDING_REVIEW") {
+    return { success: false, error: "Cannot edit a locked mix design." };
+  }
+
   const [row] = await db
     .insert(mixDesignBom)
     .values({
@@ -220,13 +226,47 @@ export async function deleteBomIngredient(
   mixDesignId: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (!id || !mixDesignId) return { success: false, error: "Missing id." };
+
+  const [mix] = await db.select({ status: mixDesigns.status }).from(mixDesigns).where(eq(mixDesigns.id, mixDesignId)).limit(1);
+  if (mix?.status === "APPROVED" || mix?.status === "PENDING_REVIEW") {
+    return { success: false, error: "Cannot edit a locked mix design." };
+  }
+
   await db.delete(mixDesignBom).where(eq(mixDesignBom.id, id));
   revalidatePath(`/batching/recipes/${mixDesignId}`);
   revalidatePath("/batching/recipes");
   return { success: true };
 }
 
-// ── Internal Purchase Orders ──────────────────────────────────────────────────
+// ── Premix Material Link ──────────────────────────────────────────────────────
+// Links a master material (Planning BOM product) to its mix design recipe.
+
+export async function linkMaterialToMixDesign(
+  materialId: string,
+  mixDesignId: string,
+): Promise<{ success: boolean; error?: string }> {
+  if (!materialId || !mixDesignId) return { success: false, error: "Missing IDs." };
+
+  // Upsert: delete existing link for this material then insert
+  await db.delete(premixMaterialLinks).where(eq(premixMaterialLinks.materialId, materialId));
+  await db.insert(premixMaterialLinks).values({ materialId, mixDesignId });
+
+  revalidatePath(`/batching/recipes/${mixDesignId}`);
+  return { success: true };
+}
+
+export async function unlinkMaterialFromMixDesign(
+  materialId: string,
+  mixDesignId: string,
+): Promise<{ success: boolean; error?: string }> {
+  await db.delete(premixMaterialLinks).where(
+    and(eq(premixMaterialLinks.materialId, materialId), eq(premixMaterialLinks.mixDesignId, mixDesignId))
+  );
+  revalidatePath(`/batching/recipes/${mixDesignId}`);
+  return { success: true };
+}
+
+// ── IPO CRUD ──────────────────────────────────────────────────────────────────
 
 const CreateIPOSchema = z.object({
   projectId:         z.string().uuid(),
@@ -250,13 +290,11 @@ export async function createInternalPO(
   if (!p.success) return { success: false, error: p.error.errors[0]?.message ?? "Invalid input." };
   const d = p.data;
 
-  // Generate sequential IPO number
   const [seqRow] = await db.execute(
     sql`SELECT COUNT(*) AS cnt FROM internal_purchase_orders WHERE created_at >= date_trunc('year', now())`
   ) as unknown as [{ cnt: string }];
   const seq = (parseInt(seqRow?.cnt ?? "0", 10) + 1).toString().padStart(5, "0");
-  const year = new Date().getFullYear();
-  const ipoNumber = `IPO-${year}-${seq}`;
+  const ipoNumber = `IPO-${new Date().getFullYear()}-${seq}`;
 
   const [row] = await db
     .insert(internalPurchaseOrders)
@@ -303,7 +341,163 @@ export async function updateIPOStatus(
     })
     .where(eq(internalPurchaseOrders.id, d.id));
 
+  revalidatePath(`/batching/ipo/${d.id}`);
   revalidatePath("/batching/ipo");
   revalidatePath("/batching");
   return { success: true };
+}
+
+// ── IPO BOM Explosion ─────────────────────────────────────────────────────────
+// Multiplies each mix_design_bom ingredient by the IPO volume to produce the
+// raw material purchase requirements for the Batching Plant.
+
+export type ExplodeResult =
+  | { success: true; items: { materialId: string; materialName: string; requiredQty: number; unitOfMeasure: string }[] }
+  | { success: false; error: string };
+
+export async function explodeIPORequirements(ipoId: string): Promise<ExplodeResult> {
+  const [ipo] = await db
+    .select({ mixDesignId: internalPurchaseOrders.mixDesignId, volumeM3: internalPurchaseOrders.requestedVolumeM3 })
+    .from(internalPurchaseOrders)
+    .where(eq(internalPurchaseOrders.id, ipoId))
+    .limit(1);
+
+  if (!ipo) return { success: false, error: "IPO not found." };
+
+  const bomItems = await db
+    .select({
+      materialId:      mixDesignBom.materialId,
+      materialName:    materials.name,
+      requiredQuantity: mixDesignBom.requiredQuantity,
+      unitOfMeasure:   mixDesignBom.unitOfMeasure,
+    })
+    .from(mixDesignBom)
+    .leftJoin(materials, eq(mixDesignBom.materialId, materials.id))
+    .where(eq(mixDesignBom.mixDesignId, ipo.mixDesignId));
+
+  if (bomItems.length === 0) {
+    return { success: false, error: "No recipe BOM defined for this mix design. Add ingredients on the Recipe page first." };
+  }
+
+  const volumeM3 = Number(ipo.volumeM3);
+
+  // Delete and re-insert to allow re-explosion
+  await db.delete(ipoRawMaterialRequirements).where(eq(ipoRawMaterialRequirements.ipoId, ipoId));
+
+  const inserted = await db
+    .insert(ipoRawMaterialRequirements)
+    .values(
+      bomItems.map((b) => ({
+        ipoId,
+        materialId:    b.materialId!,
+        requiredQty:   String(Number(b.requiredQuantity) * volumeM3),
+        unitOfMeasure: b.unitOfMeasure,
+      }))
+    )
+    .returning();
+
+  revalidatePath(`/batching/ipo/${ipoId}`);
+
+  return {
+    success: true,
+    items: inserted.map((r, i) => ({
+      materialId:    r.materialId,
+      materialName:  bomItems[i]?.materialName ?? "—",
+      requiredQty:   Number(r.requiredQty),
+      unitOfMeasure: r.unitOfMeasure,
+    })),
+  };
+}
+
+// ── Generate Batching Plant Purchase Requisition ──────────────────────────────
+// Creates a PR in the normal procurement flow, flagged for Batching Plant receipt.
+
+export type GeneratePRResult =
+  | { success: true; prId: string }
+  | { success: false; error: string };
+
+export async function generateBatchingPlantPR(
+  ipoId: string,
+  requestedBy: string,
+): Promise<GeneratePRResult> {
+  if (!ipoId || !requestedBy) return { success: false, error: "Missing required fields." };
+
+  // Check not already generated
+  const [existing] = await db
+    .select({ id: batchingPlantPRFlags.id })
+    .from(batchingPlantPRFlags)
+    .where(eq(batchingPlantPRFlags.ipoId, ipoId))
+    .limit(1);
+  if (existing) return { success: false, error: "A PR has already been generated for this IPO." };
+
+  // Fetch IPO
+  const [ipo] = await db
+    .select({
+      projectId: internalPurchaseOrders.projectId,
+      status:    internalPurchaseOrders.status,
+    })
+    .from(internalPurchaseOrders)
+    .where(eq(internalPurchaseOrders.id, ipoId))
+    .limit(1);
+  if (!ipo) return { success: false, error: "IPO not found." };
+
+  // Fetch exploded requirements
+  const requirements = await db
+    .select({
+      id:            ipoRawMaterialRequirements.id,
+      materialId:    ipoRawMaterialRequirements.materialId,
+      requiredQty:   ipoRawMaterialRequirements.requiredQty,
+      unitOfMeasure: ipoRawMaterialRequirements.unitOfMeasure,
+      adminPrice:    materials.adminPrice,
+    })
+    .from(ipoRawMaterialRequirements)
+    .leftJoin(materials, eq(ipoRawMaterialRequirements.materialId, materials.id))
+    .where(eq(ipoRawMaterialRequirements.ipoId, ipoId));
+
+  if (requirements.length === 0) {
+    return { success: false, error: "No raw material requirements found. Run BOM explosion first." };
+  }
+
+  // Create PR
+  const [pr] = await db
+    .insert(purchaseRequisitions)
+    .values({
+      projectId:   ipo.projectId,
+      status:      "DRAFT",
+      requestedBy,
+    })
+    .returning({ id: purchaseRequisitions.id });
+
+  // Create PR items and back-fill prItemId on requirements
+  for (const req of requirements) {
+    const unitPrice = Number(req.adminPrice ?? 0);
+    const qty = Number(req.requiredQty);
+    const [prItem] = await db
+      .insert(purchaseRequisitionItems)
+      .values({
+        prId:             pr.id,
+        materialId:       req.materialId,
+        quantityRequired: String(qty),
+        quantityInStock:  "0",
+        quantityToOrder:  String(qty),
+        unitPrice:        String(unitPrice),
+      })
+      .returning({ id: purchaseRequisitionItems.id });
+
+    await db
+      .update(ipoRawMaterialRequirements)
+      .set({ prItemId: prItem.id })
+      .where(eq(ipoRawMaterialRequirements.id, req.id));
+  }
+
+  // Flag the PR as Batching Plant delivery
+  await db.insert(batchingPlantPRFlags).values({
+    prId:              pr.id,
+    ipoId,
+    receivingLocation: "BATCHING_PLANT",
+  });
+
+  revalidatePath(`/batching/ipo/${ipoId}`);
+  revalidatePath("/batching/ipo");
+  return { success: true, prId: pr.id };
 }

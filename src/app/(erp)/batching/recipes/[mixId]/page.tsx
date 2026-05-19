@@ -1,12 +1,13 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
-import { mixDesigns, mixDesignBom, materials, projects } from "@/db/schema";
+import { mixDesigns, mixDesignBom, materials, projects, premixMaterialLinks } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { RecipeBOMClient } from "./RecipeBOMClient";
 import { ApprovalBar } from "./ApprovalBar";
+import { LinkMaterialForm } from "./LinkMaterialForm";
 
 const ACCENT = "#1a56db";
 
@@ -65,11 +66,31 @@ export default async function RecipeDetailPage({
     .where(eq(mixDesignBom.mixDesignId, mixId))
     .orderBy(asc(mixDesignBom.sortOrder));
 
-  const allMaterials = await db
-    .select({ id: materials.id, code: materials.code, name: materials.name, unit: materials.unit })
-    .from(materials)
-    .where(eq(materials.isActive, true))
-    .orderBy(materials.name);
+  const [allMaterials, linkedMaterialRows] = await Promise.all([
+    db
+      .select({ id: materials.id, code: materials.code, name: materials.name, unit: materials.unit })
+      .from(materials)
+      .where(eq(materials.isActive, true))
+      .orderBy(materials.name),
+    db
+      .select({
+        materialId:   premixMaterialLinks.materialId,
+        materialName: materials.name,
+        materialCode: materials.code,
+      })
+      .from(premixMaterialLinks)
+      .leftJoin(materials, eq(premixMaterialLinks.materialId, materials.id))
+      .where(eq(premixMaterialLinks.mixDesignId, mixId))
+      .limit(1),
+  ]);
+
+  const linkedMaterial = linkedMaterialRows[0]
+    ? {
+        materialId:   linkedMaterialRows[0].materialId,
+        materialName: linkedMaterialRows[0].materialName ?? "—",
+        materialCode: linkedMaterialRows[0].materialCode ?? "",
+      }
+    : null;
 
   const statusStyle = STATUS_STYLES[mix.status] ?? STATUS_STYLES["DRAFT"];
   const isLocked = mix.status === "APPROVED" || mix.status === "PENDING_REVIEW";
@@ -146,6 +167,13 @@ export default async function RecipeDetailPage({
           mixCode={mix.code}
           status={mix.status}
           userId={user?.id ?? ""}
+        />
+
+        {/* Planning BOM Material Link */}
+        <LinkMaterialForm
+          mixId={mix.id}
+          linkedMaterial={linkedMaterial}
+          allMaterials={allMaterials}
         />
 
         {/* Recipe BOM (locked when APPROVED or PENDING_REVIEW) */}

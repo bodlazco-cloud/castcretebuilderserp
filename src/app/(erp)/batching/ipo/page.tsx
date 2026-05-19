@@ -166,8 +166,13 @@ export default async function IPOPage() {
                 <tbody>
                   {ipoRows.map((row, i) => (
                     <tr key={row.id} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                      <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontWeight: 700, color: ACCENT }}>
-                        {row.ipoNumber}
+                      <td style={{ padding: "0.65rem 1rem" }}>
+                        <a
+                          href={`/batching/ipo/${row.id}`}
+                          style={{ fontFamily: "monospace", fontWeight: 700, color: ACCENT, textDecoration: "none" }}
+                        >
+                          {row.ipoNumber}
+                        </a>
                       </td>
                       <td style={{ padding: "0.65rem 1rem" }}>
                         <StatusPill status={row.status} />

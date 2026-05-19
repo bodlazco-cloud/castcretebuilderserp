@@ -6,6 +6,7 @@ import { projects } from "./projects";
 import { projectUnits } from "./units";
 import { unitTypeEnum, bomStatusEnum } from "./enums";
 import { materials } from "./admin";
+import { purchaseRequisitions, purchaseRequisitionItems } from "./procurement";
 
 export const mixDesigns = pgTable("mix_designs", {
   id:                  uuid("id").primaryKey().defaultRandom(),
@@ -38,7 +39,7 @@ export const batchingProductionLogs = pgTable("batching_production_logs", {
   gravelUsedKg:          numeric("gravel_used_kg", { precision: 10, scale: 4 }).notNull(),
   volumeProducedM3:      numeric("volume_produced_m3", { precision: 10, scale: 4 }).notNull(),
   theoreticalYieldM3:    numeric("theoretical_yield_m3", { precision: 10, scale: 4 }).notNull(),
-  yieldVariancePct:      numeric("yield_variance_pct", { precision: 7, scale: 4 }),  // generated in DB
+  yieldVariancePct:      numeric("yield_variance_pct", { precision: 7, scale: 4 }),
   isProductionFlagged:   boolean("is_production_flagged").notNull().default(false),
   flagReason:            text("flag_reason"),
   operatorId:            uuid("operator_id").notNull().references(() => users.id),
@@ -110,6 +111,37 @@ export const internalPurchaseOrders = pgTable("internal_purchase_orders", {
   updatedAt:         timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Links a master material (the "premix product" in Planning BOMs) to its mix design recipe.
+// One material ↔ one mix design. Set once on the Recipe page after the mix design is approved.
+export const premixMaterialLinks = pgTable("premix_material_links", {
+  id:          uuid("id").primaryKey().defaultRandom(),
+  materialId:  uuid("material_id").notNull().unique().references(() => materials.id),
+  mixDesignId: uuid("mix_design_id").notNull().references(() => mixDesigns.id),
+  createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Exploded raw material quantities for a specific IPO (mix_design_bom × requested_volume_m3).
+// Generated when the Batching Plant accepts the IPO; drives the Batching Plant PR.
+export const ipoRawMaterialRequirements = pgTable("ipo_raw_material_requirements", {
+  id:            uuid("id").primaryKey().defaultRandom(),
+  ipoId:         uuid("ipo_id").notNull().references(() => internalPurchaseOrders.id, { onDelete: "cascade" }),
+  materialId:    uuid("material_id").notNull().references(() => materials.id),
+  requiredQty:   numeric("required_qty", { precision: 15, scale: 4 }).notNull(),
+  unitOfMeasure: varchar("unit_of_measure", { length: 10 }).notNull(),
+  prItemId:      uuid("pr_item_id").references(() => purchaseRequisitionItems.id),
+  createdAt:     timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Tags a purchase_requisition as "deliver to Batching Plant" and links it back to the IPO.
+// Keeps procurement.ts clean — no modifications to that schema.
+export const batchingPlantPRFlags = pgTable("batching_plant_pr_flags", {
+  id:                uuid("id").primaryKey().defaultRandom(),
+  prId:              uuid("pr_id").notNull().unique().references(() => purchaseRequisitions.id),
+  ipoId:             uuid("ipo_id").notNull().references(() => internalPurchaseOrders.id),
+  receivingLocation: varchar("receiving_location", { length: 50 }).notNull().default("BATCHING_PLANT"),
+  createdAt:         timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const batchingInternalSales = pgTable("batching_internal_sales", {
   id:                    uuid("id").primaryKey().defaultRandom(),
   deliveryReceiptId:     uuid("delivery_receipt_id").notNull().references(() => concreteDeliveryReceipts.id),
@@ -117,7 +149,7 @@ export const batchingInternalSales = pgTable("batching_internal_sales", {
   unitId:                uuid("unit_id").notNull().references(() => projectUnits.id),
   volumeM3:              numeric("volume_m3", { precision: 10, scale: 4 }).notNull(),
   internalRatePerM3:     numeric("internal_rate_per_m3", { precision: 15, scale: 2 }).notNull(),
-  totalInternalRevenue:  numeric("total_internal_revenue", { precision: 15, scale: 2 }), // generated in DB
+  totalInternalRevenue:  numeric("total_internal_revenue", { precision: 15, scale: 2 }),
   transactionDate:       date("transaction_date").notNull(),
   createdAt:             timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
