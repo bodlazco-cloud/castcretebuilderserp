@@ -104,13 +104,7 @@ export function IPODetailClient({
         acceptedBy: nextStatus === "ACCEPTED" ? userId : undefined,
       });
       if (res.success) {
-        if (nextStatus === "ACCEPTED" && res.autoTriggered) {
-          flash("IPO accepted — BOM exploded and raw material PR generated automatically.");
-        } else if (nextStatus === "ACCEPTED") {
-          flash("IPO accepted. BOM explosion will be available shortly — use Recalculate if needed.");
-        } else {
-          flash(`Status updated to ${nextStatus.replace("_", " ")}.`);
-        }
+        flash(`Status updated to ${nextStatus.replace("_", " ")}.`);
         router.refresh();
       } else {
         setError(res.error ?? "Failed to update status.");
@@ -166,13 +160,13 @@ export function IPODetailClient({
                 onClick={handleAdvanceStatus}
                 style={{
                   padding: "0.45rem 0.9rem",
-                  background: ipoStatus === "PENDING" ? ACCENT : "#111827",
+                  background: "#111827",
                   color: "#fff",
                   border: "none", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 600,
                   cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.7 : 1,
                 }}
               >
-                {isPending ? "Updating…" : ipoStatus === "PENDING" ? `✓ ${actionLabel} — auto-explodes BOM & generates PR` : `→ ${actionLabel}`}
+                {isPending ? "Updating…" : `→ ${actionLabel}`}
               </button>
             )}
           </div>

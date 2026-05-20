@@ -4,33 +4,40 @@ const ACCENT = "#1a56db";
 
 const REPORT_SECTIONS = [
   {
-    title: "Production",
+    title: "Production Reports",
     icon: "🏭",
     reports: [
-      { label: "Daily Pour Log", desc: "Batch-by-batch production record with shift, mix, and volume.", href: "/batching/production" },
-      { label: "Log a New Batch", desc: "Record material inputs and volume produced for a pour.", href: "/batching/log-batch" },
-      { label: "Yield Analysis", desc: "Theoretical vs. actual yield variance across all mixes and shifts.", href: "/batching/yield" },
+      { label: "Production Log", desc: "Full batch-by-batch record: date, shift, mix, cement/sand/gravel inputs, volume produced.", href: "/batching/production" },
+      { label: "Yield Analysis", desc: "Theoretical vs. actual yield variance per mix design. Flags batches exceeding ±2% threshold.", href: "/batching/yield" },
+      { label: "Log New Batch", desc: "Record material inputs and volume produced for a pour shift.", href: "/batching/log-batch" },
     ],
   },
   {
     title: "Mix Design & Recipe",
     icon: "🧪",
     reports: [
-      { label: "Mix Design Register", desc: "Full list of mix designs with approval status, design ratios, and BOM.", href: "/batching/recipes" },
+      { label: "Mix Design Register", desc: "All mix designs — approval status, design ratios per m³, and ingredient BOM.", href: "/batching/recipes" },
     ],
   },
   {
     title: "Internal Purchase Orders",
     icon: "📋",
     reports: [
-      { label: "IPO Queue", desc: "All internal purchase orders — pending, in production, delivered, and billed.", href: "/batching/ipo" },
+      { label: "IPO Queue", desc: "All internal purchase orders — pending, accepted, in production, delivered, and billed.", href: "/batching/ipo" },
+    ],
+  },
+  {
+    title: "Material Receiving",
+    icon: "📦",
+    reports: [
+      { label: "Receiving (MRR) Queue", desc: "Deliveries pending receipt at the Batching Plant. Sign off to post materials to inventory.", href: "/batching/mrr" },
     ],
   },
   {
     title: "Internal Sales",
     icon: "💰",
     reports: [
-      { label: "Internal Sales Register", desc: "Concrete deliveries billed to project cost centers.", href: "/batching/internal-sales" },
+      { label: "Internal Sales Register", desc: "Concrete deliveries billed to project cost centers at the internal rate per m³.", href: "/batching/internal-sales" },
     ],
   },
   {
@@ -79,14 +86,13 @@ export default function BatchingReportsPage() {
                       padding: "0.9rem 1.25rem",
                       borderBottom: i < section.reports.length - 1 ? "1px solid #f3f4f6" : undefined,
                       textDecoration: "none",
-                      transition: "background 0.1s",
                     }}
                   >
                     <div>
                       <div style={{ fontWeight: 600, color: "#111827", fontSize: "0.875rem" }}>{report.label}</div>
                       <div style={{ fontSize: "0.78rem", color: "#9ca3af", marginTop: "0.1rem" }}>{report.desc}</div>
                     </div>
-                    <span style={{ color: ACCENT, fontSize: "1rem", flexShrink: 0 }}>→</span>
+                    <span style={{ color: ACCENT, fontSize: "1rem", flexShrink: 0, marginLeft: "1rem" }}>→</span>
                   </a>
                 ))}
               </div>

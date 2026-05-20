@@ -13,8 +13,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notifyPrApproved, notifyPrRejected, notifyPoBodyApproved } from "@/lib/notifications";
-import { premixMaterialLinks } from "@/db/schema";
-import { createInternalPO } from "./batching-bom";
+import { premixMaterialLinks, mixDesignBom } from "@/db/schema";
+import { createInternalPO, explodeIPORequirements, generateBatchingPlantPR } from "./batching-bom";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE II — Auto-populate PO from Master BOM
@@ -382,8 +382,15 @@ async function triggerBatchingIPOsForPR(prId: string, userId: string): Promise<v
         .limit(1);
       if (!link) continue;
 
-      // Create IPO in PENDING state — BOM explosion + raw material PR auto-trigger when batching plant accepts it
-      await createInternalPO({
+      // Only create IPO when there is a recipe BOM defined
+      const [bomCheck] = await db
+        .select({ id: mixDesignBom.id })
+        .from(mixDesignBom)
+        .where(eq(mixDesignBom.mixDesignId, link.mixDesignId))
+        .limit(1);
+      if (!bomCheck) continue;
+
+      const ipoResult = await createInternalPO({
         projectId:        pr.projectId,
         unitId:           pr.unitId,
         mixDesignId:      link.mixDesignId,
@@ -391,6 +398,11 @@ async function triggerBatchingIPOsForPR(prId: string, userId: string): Promise<v
         triggeredBy:      `PR-APPROVED:${prId}`,
         requestedBy:      userId,
       });
+      if (!ipoResult.success) continue;
+
+      // Auto-explode BOM and generate raw material PR immediately at IPO creation
+      await explodeIPORequirements(ipoResult.id);
+      await generateBatchingPlantPR(ipoResult.id, userId);
     }
   } catch {
     // Non-blocking — IPO generation failure does not roll back PR approval
