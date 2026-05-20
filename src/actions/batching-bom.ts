@@ -183,7 +183,7 @@ export async function createMixDesign(
     if (msg.includes("unique") || msg.includes("duplicate")) {
       return { success: false, error: `Mix code "${d.code}" already exists. Use a unique code.` };
     }
-    return { success: false, error: "Failed to save mix design. Check server logs." };
+    return { success: false, error: `DB error: ${msg}` };
   }
 }
 
