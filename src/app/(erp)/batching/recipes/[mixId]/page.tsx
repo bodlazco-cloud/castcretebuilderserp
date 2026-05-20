@@ -43,6 +43,7 @@ export default async function RecipeDetailPage({
       gravelSpec:     mixDesigns.gravelSpec,
       waterLiters:    mixDesigns.waterLitersPerM3,
       admixture:      mixDesigns.admixtureLitersPerM3,
+      admixtureType:  mixDesigns.admixtureType,
       createdAt:      mixDesigns.createdAt,
     })
     .from(mixDesigns)
@@ -157,7 +158,7 @@ export default async function RecipeDetailPage({
                 },
                 { label: "Water", value: `${Number(mix.waterLiters).toFixed(1)} L` },
                 ...(mix.admixture
-                  ? [{ label: "Admixture", value: `${Number(mix.admixture).toFixed(3)} L` }]
+                  ? [{ label: mix.admixtureType ? `Admixture — ${mix.admixtureType}` : "Admixture", value: `${Number(mix.admixture).toFixed(3)} L` }]
                   : []),
               ] as { label: string; value: string }[]).map((r) => (
                 <div key={r.label} style={{ padding: "0.65rem 0.85rem", background: "#f9fafb", borderRadius: "7px", border: "1px solid #e5e7eb" }}>

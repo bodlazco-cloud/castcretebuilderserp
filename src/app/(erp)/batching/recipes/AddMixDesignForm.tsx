@@ -39,6 +39,7 @@ export function AddMixDesignForm({ projects, userId }: Props) {
         gravelSpec:           (fd.get("gravelSpec") as string) || undefined,
         waterLitersPerM3:     parseFloat(fd.get("waterLitersPerM3") as string),
         admixtureLitersPerM3: admixtureRaw ? parseFloat(admixtureRaw) : undefined,
+        admixtureType:        (fd.get("admixtureType") as string) || undefined,
         createdBy:            userId,
       });
       if (res.success) {
@@ -140,16 +141,26 @@ export function AddMixDesignForm({ projects, userId }: Props) {
                   <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                     Chemical Admixture (optional)
                   </div>
-                  <div>
-                    <label style={labelStyle}>Admixture L / m³</label>
-                    <input
-                      name="admixtureLitersPerM3"
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      placeholder="e.g. 1.5 (superplasticizer, retarder, etc.)"
-                      style={inputStyle}
-                    />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.65rem" }}>
+                    <div>
+                      <label style={labelStyle}>Admixture Type</label>
+                      <input
+                        name="admixtureType"
+                        placeholder="e.g. Superplasticizer, Retarder"
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Admixture L / m³</label>
+                      <input
+                        name="admixtureLitersPerM3"
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        placeholder="e.g. 1.5"
+                        style={inputStyle}
+                      />
+                    </div>
                   </div>
                 </div>
 

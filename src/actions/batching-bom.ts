@@ -147,6 +147,7 @@ const CreateMixDesignSchema = z.object({
   gravelSpec:           z.string().max(500).optional(),
   waterLitersPerM3:     z.number().positive(),
   admixtureLitersPerM3: z.number().nonnegative().optional(),
+  admixtureType:        z.string().max(100).optional(),
   createdBy:            z.string().uuid(),
 });
 
@@ -173,6 +174,7 @@ export async function createMixDesign(
         gravelSpec:           d.gravelSpec ?? null,
         waterLitersPerM3:     String(d.waterLitersPerM3),
         admixtureLitersPerM3: d.admixtureLitersPerM3 != null ? String(d.admixtureLitersPerM3) : null,
+        admixtureType:        d.admixtureType ?? null,
         createdBy:            d.createdBy,
       })
       .returning({ id: mixDesigns.id });
@@ -183,7 +185,7 @@ export async function createMixDesign(
     if (msg.includes("unique") || msg.includes("duplicate")) {
       return { success: false, error: `Mix code "${d.code}" already exists. Use a unique code.` };
     }
-    return { success: false, error: `DB error: ${msg}` };
+    return { success: false, error: msg.includes("does not exist") ? "Database columns missing — run migration 026 in Supabase." : `Save failed: ${msg}` };
   }
 }
 
