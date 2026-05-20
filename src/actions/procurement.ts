@@ -13,6 +13,8 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notifyPrApproved, notifyPrRejected, notifyPoBodyApproved } from "@/lib/notifications";
+import { premixMaterialLinks, mixDesignBom } from "@/db/schema";
+import { createInternalPO, explodeIPORequirements, generateBatchingPlantPR } from "./batching-bom";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE II — Auto-populate PO from Master BOM
@@ -339,14 +341,71 @@ export type SimpleResult = { success: boolean; error?: string };
 export async function approvePr(id: string): Promise<SimpleResult> {
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
+
   await db
     .update(purchaseRequisitions)
     .set({ status: "APPROVED", approvedBy: user.id, approvedAt: new Date() })
     .where(eq(purchaseRequisitions.id, id));
+
+  // Auto-trigger Batching Plant IPO for any Premix line items
+  void triggerBatchingIPOsForPR(id, user.id);
+
   revalidatePath(`/procurement/pr/${id}`);
   revalidatePath("/procurement/pr");
   void notifyPrApproved(id);
   return { success: true };
+}
+
+async function triggerBatchingIPOsForPR(prId: string, userId: string): Promise<void> {
+  try {
+    const [pr] = await db
+      .select({ projectId: purchaseRequisitions.projectId, unitId: purchaseRequisitions.unitId })
+      .from(purchaseRequisitions)
+      .where(eq(purchaseRequisitions.id, prId))
+      .limit(1);
+    if (!pr?.unitId) return;
+
+    const items = await db
+      .select({
+        materialId:      purchaseRequisitionItems.materialId,
+        quantityToOrder: purchaseRequisitionItems.quantityToOrder,
+      })
+      .from(purchaseRequisitionItems)
+      .where(eq(purchaseRequisitionItems.prId, prId));
+
+    for (const item of items) {
+      if (!item.materialId) continue;
+      const [link] = await db
+        .select({ mixDesignId: premixMaterialLinks.mixDesignId })
+        .from(premixMaterialLinks)
+        .where(eq(premixMaterialLinks.materialId, item.materialId))
+        .limit(1);
+      if (!link) continue;
+
+      // Check mix design has BOM entries before generating IPO
+      const [bomCheck] = await db
+        .select({ id: mixDesignBom.id })
+        .from(mixDesignBom)
+        .where(eq(mixDesignBom.mixDesignId, link.mixDesignId))
+        .limit(1);
+      if (!bomCheck) continue;
+
+      const ipoResult = await createInternalPO({
+        projectId:        pr.projectId,
+        unitId:           pr.unitId,
+        mixDesignId:      link.mixDesignId,
+        requestedVolumeM3: Number(item.quantityToOrder ?? 0),
+        triggeredBy:      `PR-APPROVED:${prId}`,
+        requestedBy:      userId,
+      });
+      if (!ipoResult.success) continue;
+
+      await explodeIPORequirements(ipoResult.id);
+      await generateBatchingPlantPR(ipoResult.id, userId);
+    }
+  } catch {
+    // Non-blocking — IPO generation failure does not roll back PR approval
+  }
 }
 
 export async function rejectPr(id: string, reason: string): Promise<SimpleResult> {

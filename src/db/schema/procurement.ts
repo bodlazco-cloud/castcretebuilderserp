@@ -23,13 +23,14 @@ export const purchaseRequisitions = pgTable("purchase_requisitions", {
 });
 
 export const purchaseRequisitionItems = pgTable("purchase_requisition_items", {
-  id:               uuid("id").primaryKey().defaultRandom(),
-  prId:             uuid("pr_id").notNull().references(() => purchaseRequisitions.id),
-  materialId:       uuid("material_id").notNull().references(() => materials.id),
-  quantityRequired: numeric("quantity_required", { precision: 15, scale: 4 }).notNull(),
-  quantityInStock:  numeric("quantity_in_stock", { precision: 15, scale: 4 }).notNull().default("0"),
-  quantityToOrder:  numeric("quantity_to_order", { precision: 15, scale: 4 }).notNull(),
-  unitPrice:        numeric("unit_price", { precision: 15, scale: 2 }).notNull(),
+  id:                  uuid("id").primaryKey().defaultRandom(),
+  prId:                uuid("pr_id").notNull().references(() => purchaseRequisitions.id),
+  materialId:          uuid("material_id").notNull().references(() => materials.id),
+  quantityRequired:    numeric("quantity_required", { precision: 15, scale: 4 }).notNull(),
+  quantityInStock:     numeric("quantity_in_stock", { precision: 15, scale: 4 }).notNull().default("0"),
+  quantityToOrder:     numeric("quantity_to_order", { precision: 15, scale: 4 }).notNull(),
+  unitPrice:           numeric("unit_price", { precision: 15, scale: 2 }).notNull(),
+  preferredSupplierId: uuid("preferred_supplier_id").references(() => suppliers.id),
 });
 
 export const purchaseOrders = pgTable("purchase_orders", {
