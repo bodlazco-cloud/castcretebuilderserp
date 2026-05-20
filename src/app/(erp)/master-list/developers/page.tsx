@@ -3,8 +3,7 @@ import { db } from "@/db";
 import { developers } from "@/db/schema";
 import { desc } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
-import { deleteDeveloper } from "@/actions/master-list";
-import { DeleteRowButton } from "../DeleteRowButton";
+import DevelopersTable from "./DevelopersTable";
 
 export default async function DevelopersPage() {
   await getAuthUser();
@@ -30,45 +29,7 @@ export default async function DevelopersPage() {
           }}>+ Add Developer</a>
         </div>
 
-        {rows.length === 0 ? (
-          <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>
-            No developers yet. Click &ldquo;+ Add Developer&rdquo; to get started.
-          </div>
-        ) : (
-          <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-              <thead>
-                <tr style={{ background: "#f9fafb" }}>
-                  {["Name", "Status", "Added", ""].map((h, i) => (
-                    <th key={i} style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "0.75rem 1rem", fontWeight: 500, color: "#111827" }}>{r.name}</td>
-                    <td style={{ padding: "0.75rem 1rem" }}>
-                      <span style={{
-                        display: "inline-block", padding: "0.2rem 0.6rem", borderRadius: "999px", fontSize: "0.75rem", fontWeight: 600,
-                        background: r.isActive ? "#dcfce7" : "#f3f4f6", color: r.isActive ? "#166534" : "#6b7280",
-                      }}>{r.isActive ? "Active" : "Inactive"}</span>
-                    </td>
-                    <td style={{ padding: "0.75rem 1rem", color: "#6b7280" }}>
-                      {new Date(r.createdAt).toLocaleDateString("en-PH")}
-                    </td>
-                    <td style={{ padding: "0.75rem 1rem", textAlign: "right" }}>
-                      <span style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center" }}>
-                        <a href={`/master-list/developers/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
-                        <DeleteRowButton action={deleteDeveloper.bind(null, r.id)} />
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DevelopersTable rows={rows} />
       </div>
     </main>
   );
