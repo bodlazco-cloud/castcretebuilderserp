@@ -115,8 +115,8 @@ export function AddMixDesignForm({ projects, userId }: Props) {
 
                 {/* Sand */}
                 <div>
-                  <label style={labelStyle}>Fine Aggregate — Sand kg / m³</label>
-                  <input name="sandKgPerM3" type="number" step="0.001" required min="0.001" placeholder="700" style={inputStyle} />
+                  <label style={labelStyle}>Fine Aggregate — Sand m³ / m³ concrete</label>
+                  <input name="sandKgPerM3" type="number" step="0.0001" required min="0.0001" placeholder="0.50" style={inputStyle} />
                 </div>
 
                 {/* Coarse Aggregate */}
@@ -126,8 +126,8 @@ export function AddMixDesignForm({ projects, userId }: Props) {
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.65rem" }}>
                     <div>
-                      <label style={labelStyle}>Total Gravel kg / m³</label>
-                      <input name="gravelKgPerM3" type="number" step="0.001" required min="0.001" placeholder="1050" style={inputStyle} />
+                      <label style={labelStyle}>Total Gravel m³ / m³ concrete</label>
+                      <input name="gravelKgPerM3" type="number" step="0.0001" required min="0.0001" placeholder="0.70" style={inputStyle} />
                     </div>
                     <div>
                       <label style={labelStyle}>Gravel Type / Specification</label>

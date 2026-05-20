@@ -151,10 +151,10 @@ export default async function RecipeDetailPage({
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "0.65rem" }}>
               {([
                 { label: "Cement", value: `${Number(mix.cementBags).toFixed(3)} bags` },
-                { label: "Sand (Fine Aggregate)", value: `${Number(mix.sandKg).toFixed(1)} kg` },
+                { label: "Sand (Fine Aggregate)", value: `${Number(mix.sandKg).toFixed(4)} m³` },
                 {
                   label: mix.gravelSpec ? `Gravel — ${mix.gravelSpec}` : "Gravel (Coarse Aggregate)",
-                  value: `${Number(mix.gravelKg).toFixed(1)} kg`,
+                  value: `${Number(mix.gravelKg).toFixed(4)} m³`,
                 },
                 { label: "Water", value: `${Number(mix.waterLiters).toFixed(1)} L` },
                 ...(mix.admixture
