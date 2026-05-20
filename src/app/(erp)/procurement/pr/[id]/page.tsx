@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { purchaseRequisitions, purchaseRequisitionItems, projects, activityDefinitions, materials } from "@/db/schema";
+import { purchaseRequisitions, purchaseRequisitionItems, projects, activityDefinitions, materials, suppliers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
@@ -45,17 +45,19 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
 
   const items = await db
     .select({
-      id:               purchaseRequisitionItems.id,
-      quantityRequired: purchaseRequisitionItems.quantityRequired,
-      quantityInStock:  purchaseRequisitionItems.quantityInStock,
-      quantityToOrder:  purchaseRequisitionItems.quantityToOrder,
-      unitPrice:        purchaseRequisitionItems.unitPrice,
-      matCode:          materials.code,
-      matName:          materials.name,
-      matUnit:          materials.unit,
+      id:                  purchaseRequisitionItems.id,
+      quantityRequired:    purchaseRequisitionItems.quantityRequired,
+      quantityInStock:     purchaseRequisitionItems.quantityInStock,
+      quantityToOrder:     purchaseRequisitionItems.quantityToOrder,
+      unitPrice:           purchaseRequisitionItems.unitPrice,
+      matCode:             materials.code,
+      matName:             materials.name,
+      matUnit:             materials.unit,
+      supplierName:        suppliers.name,
     })
     .from(purchaseRequisitionItems)
     .leftJoin(materials, eq(purchaseRequisitionItems.materialId, materials.id))
+    .leftJoin(suppliers, eq(purchaseRequisitionItems.preferredSupplierId, suppliers.id))
     .where(eq(purchaseRequisitionItems.prId, id));
 
   const totalAmount = items.reduce((sum, i) => sum + Number(i.quantityToOrder) * Number(i.unitPrice), 0);
@@ -128,8 +130,8 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "680px" }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["Material", "Unit", "Required", "In Stock", "To Order", "Unit Price", "Line Total"].map((h, i) => (
-                    <th key={i} style={{ padding: "0.65rem 0.75rem", textAlign: i >= 2 ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+                  {["Material", "Preferred Supplier", "Unit", "Required", "In Stock", "To Order", "Unit Price", "Line Total"].map((h, i) => (
+                    <th key={i} style={{ padding: "0.65rem 0.75rem", textAlign: i >= 3 ? "right" : "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -139,6 +141,12 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
                     <td style={{ padding: "0.6rem 0.75rem" }}>
                       <span style={{ fontFamily: "monospace", fontSize: "0.8rem", fontWeight: 600 }}>{item.matCode}</span>
                       <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>{item.matName}</div>
+                    </td>
+                    <td style={{ padding: "0.6rem 0.75rem" }}>
+                      {item.supplierName
+                        ? <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "#1e40af" }}>{item.supplierName}</span>
+                        : <span style={{ fontSize: "0.75rem", color: "#9ca3af", fontStyle: "italic" }}>No preferred supplier</span>
+                      }
                     </td>
                     <td style={{ padding: "0.6rem 0.75rem", color: "#6b7280" }}>{item.matUnit}</td>
                     <td style={{ padding: "0.6rem 0.75rem", textAlign: "right", color: "#374151" }}>{Number(item.quantityRequired).toFixed(4)}</td>
@@ -157,7 +165,7 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
               </tbody>
               <tfoot>
                 <tr style={{ background: "#f9fafb", borderTop: "2px solid #e5e7eb" }}>
-                  <td colSpan={6} style={{ padding: "0.65rem 0.75rem", textAlign: "right", fontWeight: 700, fontSize: "0.875rem", color: "#374151" }}>Total</td>
+                  <td colSpan={7} style={{ padding: "0.65rem 0.75rem", textAlign: "right", fontWeight: 700, fontSize: "0.875rem", color: "#374151" }}>Total</td>
                   <td style={{ padding: "0.65rem 0.75rem", textAlign: "right", fontWeight: 700, color: "#111827" }}>
                     PHP {totalAmount.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                   </td>
