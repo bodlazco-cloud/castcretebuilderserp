@@ -65,8 +65,12 @@ const NAV: NavSection[] = [
     title: "Batching Plant",
     items: [
       { label: "Overview",              href: "/batching" },
-      { label: "Mix Designs",           href: "/batching/mix-designs" },
+      { label: "Mix Design Register",   href: "/batching/recipes" },
+      { label: "IPO Queue",             href: "/batching/ipo" },
+      { label: "Material Receiving",    href: "/batching/mrr" },
+      { label: "Log Batch",             href: "/batching/log-batch" },
       { label: "Production Logs",       href: "/batching/production" },
+      { label: "Yield Analysis",        href: "/batching/yield" },
       { label: "Internal Sales",        href: "/batching/internal-sales" },
       { label: "Plant Manpower",        href: "/batching/manpower" },
       { label: "Reports",               isDivider: true },
