@@ -181,11 +181,15 @@ export async function createMixDesign(
     revalidatePath("/batching/recipes");
     return { success: true, id: row.id };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("unique") || msg.includes("duplicate")) {
+    const e = err as Record<string, unknown>;
+    const msg    = (e.message   as string) ?? String(err);
+    const detail = (e.detail    as string) ?? "";
+    const code   = (e.code      as string) ?? "";
+    const hint   = (e.hint      as string) ?? "";
+    if (msg.includes("unique") || msg.includes("duplicate") || code === "23505") {
       return { success: false, error: `Mix code "${d.code}" already exists. Use a unique code.` };
     }
-    return { success: false, error: msg.includes("does not exist") ? "Database columns missing — run migration 026 in Supabase." : `Save failed: ${msg}` };
+    return { success: false, error: `[${code}] ${msg}${detail ? " | " + detail : ""}${hint ? " | hint: " + hint : ""}` };
   }
 }
 
