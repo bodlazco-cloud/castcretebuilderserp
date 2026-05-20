@@ -10,7 +10,7 @@ import {
   phaseCategories, phaseScopes, phaseActivities, phaseBillingMilestones,
   globalSettings,
 } from "@/db/schema";
-import { eq, count, and } from "drizzle-orm";
+import { eq, count, and, or, ilike } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
@@ -30,6 +30,10 @@ export async function createDeveloper(
 ): Promise<MutationResult> {
   const parsed = DeveloperSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const [dup] = await db.select({ id: developers.id }).from(developers)
+    .where(ilike(developers.name, parsed.data.name));
+  if (dup) return { success: false, error: `A developer named "${parsed.data.name}" already exists.` };
 
   const [row] = await db
     .insert(developers)
@@ -116,6 +120,14 @@ export async function createMaterial(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const d = parsed.data;
+  const [dup] = await db.select({ id: materials.id, code: materials.code, name: materials.name }).from(materials)
+    .where(or(ilike(materials.code, d.code), ilike(materials.name, d.name)));
+  if (dup) {
+    if (dup.code.toLowerCase() === d.code.toLowerCase())
+      return { success: false, error: `A material with code "${d.code}" already exists.` };
+    return { success: false, error: `A material named "${d.name}" already exists.` };
+  }
+
   const [row] = await db
     .insert(materials)
     .values({
@@ -181,6 +193,10 @@ export async function createSupplier(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
   const d = parsed.data;
 
+  const [dup] = await db.select({ id: suppliers.id }).from(suppliers)
+    .where(ilike(suppliers.name, d.name));
+  if (dup) return { success: false, error: `A vendor named "${d.name}" already exists.` };
+
   const [row] = await db
     .insert(suppliers)
     .values({
@@ -244,6 +260,14 @@ export async function createSubcontractor(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const d = parsed.data;
+  const [dup] = await db.select({ id: subcontractors.id, code: subcontractors.code, name: subcontractors.name }).from(subcontractors)
+    .where(or(ilike(subcontractors.code, d.code), ilike(subcontractors.name, d.name)));
+  if (dup) {
+    if (dup.code.toLowerCase() === d.code.toLowerCase())
+      return { success: false, error: `A subcontractor with code "${d.code}" already exists.` };
+    return { success: false, error: `A subcontractor named "${d.name}" already exists.` };
+  }
+
   const [row] = await db
     .insert(subcontractors)
     .values({
