@@ -7,7 +7,7 @@ import {
   materials,
 } from "@/db/schema";
 import {
-  purchaseRequisitions, purchaseRequisitionItems,
+  purchaseRequisitions, purchaseRequisitionItems, inventoryStock,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -454,14 +454,15 @@ export async function generateBatchingPlantPR(
     .limit(1);
   if (!ipo) return { success: false, error: "IPO not found." };
 
-  // Fetch exploded requirements
+  // Fetch exploded requirements with pricing + preferred supplier
   const requirements = await db
     .select({
-      id:            ipoRawMaterialRequirements.id,
-      materialId:    ipoRawMaterialRequirements.materialId,
-      requiredQty:   ipoRawMaterialRequirements.requiredQty,
-      unitOfMeasure: ipoRawMaterialRequirements.unitOfMeasure,
-      adminPrice:    materials.adminPrice,
+      id:                  ipoRawMaterialRequirements.id,
+      materialId:          ipoRawMaterialRequirements.materialId,
+      requiredQty:         ipoRawMaterialRequirements.requiredQty,
+      unitOfMeasure:       ipoRawMaterialRequirements.unitOfMeasure,
+      adminPrice:          materials.adminPrice,
+      preferredSupplierId: materials.preferredSupplierId,
     })
     .from(ipoRawMaterialRequirements)
     .leftJoin(materials, eq(ipoRawMaterialRequirements.materialId, materials.id))
@@ -470,6 +471,19 @@ export async function generateBatchingPlantPR(
   if (requirements.length === 0) {
     return { success: false, error: "No raw material requirements found. Run BOM explosion first." };
   }
+
+  // Fetch Batching Plant stock-on-hand for each material
+  const materialIds = requirements.map((r) => r.materialId).filter(Boolean) as string[];
+  const stockRows = materialIds.length > 0
+    ? await db
+        .select({ materialId: inventoryStock.materialId, qty: inventoryStock.quantityOnHand })
+        .from(inventoryStock)
+        .where(and(
+          sql`${inventoryStock.materialId} = ANY(ARRAY[${sql.join(materialIds.map((id) => sql`${id}::uuid`), sql`, `)}])`,
+          eq(inventoryStock.projectId, ipo.projectId),
+        ))
+    : [];
+  const stockMap = new Map(stockRows.map((s) => [s.materialId, Number(s.qty ?? 0)]));
 
   // Create PR
   const [pr] = await db
@@ -481,19 +495,22 @@ export async function generateBatchingPlantPR(
     })
     .returning({ id: purchaseRequisitions.id });
 
-  // Create PR items and back-fill prItemId on requirements
+  // Create PR items with pricing, preferred supplier, and stock netting
   for (const req of requirements) {
-    const unitPrice = Number(req.adminPrice ?? 0);
-    const qty = Number(req.requiredQty);
+    const unitPrice     = Number(req.adminPrice ?? 0);
+    const required      = Number(req.requiredQty);
+    const inStock       = stockMap.get(req.materialId ?? "") ?? 0;
+    const toOrder       = Math.max(0, required - inStock);
     const [prItem] = await db
       .insert(purchaseRequisitionItems)
       .values({
-        prId:             pr.id,
-        materialId:       req.materialId,
-        quantityRequired: String(qty),
-        quantityInStock:  "0",
-        quantityToOrder:  String(qty),
-        unitPrice:        String(unitPrice),
+        prId:                pr.id,
+        materialId:          req.materialId!,
+        quantityRequired:    String(required),
+        quantityInStock:     String(inStock),
+        quantityToOrder:     String(toOrder),
+        unitPrice:           String(unitPrice),
+        preferredSupplierId: req.preferredSupplierId ?? null,
       })
       .returning({ id: purchaseRequisitionItems.id });
 
