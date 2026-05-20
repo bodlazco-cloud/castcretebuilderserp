@@ -382,7 +382,7 @@ async function triggerBatchingIPOsForPR(prId: string, userId: string): Promise<v
         .limit(1);
       if (!link) continue;
 
-      // Check mix design has BOM entries before generating IPO
+      // Only create IPO when there is a recipe BOM defined
       const [bomCheck] = await db
         .select({ id: mixDesignBom.id })
         .from(mixDesignBom)
@@ -400,6 +400,7 @@ async function triggerBatchingIPOsForPR(prId: string, userId: string): Promise<v
       });
       if (!ipoResult.success) continue;
 
+      // Auto-explode BOM and generate raw material PR immediately at IPO creation
       await explodeIPORequirements(ipoResult.id);
       await generateBatchingPlantPR(ipoResult.id, userId);
     }
