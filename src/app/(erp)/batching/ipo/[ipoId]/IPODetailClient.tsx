@@ -104,7 +104,13 @@ export function IPODetailClient({
         acceptedBy: nextStatus === "ACCEPTED" ? userId : undefined,
       });
       if (res.success) {
-        flash(`Status updated to ${nextStatus.replace("_", " ")}.`);
+        if (nextStatus === "ACCEPTED" && res.autoTriggered) {
+          flash("IPO accepted — BOM exploded and raw material PR generated automatically.");
+        } else if (nextStatus === "ACCEPTED") {
+          flash("IPO accepted. BOM explosion will be available shortly — use Recalculate if needed.");
+        } else {
+          flash(`Status updated to ${nextStatus.replace("_", " ")}.`);
+        }
         router.refresh();
       } else {
         setError(res.error ?? "Failed to update status.");
@@ -134,63 +140,72 @@ export function IPODetailClient({
       {!isBilled && (
         <div style={{
           background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
-          padding: "1rem 1.5rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap",
+          padding: "1rem 1.5rem",
         }}>
-          <span style={{ fontSize: "0.8rem", color: "#6b7280", flex: 1 }}>IPO Actions</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "0.8rem", color: "#6b7280", flex: 1 }}>IPO Actions</span>
 
-          {/* 1. Explode BOM */}
-          {!exploded && (
-            <button
-              disabled={isPending}
-              onClick={handleExplode}
-              style={{
-                padding: "0.45rem 0.9rem", background: "#f59e0b", color: "#fff",
-                border: "none", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 600,
-                cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.7 : 1,
-              }}
-            >
-              {isPending ? "Exploding…" : "⚗️ Explode BOM"}
-            </button>
-          )}
+            {/* PR link (when auto-generated) */}
+            {prGenerated && currentPrId && (
+              <a
+                href={`/procurement/pr/${currentPrId}`}
+                style={{
+                  padding: "0.35rem 0.75rem", background: "#ecfdf5", color: "#065f46",
+                  borderRadius: "6px", fontSize: "0.78rem", fontWeight: 600,
+                  textDecoration: "none",
+                }}
+              >
+                ✓ Raw Material PR — View in Procurement
+              </a>
+            )}
 
-          {/* 2. Generate PR */}
-          {exploded && !prGenerated && (
-            <button
-              disabled={isPending}
-              onClick={handleGeneratePR}
-              style={{
-                padding: "0.45rem 0.9rem", background: ACCENT, color: "#fff",
-                border: "none", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 600,
-                cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.7 : 1,
-              }}
-            >
-              {isPending ? "Generating…" : "📋 Generate Batching Plant PR"}
-            </button>
-          )}
+            {/* Advance status */}
+            {nextStatus && actionLabel && (
+              <button
+                disabled={isPending}
+                onClick={handleAdvanceStatus}
+                style={{
+                  padding: "0.45rem 0.9rem",
+                  background: ipoStatus === "PENDING" ? ACCENT : "#111827",
+                  color: "#fff",
+                  border: "none", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 600,
+                  cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.7 : 1,
+                }}
+              >
+                {isPending ? "Updating…" : ipoStatus === "PENDING" ? `✓ ${actionLabel} — auto-explodes BOM & generates PR` : `→ ${actionLabel}`}
+              </button>
+            )}
+          </div>
 
-          {/* PR link */}
-          {prGenerated && currentPrId && (
-            <span style={{
-              padding: "0.35rem 0.75rem", background: "#ecfdf5", color: "#065f46",
-              borderRadius: "6px", fontSize: "0.78rem", fontWeight: 600,
-            }}>
-              ✓ PR Generated — visible in Procurement
-            </span>
-          )}
-
-          {/* 3. Advance status */}
-          {nextStatus && actionLabel && (
-            <button
-              disabled={isPending}
-              onClick={handleAdvanceStatus}
-              style={{
-                padding: "0.45rem 0.9rem", background: "#111827", color: "#fff",
-                border: "none", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 600,
-                cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.7 : 1,
-              }}
-            >
-              {isPending ? "Updating…" : `→ ${actionLabel}`}
-            </button>
+          {/* Re-process tools (shown after acceptance, for manual recalculation) */}
+          {ipoStatus !== "PENDING" && (
+            <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "0.72rem", color: "#9ca3af", flex: 1 }}>Re-process tools</span>
+              <button
+                disabled={isPending}
+                onClick={handleExplode}
+                style={{
+                  padding: "0.35rem 0.75rem", background: "transparent", border: "1px solid #d1d5db",
+                  borderRadius: "6px", fontSize: "0.72rem", color: "#6b7280",
+                  cursor: isPending ? "not-allowed" : "pointer",
+                }}
+              >
+                {isPending ? "Recalculating…" : "↺ Recalculate BOM"}
+              </button>
+              {exploded && !prGenerated && (
+                <button
+                  disabled={isPending}
+                  onClick={handleGeneratePR}
+                  style={{
+                    padding: "0.35rem 0.75rem", background: "transparent", border: "1px solid #d1d5db",
+                    borderRadius: "6px", fontSize: "0.72rem", color: "#6b7280",
+                    cursor: isPending ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {isPending ? "Generating…" : "📋 Generate PR Manually"}
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}

@@ -2,11 +2,10 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
 import {
-  internalPurchaseOrders, mixDesigns, projects, projectUnits, users,
+  internalPurchaseOrders, mixDesigns, projects, projectUnits,
 } from "@/db/schema";
-import { eq, desc, count, sql } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
-import { CreateIPOForm } from "./CreateIPOForm";
 
 const ACCENT = "#1a56db";
 
@@ -37,9 +36,9 @@ function StatusPill({ status }: { status: string }) {
 }
 
 export default async function IPOPage() {
-  const user = await getAuthUser();
+  await getAuthUser();
 
-  const [kpiRows, ipoRows, projectRows, mixDesignRows, unitRows] = await Promise.all([
+  const [kpiRows, ipoRows] = await Promise.all([
     db
       .select({ status: internalPurchaseOrders.status, cnt: count() })
       .from(internalPurchaseOrders)
@@ -65,16 +64,6 @@ export default async function IPOPage() {
       .leftJoin(projectUnits, eq(internalPurchaseOrders.unitId, projectUnits.id))
       .orderBy(desc(internalPurchaseOrders.createdAt))
       .limit(50),
-    db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name),
-    db
-      .select({ id: mixDesigns.id, code: mixDesigns.code, name: mixDesigns.name })
-      .from(mixDesigns)
-      .where(eq(mixDesigns.isActive, true))
-      .orderBy(mixDesigns.code),
-    db
-      .select({ id: projectUnits.id, unitCode: projectUnits.unitCode, projectId: projectUnits.projectId })
-      .from(projectUnits)
-      .orderBy(projectUnits.unitCode),
   ]);
 
   const byStatus = Object.fromEntries(kpiRows.map((r) => [r.status, Number(r.cnt)]));
@@ -96,24 +85,27 @@ export default async function IPOPage() {
           </a>
         </div>
 
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1.75rem" }}>
-          <div>
-            <span style={{ fontSize: "0.72rem", fontWeight: 700, color: ACCENT, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-              Batching Plant
-            </span>
-            <h1 style={{ margin: "0.2rem 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827", borderLeft: `4px solid ${ACCENT}`, paddingLeft: "0.75rem" }}>
-              Internal Purchase Orders
-            </h1>
-            <p style={{ margin: "0 0 0 1rem", color: "#6b7280", fontSize: "0.875rem" }}>
-              Zero-trust production queue — every pour requires an approved IPO.
-            </p>
-          </div>
-          <CreateIPOForm
-            projects={projectRows}
-            mixDesigns={mixDesignRows}
-            units={unitRows}
-            userId={user?.id ?? ""}
-          />
+        <div style={{ marginBottom: "1.75rem" }}>
+          <span style={{ fontSize: "0.72rem", fontWeight: 700, color: ACCENT, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Batching Plant
+          </span>
+          <h1 style={{ margin: "0.2rem 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827", borderLeft: `4px solid ${ACCENT}`, paddingLeft: "0.75rem" }}>
+            Internal Purchase Orders
+          </h1>
+          <p style={{ margin: "0 0 0 1rem", color: "#6b7280", fontSize: "0.875rem" }}>
+            Zero-trust production queue — every pour requires an approved IPO.
+          </p>
+        </div>
+
+        {/* Auto-trigger info banner */}
+        <div style={{
+          padding: "0.75rem 1rem", marginBottom: "1.5rem",
+          background: "#eff6ff", borderRadius: "7px",
+          borderLeft: `3px solid ${ACCENT}`,
+          fontSize: "0.78rem", color: "#1e40af",
+        }}>
+          <strong>Automatic IPO Creation:</strong> IPOs are auto-generated when a Purchase Requisition containing
+          a Premix material is approved. Accept an IPO to trigger BOM explosion and raw material PR generation.
         </div>
 
         {/* KPI Pills */}

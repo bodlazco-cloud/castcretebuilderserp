@@ -132,14 +132,14 @@ export default async function BatchingPage() {
   ];
 
   const navLinks = [
-    { href: "/batching/recipes", label: "Recipe BOM", icon: "🧪" },
+    { href: "/batching/recipes", label: "Mix Design Register", icon: "🧪" },
     { href: "/batching/ipo", label: "IPO Queue", icon: "📋", badge: pendingIPOs > 0 ? String(pendingIPOs) : undefined },
     { href: "/batching/log-batch", label: "Log Batch", icon: "⚗️" },
-    { href: "/batching/mix-designs", label: "Standard Mixes", icon: "📐" },
     { href: "/batching/internal-sales", label: "Internal Sales", icon: "💰" },
     { href: "/batching/yield", label: "Yield Analysis", icon: "📊" },
-    { href: "/batching/production", label: "Production", icon: "🏭" },
+    { href: "/batching/production", label: "Production Logs", icon: "🏭" },
     { href: "/batching/reports", label: "Reports", icon: "📄" },
+    { href: "/batching/manpower", label: "Plant Manpower", icon: "👷" },
   ];
 
   return (

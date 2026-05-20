@@ -342,7 +342,7 @@ const UpdateIPOStatusSchema = z.object({
 
 export async function updateIPOStatus(
   input: z.infer<typeof UpdateIPOStatusSchema>,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; autoTriggered?: boolean }> {
   const p = UpdateIPOStatusSchema.safeParse(input);
   if (!p.success) return { success: false, error: p.error.errors[0]?.message ?? "Invalid input." };
   const d = p.data;
@@ -358,10 +358,24 @@ export async function updateIPOStatus(
     })
     .where(eq(internalPurchaseOrders.id, d.id));
 
+  // Auto-trigger BOM explosion + raw material PR when IPO is accepted
+  let autoTriggered = false;
+  if (d.status === "ACCEPTED" && d.acceptedBy) {
+    try {
+      const explodeResult = await explodeIPORequirements(d.id);
+      if (explodeResult.success) {
+        await generateBatchingPlantPR(d.id, d.acceptedBy);
+        autoTriggered = true;
+      }
+    } catch {
+      // Non-blocking — acceptance still succeeds even if auto-trigger fails
+    }
+  }
+
   revalidatePath(`/batching/ipo/${d.id}`);
   revalidatePath("/batching/ipo");
   revalidatePath("/batching");
-  return { success: true };
+  return { success: true, autoTriggered };
 }
 
 // ── IPO BOM Explosion ─────────────────────────────────────────────────────────
