@@ -6,6 +6,7 @@ import {
   concreteDeliveryReceipts, batchingInternalSales,
   mixDesigns, mixDesignBom, standardMixes, inventoryStock,
 } from "@/db/schema";
+import { materials } from "@/db/schema";
 import { eq, and, sql, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
@@ -27,8 +28,10 @@ const LogBatchSchema = z.object({
   operatorId:       z.string().uuid(),
 });
 
+export type StockWarning = { materialName: string; neededQty: number; availableQty: number; shortfall: number; uom: string };
+
 export type LogBatchResult =
-  | { success: true; logId: string; isFlagged: boolean; yieldVariancePct: number; flagReason?: string }
+  | { success: true; logId: string; isFlagged: boolean; yieldVariancePct: number; flagReason?: string; stockWarnings: StockWarning[] }
   | { success: false; error: string };
 
 export async function logBatchProduction(
@@ -64,6 +67,39 @@ export async function logBatchProduction(
     ? `Production yield variance of ${yieldVariancePct.toFixed(2)}% exceeds the 2% threshold. Possible raw material theft or equipment error.`
     : undefined;
 
+  // Gap #2: Pre-flight stock check — soft warning, does not block the batch
+  const bomItems = await db
+    .select({
+      materialId:       mixDesignBom.materialId,
+      requiredQuantity: mixDesignBom.requiredQuantity,
+      unitOfMeasure:    mixDesignBom.unitOfMeasure,
+      materialName:     materials.name,
+    })
+    .from(mixDesignBom)
+    .leftJoin(materials, eq(mixDesignBom.materialId, materials.id))
+    .where(eq(mixDesignBom.mixDesignId, mixDesignId));
+
+  const stockWarnings: StockWarning[] = [];
+  for (const item of bomItems) {
+    if (!item.materialId) continue;
+    const neededQty = Number(item.requiredQuantity) * volumeProducedM3;
+    const [stock] = await db
+      .select({ quantityOnHand: inventoryStock.quantityOnHand })
+      .from(inventoryStock)
+      .where(and(eq(inventoryStock.materialId, item.materialId), eq(inventoryStock.projectId, projectId)))
+      .limit(1);
+    const availableQty = Number(stock?.quantityOnHand ?? 0);
+    if (availableQty < neededQty) {
+      stockWarnings.push({
+        materialName: item.materialName ?? item.materialId,
+        neededQty,
+        availableQty,
+        shortfall: neededQty - availableQty,
+        uom: item.unitOfMeasure,
+      });
+    }
+  }
+
   const [log] = await db
     .insert(batchingProductionLogs)
     .values({
@@ -91,6 +127,7 @@ export async function logBatchProduction(
     isFlagged: isProductionFlagged,
     yieldVariancePct: Number(yieldVariancePct.toFixed(4)),
     flagReason,
+    stockWarnings,
   };
 }
 

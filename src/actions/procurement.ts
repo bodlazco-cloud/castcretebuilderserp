@@ -7,6 +7,7 @@ import {
   purchaseOrders, purchaseOrderItems,
   poPriceChangeRequests, suppliers,
   materialReceivingReports, mrrItems, inventoryLedger,
+  financialLedger, departments, costCenters,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -555,6 +556,44 @@ export async function createMrr(input: z.infer<typeof CreateMrrSchema>): Promise
         quantityOnHand:   String(item.quantityReceived),
         quantityReserved: "0",
       });
+    }
+  }
+
+  // Gap #3: Post MRR accounting entries to financial ledger (Debit Raw Inventory / Credit AP)
+  // Look up the BATCHING dept + its primary cost center; skip ledger if not configured yet.
+  const [batchingDept] = await db
+    .select({ id: departments.id })
+    .from(departments)
+    .where(eq(departments.code, "BATCHING"))
+    .limit(1);
+
+  if (batchingDept) {
+    const [batchingCC] = await db
+      .select({ id: costCenters.id })
+      .from(costCenters)
+      .where(and(eq(costCenters.deptId, batchingDept.id), eq(costCenters.isActive, true)))
+      .limit(1);
+
+    if (batchingCC) {
+      const txDate = receivedDate;
+      await db.insert(financialLedger).values(
+        items
+          .filter((item) => item.unitPrice > 0)
+          .map((item) => ({
+            projectId:       projectId,
+            costCenterId:    batchingCC.id,
+            deptId:          batchingDept.id,
+            resourceType:    "MATERIAL" as const,
+            resourceId:      item.materialId,
+            transactionType: "OUTFLOW" as const,
+            referenceType:   "MRR",
+            referenceId:     mrr.id,
+            amount:          String((item.quantityReceived * item.unitPrice).toFixed(2)),
+            isExternal:      true,
+            transactionDate: txDate,
+            description:     `Raw material receipt — MRR (${mrr.id.slice(0, 8)})`,
+          })),
+      );
     }
   }
 
