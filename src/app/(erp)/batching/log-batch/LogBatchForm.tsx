@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { logBatchProduction } from "@/actions/batching";
+import { logBatchProduction, type StockWarning } from "@/actions/batching";
 
 type Project = { id: string; name: string };
 type MixDesign = { id: string; code: string; name: string };
@@ -24,7 +24,7 @@ export function LogBatchForm({ projects, mixDesigns, userId }: {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ isFlagged: boolean; yieldVariancePct: number; flagReason?: string } | null>(null);
+  const [result, setResult] = useState<{ isFlagged: boolean; yieldVariancePct: number; flagReason?: string; stockWarnings: StockWarning[] } | null>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -43,7 +43,7 @@ export function LogBatchForm({ projects, mixDesigns, userId }: {
         operatorId:       userId,
       });
       if (res.success) {
-        setResult({ isFlagged: res.isFlagged, yieldVariancePct: res.yieldVariancePct, flagReason: res.flagReason });
+        setResult({ isFlagged: res.isFlagged, yieldVariancePct: res.yieldVariancePct, flagReason: res.flagReason, stockWarnings: res.stockWarnings });
       } else {
         setError(res.error);
       }
@@ -67,6 +67,39 @@ export function LogBatchForm({ projects, mixDesigns, userId }: {
             {result.flagReason && <div style={{ marginTop: "0.25rem" }}>{result.flagReason}</div>}
           </div>
         </div>
+        {result.stockWarnings.length > 0 && (
+          <div style={{
+            marginTop: "0.5rem", padding: "0.85rem 1rem",
+            background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px",
+            textAlign: "left",
+          }}>
+            <p style={{ margin: "0 0 0.5rem", fontSize: "0.82rem", fontWeight: 700, color: "#92400e" }}>
+              ⚠ Stock Warning — {result.stockWarnings.length} material{result.stockWarnings.length > 1 ? "s" : ""} below required level
+            </p>
+            <p style={{ margin: "0 0 0.5rem", fontSize: "0.75rem", color: "#78350f" }}>
+              Batch was saved. Please coordinate with procurement to replenish.
+            </p>
+            <table style={{ width: "100%", fontSize: "0.75rem", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid #fde68a" }}>
+                  {["Material", "Needed", "Available", "Shortfall"].map((h, i) => (
+                    <th key={h} style={{ padding: "0.2rem 0.4rem", textAlign: i > 0 ? "right" : "left", color: "#92400e", fontWeight: 700 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.stockWarnings.map((w) => (
+                  <tr key={w.materialName}>
+                    <td style={{ padding: "0.2rem 0.4rem", color: "#78350f" }}>{w.materialName}</td>
+                    <td style={{ padding: "0.2rem 0.4rem", textAlign: "right", fontFamily: "monospace" }}>{w.neededQty.toFixed(2)} {w.uom}</td>
+                    <td style={{ padding: "0.2rem 0.4rem", textAlign: "right", fontFamily: "monospace" }}>{w.availableQty.toFixed(2)} {w.uom}</td>
+                    <td style={{ padding: "0.2rem 0.4rem", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#dc2626" }}>-{w.shortfall.toFixed(2)} {w.uom}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
           <button onClick={() => setResult(null)} style={{
             padding: "0.65rem 1.25rem", borderRadius: "6px", border: "1px solid #d1d5db",
