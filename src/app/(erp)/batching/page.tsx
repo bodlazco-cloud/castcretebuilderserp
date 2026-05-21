@@ -138,6 +138,8 @@ export default async function BatchingPage() {
     { href: "/batching/log-batch", label: "Log Batch", icon: "⚗️" },
     { href: "/batching/production", label: "Production Logs", icon: "🏭" },
     { href: "/batching/yield", label: "Yield Analysis", icon: "📊" },
+    { href: "/batching/dispatch", label: "Dispatch Concrete", icon: "🚚" },
+    { href: "/batching/deliver", label: "Pending Deliveries", icon: "📬" },
     { href: "/batching/internal-sales", label: "Internal Sales", icon: "💰" },
     { href: "/batching/reports", label: "Reports", icon: "📄" },
     { href: "/batching/manpower", label: "Plant Manpower", icon: "👷" },

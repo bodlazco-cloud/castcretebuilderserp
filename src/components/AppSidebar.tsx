@@ -71,6 +71,8 @@ const NAV: NavSection[] = [
       { label: "Log Batch",             href: "/batching/log-batch" },
       { label: "Production Logs",       href: "/batching/production" },
       { label: "Yield Analysis",        href: "/batching/yield" },
+      { label: "Dispatch",              href: "/batching/dispatch" },
+      { label: "Pending Deliveries",    href: "/batching/deliver" },
       { label: "Internal Sales",        href: "/batching/internal-sales" },
       { label: "Plant Manpower",        href: "/batching/manpower" },
       { label: "Reports",               isDivider: true },
