@@ -14,10 +14,11 @@ const C = {
   activeBg: "rgba(59,130,246,0.15)",
 } as const;
 
-type NavLink     = { label: string; href: string; isDivider?: never };
-type NavDivider  = { label: string; isDivider: true; href?: never };
-type NavItem     = NavLink | NavDivider;
-type NavSection  = { title: string; items: NavItem[] };
+type NavLink    = { label: string; href: string; isDivider?: never; isGroup?: never };
+type NavDivider = { label: string; isDivider: true; href?: never; isGroup?: never };
+type NavGroup   = { label: string; isGroup: true; items: NavLink[]; href?: never; isDivider?: never };
+type NavItem    = NavLink | NavDivider | NavGroup;
+type NavSection = { title: string; items: NavItem[] };
 
 const NAV: NavSection[] = [
   {
@@ -30,7 +31,7 @@ const NAV: NavSection[] = [
       { label: "MRP Queue",             href: "/planning/mrp-queue" },
       { label: "Batching Forecast",     href: "/planning/batching-forecast" },
       { label: "Motorpool Needs",       href: "/planning/motorpool-needs" },
-      { label: "Variance Requests",      href: "/planning/variance-requests" },
+      { label: "Variance Requests",     href: "/planning/variance-requests" },
       { label: "Reports",               isDivider: true },
       { label: "Budget vs Actual",      href: "/planning/reports/budget-vs-actual" },
       { label: "Job Costing Report",    href: "/planning/reports/job-costing" },
@@ -64,22 +65,26 @@ const NAV: NavSection[] = [
   {
     title: "Batching Plant",
     items: [
-      { label: "Overview",              href: "/batching" },
-      { label: "Setup",                 isDivider: true },
-      { label: "Mix Design Register",   href: "/batching/recipes" },
-      { label: "Production",            isDivider: true },
-      { label: "IPO Queue",             href: "/batching/ipo" },
-      { label: "Material Receiving",    href: "/batching/mrr" },
-      { label: "Log Batch",             href: "/batching/log-batch" },
-      { label: "Production Logs",       href: "/batching/production" },
-      { label: "Yield Analysis",        href: "/batching/yield" },
-      { label: "Delivery",              isDivider: true },
-      { label: "Dispatch",              href: "/batching/dispatch" },
-      { label: "Pending Deliveries",    href: "/batching/deliver" },
-      { label: "Internal Sales",        href: "/batching/internal-sales" },
-      { label: "Admin",                 isDivider: true },
-      { label: "Plant Manpower",        href: "/batching/manpower" },
-      { label: "Batching Reports",      href: "/batching/reports" },
+      { label: "Overview",     href: "/batching" },
+      { label: "Setup", isGroup: true, items: [
+        { label: "Mix Design Register", href: "/batching/recipes" },
+      ]},
+      { label: "Production", isGroup: true, items: [
+        { label: "IPO Queue",           href: "/batching/ipo" },
+        { label: "Material Receiving",  href: "/batching/mrr" },
+        { label: "Log Batch",           href: "/batching/log-batch" },
+        { label: "Production Logs",     href: "/batching/production" },
+        { label: "Yield Analysis",      href: "/batching/yield" },
+      ]},
+      { label: "Delivery", isGroup: true, items: [
+        { label: "Dispatch",            href: "/batching/dispatch" },
+        { label: "Pending Deliveries",  href: "/batching/deliver" },
+        { label: "Internal Sales",      href: "/batching/internal-sales" },
+      ]},
+      { label: "Admin", isGroup: true, items: [
+        { label: "Plant Manpower",      href: "/batching/manpower" },
+        { label: "Batching Reports",    href: "/batching/reports" },
+      ]},
     ],
   },
   {
@@ -143,15 +148,15 @@ const NAV: NavSection[] = [
   {
     title: "Master List",
     items: [
-      { label: "Overview",             href: "/master-list" },
-      { label: "Projects / Sites",     href: "/master-list/projects" },
-      { label: "Construction Phases",  href: "/master-list/construction-phases" },
-      { label: "Material List",        href: "/master-list/materials" },
-      { label: "Vendors",              href: "/master-list/vendors" },
-      { label: "Subcontractors",       href: "/master-list/subcontractors" },
-      { label: "Developers",           href: "/master-list/developers" },
+      { label: "Overview",                   href: "/master-list" },
+      { label: "Projects / Sites",           href: "/master-list/projects" },
+      { label: "Construction Phases",        href: "/master-list/construction-phases" },
+      { label: "Material List",              href: "/master-list/materials" },
+      { label: "Vendors",                    href: "/master-list/vendors" },
+      { label: "Subcontractors",             href: "/master-list/subcontractors" },
+      { label: "Developers",                 href: "/master-list/developers" },
       { label: "Departments & Cost Centers", href: "/master-list/departments" },
-      { label: "Import Data",          href: "/master-list/import" },
+      { label: "Import Data",                href: "/master-list/import" },
     ],
   },
   {
@@ -165,7 +170,6 @@ const NAV: NavSection[] = [
   },
 ];
 
-// Overview-only pages: only exact match marks them active
 const OVERVIEW_HREFS = new Set([
   "/planning", "/construction", "/procurement", "/batching",
   "/motorpool", "/audit", "/finance", "/hr", "/main-dashboard", "/master-list",
@@ -173,7 +177,7 @@ const OVERVIEW_HREFS = new Set([
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
       style={{ transition: "transform 0.2s", transform: open ? "rotate(90deg)" : "rotate(0deg)", flexShrink: 0 }}>
       <polyline points="9 18 15 12 9 6" />
@@ -196,19 +200,42 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
     return pathname === href || pathname.startsWith(href + "/");
   }
 
+  // Which top-level section is active
   const activeSection = NAV.find((s) =>
-    s.items.some((item) => item.href && isActive(item.href))
+    s.items.some((item) => {
+      if (item.isGroup) return item.items.some((i) => isActive(i.href));
+      if (item.href)    return isActive(item.href);
+      return false;
+    })
   )?.title;
+
+  // Which sub-groups are active (auto-open)
+  const activeGroupKeys = new Set<string>();
+  NAV.forEach((section) => {
+    section.items.forEach((item) => {
+      if (item.isGroup && item.items.some((i) => isActive(i.href))) {
+        activeGroupKeys.add(`${section.title}::${item.label}`);
+      }
+    });
+  });
 
   const [openSections, setOpenSections] = useState<Set<string>>(
     () => new Set(activeSection ? [activeSection] : [NAV[0].title])
   );
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(activeGroupKeys));
 
   function toggleSection(title: string) {
     setOpenSections((prev) => {
       const next = new Set(prev);
-      if (next.has(title)) next.delete(title);
-      else next.add(title);
+      next.has(title) ? next.delete(title) : next.add(title);
+      return next;
+    });
+  }
+
+  function toggleGroup(key: string) {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
   }
@@ -230,15 +257,10 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
         borderBottom: `1px solid ${C.border}`, flexShrink: 0,
       }}>
         <span style={{ fontWeight: 700, fontSize: "1rem", letterSpacing: "-0.01em" }}>Castcrete 360</span>
-        <button
-          onClick={onClose}
-          className="mobile-only"
-          style={{
-            background: "transparent", border: "none", cursor: "pointer",
-            color: C.muted, padding: "0.25rem", alignItems: "center",
-          }}
-          aria-label="Close navigation"
-        >
+        <button onClick={onClose} className="mobile-only" style={{
+          background: "transparent", border: "none", cursor: "pointer",
+          color: C.muted, padding: "0.25rem",
+        }} aria-label="Close navigation">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -259,8 +281,7 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
         }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
           </svg>
           Executive Overview
         </Link>
@@ -269,7 +290,11 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
 
         {NAV.map((section) => {
           const isOpen = openSections.has(section.title);
-          const hasCurrent = section.items.some((item) => item.href && isActive(item.href));
+          const hasCurrent = section.items.some((item) => {
+            if (item.isGroup) return item.items.some((i) => isActive(i.href));
+            if (item.href)    return isActive(item.href);
+            return false;
+          });
 
           return (
             <div key={section.title}>
@@ -290,25 +315,68 @@ export default function AppSidebar({ displayName, deptCode, mobileOpen = false, 
               {isOpen && (
                 <div style={{ marginBottom: "0.25rem" }}>
                   {section.items.map((item, idx) => {
+                    // Collapsible sub-group
+                    if (item.isGroup) {
+                      const groupKey = `${section.title}::${item.label}`;
+                      const groupOpen = openGroups.has(groupKey);
+                      const groupHasCurrent = item.items.some((i) => isActive(i.href));
+
+                      return (
+                        <div key={`group-${idx}`}>
+                          <button onClick={() => toggleGroup(groupKey)} style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            width: "100%", padding: "0.35rem 1rem 0.35rem 1.5rem",
+                            background: "transparent", border: "none", cursor: "pointer",
+                            color: groupHasCurrent ? "#93c5fd" : "#52525b",
+                            fontSize: "0.68rem", fontWeight: 700, letterSpacing: "0.06em",
+                            textTransform: "uppercase", textAlign: "left",
+                          }}>
+                            <span>{item.label}</span>
+                            <Chevron open={groupOpen} />
+                          </button>
+                          {groupOpen && (
+                            <div>
+                              {item.items.map((link) => {
+                                const active = isActive(link.href);
+                                return (
+                                  <Link key={link.href} href={link.href} onClick={onClose} style={{
+                                    display: "block",
+                                    padding: "0.38rem 1rem 0.38rem 2.25rem",
+                                    textDecoration: "none", fontSize: "0.78rem",
+                                    color: active ? "#fff" : C.muted,
+                                    background: active ? C.activeBg : "transparent",
+                                    borderLeft: active ? `3px solid ${C.active}` : "3px solid transparent",
+                                    fontWeight: active ? 600 : 400,
+                                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                                  }}>
+                                    {link.label}
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    // Static divider
                     if (item.isDivider) {
                       return (
                         <div key={`div-${idx}`} style={{
                           display: "flex", alignItems: "center", gap: "0.4rem",
-                          padding: "0.5rem 1rem 0.25rem 1.75rem",
-                          marginTop: "0.25rem",
+                          padding: "0.5rem 1rem 0.25rem 1.75rem", marginTop: "0.25rem",
                         }}>
                           <div style={{ flex: 1, height: "1px", background: C.border }} />
                           <span style={{
                             fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.08em",
                             textTransform: "uppercase", color: "#52525b", whiteSpace: "nowrap",
-                          }}>
-                            {item.label}
-                          </span>
+                          }}>{item.label}</span>
                           <div style={{ flex: 1, height: "1px", background: C.border }} />
                         </div>
                       );
                     }
 
+                    // Regular link
                     const active = isActive(item.href);
                     return (
                       <Link key={item.href} href={item.href} onClick={onClose} style={{
