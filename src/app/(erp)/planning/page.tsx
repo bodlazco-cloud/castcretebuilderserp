@@ -207,6 +207,47 @@ export default async function PlanningOverviewPage() {
           ))}
         </div>
 
+        {/* Cross-Department Flow */}
+        <div style={{ ...card, marginBottom: "1.5rem", padding: "1rem 1.25rem", background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+          <p style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#1e40af", marginBottom: "0.6rem", marginTop: 0 }}>
+            Cross-Department Logic Flow
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", fontSize: "0.78rem" }}>
+            {[
+              { step: "BOM Entry", color: "#1e40af", bg: "#dbeafe", href: "/planning/bom/new" },
+              { step: "→" },
+              { step: "NTP Issued", color: "#065f46", bg: "#d1fae5" },
+              { step: "→" },
+              { step: "Forecast Lines", color: "#1e40af", bg: "#dbeafe", href: "/planning/mrp-queue" },
+              { step: "→" },
+              { step: "Raise PR (MRP Queue)", color: "#b91c1c", bg: "#fee2e2", href: "/planning/mrp-queue" },
+              { step: "→" },
+              { step: "PR Approved (Procurement)", color: "#713f12", bg: "#fef9c3" },
+              { step: "→" },
+              { step: "PO / Batching IPO", color: "#065f46", bg: "#d1fae5" },
+            ].map((s, i) =>
+              "href" in s ? (
+                <a key={i} href={s.href} style={{ padding: "0.25rem 0.6rem", borderRadius: "6px", background: s.bg, color: s.color, fontWeight: 600, fontSize: "0.75rem", textDecoration: "none", whiteSpace: "nowrap" }}>
+                  {s.step}
+                </a>
+              ) : s.step === "→" ? (
+                <span key={i} style={{ color: "#93c5fd", fontWeight: 700 }}>→</span>
+              ) : (
+                <span key={i} style={{ padding: "0.25rem 0.6rem", borderRadius: "6px", background: s.bg, color: s.color, fontWeight: 600, fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                  {s.step}
+                </span>
+              )
+            )}
+          </div>
+          {pendingPr > 0 && (
+            <div style={{ marginTop: "0.6rem", fontSize: "0.75rem", color: "#b91c1c", fontWeight: 600 }}>
+              ⚠ {pendingPr} forecast line{pendingPr !== 1 ? "s" : ""} waiting for PR — go to{" "}
+              <a href="/planning/mrp-queue" style={{ color: "#1a56db", textDecoration: "underline" }}>MRP Queue</a>
+              {" "}to raise them.
+            </div>
+          )}
+        </div>
+
         {/* BOM Status + Forecast Pipeline */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
 

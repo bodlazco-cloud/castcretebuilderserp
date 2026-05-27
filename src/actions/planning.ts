@@ -6,6 +6,9 @@ import {
   resourceForecasts,
   planningVarianceRequests,
   constructionManpowerLogs,
+  purchaseRequisitions,
+  purchaseRequisitionItems,
+  materials,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -315,6 +318,99 @@ export async function reviewVarianceRequest(
 
   revalidatePath("/planning/variance-requests");
   return { success: true };
+}
+
+// ─── Raise MRP Purchase Requisition ──────────────────────────────────────────
+
+export type RaiseMrpPrResult =
+  | { success: true; prId: string }
+  | { success: false; error: string };
+
+/**
+ * Creates a Purchase Requisition directly from a PENDING_PR resource forecast.
+ * Called from the MRP Queue page by Planning staff.
+ * The PR enters DRAFT status and can be submitted to Procurement for approval.
+ * On approval, the system's triggerBatchingIPOsForPR hook fires for concrete materials.
+ */
+export async function raiseMrpPurchaseRequisition(
+  forecastId: string,
+): Promise<RaiseMrpPrResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may raise purchase requisitions." };
+  }
+
+  // Fetch the forecast row with material + pricing info
+  const [forecast] = await db
+    .select({
+      id:               resourceForecasts.id,
+      projectId:        resourceForecasts.projectId,
+      unitId:           resourceForecasts.unitId,
+      status:           resourceForecasts.status,
+      grossQuantity:    resourceForecasts.grossQuantity,
+      quantityConsumed: resourceForecasts.quantityConsumed,
+      materialId:       masterBomEntries.materialId,
+      adminPrice:       materials.adminPrice,
+    })
+    .from(resourceForecasts)
+    .leftJoin(masterBomEntries, eq(resourceForecasts.masterBomEntryId, masterBomEntries.id))
+    .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
+    .where(eq(resourceForecasts.id, forecastId))
+    .limit(1);
+
+  if (!forecast) return { success: false, error: "Forecast line not found." };
+  if (forecast.status !== "PENDING_PR") {
+    return { success: false, error: "Only PENDING_PR forecasts can be converted to a PR." };
+  }
+  if (!forecast.materialId) {
+    return { success: false, error: "Forecast has no linked material — check BOM entry." };
+  }
+
+  const gross    = Number(forecast.grossQuantity);
+  const consumed = Number(forecast.quantityConsumed);
+  const toOrder  = Math.max(0, gross - consumed);
+
+  if (toOrder <= 0) return { success: false, error: "No remaining quantity to order for this line." };
+
+  // Create the PR (DRAFT — Procurement will submit for approval)
+  const [pr] = await db
+    .insert(purchaseRequisitions)
+    .values({
+      projectId:   forecast.projectId,
+      unitId:      forecast.unitId ?? null,
+      status:      "DRAFT" as const,
+      requestedBy: user.id,
+    })
+    .returning({ id: purchaseRequisitions.id });
+
+  // Add line item with Admin-fixed price
+  await db.insert(purchaseRequisitionItems).values({
+    prId:             pr.id,
+    materialId:       forecast.materialId,
+    quantityRequired: String(gross),
+    quantityInStock:  String(consumed),
+    quantityToOrder:  String(toOrder),
+    unitPrice:        forecast.adminPrice ?? "0",
+  });
+
+  // Promote forecast status and link to the new PR
+  await db
+    .update(resourceForecasts)
+    .set({
+      status:                "PR_CREATED" as const,
+      purchaseRequisitionId: pr.id,
+      updatedAt:             new Date(),
+    })
+    .where(eq(resourceForecasts.id, forecastId));
+
+  revalidatePath("/planning/mrp-queue");
+  revalidatePath("/planning");
+  revalidatePath("/procurement/purchase-requisitions");
+
+  return { success: true, prId: pr.id };
 }
 
 // ─── Manpower Logs (kept for resource-forecasting page) ───────────────────────
