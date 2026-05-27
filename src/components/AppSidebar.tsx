@@ -72,7 +72,6 @@ const NAV: NavSection[] = [
       { label: "Production", isGroup: true, items: [
         { label: "IPO Queue",           href: "/batching/ipo" },
         { label: "Material Receiving",  href: "/batching/mrr" },
-        { label: "Log Batch",           href: "/batching/log-batch" },
         { label: "Production Logs",     href: "/batching/production" },
         { label: "Yield Analysis",      href: "/batching/yield" },
       ]},
