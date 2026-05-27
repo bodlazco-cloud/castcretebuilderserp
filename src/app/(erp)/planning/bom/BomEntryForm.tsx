@@ -7,8 +7,11 @@ type Project       = { id: string; name: string };
 type PhaseScope    = { id: string; code: string; name: string; categoryId: string };
 type PhaseActivity = { id: string; scopeId: string; code: string; name: string };
 type UnitModel     = { projectId: string; unitModel: string };
-type Material      = { id: string; code: string; name: string; unit: string };
-type Vendor        = { id: string; name: string };
+type Material      = {
+  id: string; code: string; name: string; unit: string;
+  category: string | null; adminPrice: string | null; preferredSupplierId: string | null;
+};
+type Vendor = { id: string; name: string };
 
 const ACCENT = "#1a56db";
 const inputStyle: React.CSSProperties = {
@@ -26,7 +29,13 @@ const UNIT_TYPES = [
   { value: "SHOP", label: "SHOP — Shop / Retail Unit" },
 ];
 
-type LineItem = { materialId: string; qty: string; unitPrice: string; preferredSupplierId: string };
+type LineItem = {
+  materialId: string;
+  qty: string;
+  unitPrice: string;
+  preferredSupplierId: string;
+  equipmentType: string;
+};
 
 export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModels, materials, vendors }: {
   projects:        Project[];
@@ -41,32 +50,49 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
   const [success, setSuccess] = useState<string | null>(null);
 
   const [selectedProject,  setSelectedProject]  = useState("");
-  const [selectedScope,    setSelectedScope]    = useState("");   // phaseScope id
-  const [selectedActivity, setSelectedActivity] = useState("");   // phaseActivity id (optional)
+  const [selectedScope,    setSelectedScope]    = useState("");
+  const [selectedActivity, setSelectedActivity] = useState("");
   const [unitModel,        setUnitModel]        = useState("");
   const [unitType,         setUnitType]         = useState("");
   const [lines, setLines] = useState<LineItem[]>([
-    { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" },
+    { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "", equipmentType: "" },
   ]);
 
-  // Derived lists from selections — scopes are global (not project-specific)
   const scopeActivities = phaseActivities.filter((a) => a.scopeId === selectedScope);
   const projectUnitModelList = Array.from(
     new Set(unitModels.filter((u) => u.projectId === selectedProject).map((u) => u.unitModel))
   );
 
   function addLine() {
-    setLines((l) => [...l, { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" }]);
+    setLines((l) => [...l, { materialId: "", qty: "", unitPrice: "", preferredSupplierId: "", equipmentType: "" }]);
   }
   function removeLine(i: number) { setLines((l) => l.filter((_, idx) => idx !== i)); }
   function setLine(i: number, field: keyof LineItem, val: string) {
     setLines((l) => l.map((line, idx) => idx === i ? { ...line, [field]: val } : line));
   }
+
+  function handleMaterialChange(i: number, matId: string) {
+    const mat = materials.find((m) => m.id === matId);
+    setLines((l) => l.map((line, idx) => idx !== i ? line : {
+      ...line,
+      materialId:          matId,
+      unitPrice:           mat?.adminPrice ?? "",
+      preferredSupplierId: mat?.preferredSupplierId ?? "",
+    }));
+  }
+
   function lineTotal(line: LineItem) {
     const q = parseFloat(line.qty);
     const p = parseFloat(line.unitPrice);
     if (!isNaN(q) && !isNaN(p)) return (q * p).toLocaleString("en-PH", { minimumFractionDigits: 2 });
     return "—";
+  }
+
+  function getForecastType(line: LineItem): string {
+    if (line.equipmentType.trim()) return "EQUIPMENT";
+    const mat = materials.find((m) => m.id === line.materialId);
+    if (mat?.category === "CONCRETE") return "CONCRETE";
+    return "MATERIAL";
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -76,10 +102,9 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
     const items = lines
       .filter((l) => l.materialId && l.qty)
       .map((l) => ({
-        materialId: l.materialId,
+        materialId:      l.materialId,
         quantityPerUnit: Number(l.qty),
-        unitPrice: l.unitPrice ? Number(l.unitPrice) : undefined,
-        preferredSupplierId: l.preferredSupplierId || undefined,
+        equipmentType:   l.equipmentType.trim() || undefined,
       }));
 
     if (!selectedScope || !unitModel || !unitType || items.length === 0) {
@@ -98,7 +123,7 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
       });
       if (result.success) {
         setSuccess(`Saved ${result.inserted} BOM line(s). Previous entries for this scope were versioned out.`);
-        setLines([{ materialId: "", qty: "", unitPrice: "", preferredSupplierId: "" }]);
+        setLines([{ materialId: "", qty: "", unitPrice: "", preferredSupplierId: "", equipmentType: "" }]);
         setSelectedProject(""); setSelectedScope(""); setSelectedActivity("");
         setUnitModel(""); setUnitType("");
       } else {
@@ -124,16 +149,13 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
       <label>
         <span style={labelStyle}>Project / Site *</span>
         <select required style={inputStyle} value={selectedProject}
-          onChange={(e) => {
-            setSelectedProject(e.target.value);
-            setUnitModel("");
-          }}>
+          onChange={(e) => { setSelectedProject(e.target.value); setUnitModel(""); }}>
           <option value="">Select project…</option>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </label>
 
-      {/* Row 2: Scope of Work + Activity (from Construction Phases master list) */}
+      {/* Row 2: Scope + Activity */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Scope of Work *</span>
@@ -170,14 +192,13 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
               {projectUnitModelList.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           ) : (
-            <input
-              type="text" required placeholder="e.g. Type A, 2BR-Corner, Studio…"
+            <input type="text" required placeholder="e.g. Type A, 2BR-Corner, Studio…"
               style={inputStyle} value={unitModel}
               onChange={(e) => setUnitModel(e.target.value)} />
           )}
           {selectedProject && projectUnitModelList.length === 0 && (
             <span style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: "0.2rem", display: "block" }}>
-              No units defined for this project yet — type a model name manually.
+              No units defined — type a model name manually.
             </span>
           )}
         </label>
@@ -192,72 +213,103 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
 
       {/* Materials table */}
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
           <span style={{ ...labelStyle, marginBottom: 0 }}>Materials *</span>
           <button type="button" onClick={addLine} style={{
             padding: "0.35rem 0.85rem", borderRadius: "6px", fontSize: "0.8rem", fontWeight: 600,
             background: "#eff6ff", color: ACCENT, border: `1px solid ${ACCENT}`, cursor: "pointer",
           }}>+ Add Line</button>
         </div>
+        <div style={{ fontSize: "0.72rem", color: "#6b7280", marginBottom: "0.6rem" }}>
+          Unit Price and Preferred Supplier auto-populate from the Materials Master when a material is selected.
+          Equipment Type — if specified — routes this line to the <strong>Motorpool Needs</strong> forecast instead of MRP Queue.
+        </div>
 
         <div style={{ border: "1px solid #e5e7eb", borderRadius: "6px", overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "720px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "860px" }}>
               <thead>
                 <tr style={{ background: "#f9fafb" }}>
-                  {["Material", "Qty / Unit", "Unit Price (PHP)", "Total", "Preferred Supplier", ""].map((h, i) => (
+                  {["Material", "Qty / Unit", "Unit Price (PHP)", "Total", "Preferred Supplier", "Equipment Type", "Forecast", ""].map((h, i) => (
                     <th key={i} style={{
                       padding: "0.6rem 0.75rem", textAlign: "left", fontWeight: 600,
                       color: "#374151", borderBottom: "1px solid #e5e7eb",
-                      width: i === 5 ? "40px" : i === 3 ? "100px" : undefined,
+                      width: i === 7 ? "40px" : i === 6 ? "90px" : i === 3 ? "90px" : undefined,
+                      whiteSpace: "nowrap",
                     }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {lines.map((line, i) => (
-                  <tr key={i} style={{ borderBottom: i < lines.length - 1 ? "1px solid #f3f4f6" : "none" }}>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <select value={line.materialId} onChange={(e) => setLine(i, "materialId", e.target.value)}
-                        style={{ ...inputStyle, margin: 0 }}>
-                        <option value="">Select material…</option>
-                        {materials.map((m) => (
-                          <option key={m.id} value={m.id}>{m.code} — {m.name} ({m.unit})</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <input type="number" min="0.0001" step="0.0001" value={line.qty}
-                        onChange={(e) => setLine(i, "qty", e.target.value)}
-                        placeholder="0.0000" style={{ ...inputStyle, margin: 0 }} />
-                    </td>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <input type="number" min="0" step="0.01" value={line.unitPrice}
-                        onChange={(e) => setLine(i, "unitPrice", e.target.value)}
-                        placeholder="0.00" style={{ ...inputStyle, margin: 0 }} />
-                    </td>
-                    <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
-                      {lineTotal(line)}
-                    </td>
-                    <td style={{ padding: "0.5rem 0.75rem" }}>
-                      <select value={line.preferredSupplierId}
-                        onChange={(e) => setLine(i, "preferredSupplierId", e.target.value)}
-                        style={{ ...inputStyle, margin: 0 }}>
-                        <option value="">No preference</option>
-                        {vendors.map((v) => (
-                          <option key={v.id} value={v.id}>{v.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ padding: "0.5rem", textAlign: "center" }}>
-                      {lines.length > 1 && (
-                        <button type="button" onClick={() => removeLine(i)} style={{
-                          background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: "1rem",
-                        }}>✕</button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {lines.map((line, i) => {
+                  const fType = getForecastType(line);
+                  const fBadge = fType === "EQUIPMENT"
+                    ? { bg: "#fef3c7", color: "#92400e", label: "Motorpool" }
+                    : fType === "CONCRETE"
+                    ? { bg: "#ecfdf5", color: "#065f46", label: "Batching" }
+                    : { bg: "#eff6ff", color: "#1e40af", label: "MRP" };
+                  return (
+                    <tr key={i} style={{ borderBottom: i < lines.length - 1 ? "1px solid #f3f4f6" : "none" }}>
+                      <td style={{ padding: "0.5rem 0.75rem" }}>
+                        <select value={line.materialId}
+                          onChange={(e) => handleMaterialChange(i, e.target.value)}
+                          style={{ ...inputStyle, margin: 0 }}>
+                          <option value="">Select material…</option>
+                          {materials.map((m) => (
+                            <option key={m.id} value={m.id}>{m.code} — {m.name} ({m.unit})</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem" }}>
+                        <input type="number" min="0.0001" step="0.0001" value={line.qty}
+                          onChange={(e) => setLine(i, "qty", e.target.value)}
+                          placeholder="0.0000" style={{ ...inputStyle, margin: 0 }} />
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem" }}>
+                        <input type="number" min="0" step="0.01" value={line.unitPrice}
+                          onChange={(e) => setLine(i, "unitPrice", e.target.value)}
+                          placeholder="0.00" style={{ ...inputStyle, margin: 0 }} />
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
+                        {lineTotal(line)}
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem" }}>
+                        <select value={line.preferredSupplierId}
+                          onChange={(e) => setLine(i, "preferredSupplierId", e.target.value)}
+                          style={{ ...inputStyle, margin: 0 }}>
+                          <option value="">No preference</option>
+                          {vendors.map((v) => (
+                            <option key={v.id} value={v.id}>{v.name}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem" }}>
+                        <input
+                          type="text"
+                          value={line.equipmentType}
+                          onChange={(e) => setLine(i, "equipmentType", e.target.value)}
+                          placeholder="e.g. TOWER_CRANE"
+                          style={{ ...inputStyle, margin: 0, fontSize: "0.8rem" }}
+                        />
+                      </td>
+                      <td style={{ padding: "0.5rem 0.75rem" }}>
+                        {line.materialId && (
+                          <span style={{
+                            display: "inline-block", padding: "0.2rem 0.45rem", borderRadius: "4px",
+                            fontSize: "0.68rem", fontWeight: 700, background: fBadge.bg, color: fBadge.color,
+                          }}>{fBadge.label}</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "0.5rem", textAlign: "center" }}>
+                        {lines.length > 1 && (
+                          <button type="button" onClick={() => removeLine(i)} style={{
+                            background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: "1rem",
+                          }}>✕</button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

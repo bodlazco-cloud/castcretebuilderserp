@@ -57,11 +57,19 @@ export default async function NewBomEntryPage() {
     ),
     safe(
       db
-        .select({ id: materials.id, code: materials.code, name: materials.name, unit: materials.unit })
+        .select({
+          id:                  materials.id,
+          code:                materials.code,
+          name:                materials.name,
+          unit:                materials.unit,
+          category:            materials.category,
+          adminPrice:          materials.adminPrice,
+          preferredSupplierId: materials.preferredSupplierId,
+        })
         .from(materials)
         .where(eq(materials.isActive, true))
         .orderBy(materials.code),
-      [] as { id: string; code: string; name: string; unit: string }[],
+      [] as { id: string; code: string; name: string; unit: string; category: string | null; adminPrice: string | null; preferredSupplierId: string | null }[],
     ),
     safe(
       db

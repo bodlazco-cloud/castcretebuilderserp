@@ -10,6 +10,7 @@ import { eq, and, count, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { notifyWarSubmitted } from "@/lib/notifications";
+import { generateResourceForecastsForUnit } from "@/actions/planning";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE I — BOD Strategic Gate
@@ -131,7 +132,12 @@ export async function issueTaskAssignment(
     })
     .returning({ id: taskAssignments.id });
 
+  // Fire-and-forget: generate resource forecasts for this unit from approved BOM entries.
+  // NTP issuance succeeds even if forecast generation fails.
+  void generateResourceForecastsForUnit(projectId, unitId).catch(() => undefined);
+
   revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/planning/mrp-queue");
   return { success: true, taskAssignmentId: newAssignment.id };
 }
 

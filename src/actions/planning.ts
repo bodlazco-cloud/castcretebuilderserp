@@ -9,6 +9,7 @@ import {
   purchaseRequisitions,
   purchaseRequisitionItems,
   materials,
+  projectUnits,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -318,6 +319,91 @@ export async function reviewVarianceRequest(
 
   revalidatePath("/planning/variance-requests");
   return { success: true };
+}
+
+// ─── NTP → Resource Forecast Generation ──────────────────────────────────────
+
+/**
+ * Called automatically after an NTP (task assignment) is issued for a unit.
+ * Finds all APPROVED BOM entries matching the unit's model+type and creates
+ * resource forecast rows (MATERIAL / CONCRETE / EQUIPMENT) for each.
+ * Skips entries that already have a forecast for this unit (idempotent).
+ * Non-blocking — called with void so NTP issuance never fails due to forecast errors.
+ */
+export async function generateResourceForecastsForUnit(
+  projectId: string,
+  unitId: string,
+): Promise<void> {
+  // Fetch unit model + type to match BOM entries
+  const [unit] = await db
+    .select({ unitModel: projectUnits.unitModel, unitType: projectUnits.unitType })
+    .from(projectUnits)
+    .where(eq(projectUnits.id, unitId))
+    .limit(1);
+
+  if (!unit) return;
+
+  // Find all APPROVED, active BOM entries for this project/model/type
+  const bomEntries = await db
+    .select({
+      id:              masterBomEntries.id,
+      quantityPerUnit: masterBomEntries.quantityPerUnit,
+      equipmentType:   masterBomEntries.equipmentType,
+      matCategory:     materials.category,
+    })
+    .from(masterBomEntries)
+    .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
+    .where(
+      and(
+        eq(masterBomEntries.projectId, projectId),
+        eq(masterBomEntries.unitModel, unit.unitModel),
+        eq(masterBomEntries.unitType, unit.unitType as any),
+        eq(masterBomEntries.status, "APPROVED"),
+        eq(masterBomEntries.isActive, true),
+      ),
+    );
+
+  if (bomEntries.length === 0) return;
+
+  // Check which BOM entries already have a forecast for this unit (idempotency)
+  const existing = await db
+    .select({ masterBomEntryId: resourceForecasts.masterBomEntryId })
+    .from(resourceForecasts)
+    .where(
+      and(
+        eq(resourceForecasts.projectId, projectId),
+        eq(resourceForecasts.unitId, unitId),
+      ),
+    );
+
+  const existingSet = new Set(existing.map((r) => r.masterBomEntryId));
+  const toCreate = bomEntries.filter((b) => !existingSet.has(b.id));
+
+  if (toCreate.length === 0) return;
+
+  await db.insert(resourceForecasts).values(
+    toCreate.map((b) => ({
+      projectId,
+      unitId,
+      masterBomEntryId: b.id,
+      forecastType: (
+        b.equipmentType
+          ? "EQUIPMENT"
+          : b.matCategory === "CONCRETE"
+          ? "CONCRETE"
+          : "MATERIAL"
+      ) as "MATERIAL" | "CONCRETE" | "EQUIPMENT",
+      grossQuantity:    b.quantityPerUnit,
+      quantityConsumed: "0",
+      status:           "PENDING_PR" as const,
+      equipmentType:    b.equipmentType ?? null,
+    })),
+  );
+
+  revalidatePath("/planning/mrp-queue");
+  revalidatePath("/planning/batching-forecast");
+  revalidatePath("/planning/motorpool-needs");
+  revalidatePath("/planning");
 }
 
 // ─── Raise MRP Purchase Requisition ──────────────────────────────────────────
