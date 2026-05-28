@@ -48,7 +48,7 @@ export default async function JobCostingBvaPage() {
         })
         .from(purchaseRequisitionItems)
         .leftJoin(purchaseRequisitions, eq(purchaseRequisitionItems.prId, purchaseRequisitions.id)),
-      [] as { projectId: string | null; status: string; quantityToOrder: string; unitPrice: string }[],
+      [] as { projectId: string | null; status: string; quantityToOrder: string; unitPrice: string }[] as any[],
     ),
     safe(
       db.select({
@@ -59,7 +59,7 @@ export default async function JobCostingBvaPage() {
         })
         .from(purchaseOrderItems)
         .leftJoin(purchaseOrders, eq(purchaseOrderItems.poId, purchaseOrders.id)),
-      [] as { projectId: string; status: string; quantity: string; unitPrice: string }[],
+      [] as { projectId: string; status: string; quantity: string; unitPrice: string }[] as any[],
     ),
   ]);
 

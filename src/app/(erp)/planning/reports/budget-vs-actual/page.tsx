@@ -44,7 +44,7 @@ export default async function BudgetVsActualPage() {
         })
         .from(purchaseRequisitionItems)
         .leftJoin(purchaseRequisitions, eq(purchaseRequisitionItems.prId, purchaseRequisitions.id)),
-      [] as { projectId: string | null; status: string; quantityToOrder: string; unitPrice: string }[],
+      [] as { projectId: string | null; status: string; quantityToOrder: string; unitPrice: string }[] as any[],
     ),
     // PO line items — actual spend (issued/delivered POs)
     safe(
@@ -56,7 +56,7 @@ export default async function BudgetVsActualPage() {
         })
         .from(purchaseOrderItems)
         .leftJoin(purchaseOrders, eq(purchaseOrderItems.poId, purchaseOrders.id)),
-      [] as { projectId: string; status: string; quantity: string; unitPrice: string }[],
+      [] as { projectId: string; status: string; quantity: string; unitPrice: string }[] as any[],
     ),
   ]);
 

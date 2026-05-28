@@ -58,7 +58,7 @@ export default async function PRPOPage() {
         .leftJoin(projects, eq(purchaseRequisitions.projectId, projects.id))
         .orderBy(desc(purchaseRequisitions.createdAt))
         .limit(100),
-      [] as PRRow[]
+      [] as PRRow[] as any[]
     ),
     safe(
       db
@@ -77,7 +77,7 @@ export default async function PRPOPage() {
         .leftJoin(suppliers,  eq(purchaseOrders.supplierId, suppliers.id))
         .orderBy(desc(purchaseOrders.createdAt))
         .limit(100),
-      [] as PORow[]
+      [] as PORow[] as any[]
     ),
   ]);
 
