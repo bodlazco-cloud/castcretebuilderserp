@@ -6,6 +6,7 @@ import {
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { VarianceActions } from "./VarianceActions";
+import { VarianceSubmitAction } from "./VarianceSubmitAction";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -193,9 +194,8 @@ export default async function VarianceRequestsPage(props: {
                             : "Draft"}
                         </td>
                         <td style={{ padding: "0.65rem 1rem" }}>
-                          {row.status === "PENDING_REVIEW" && (
-                            <VarianceActions id={row.id} />
-                          )}
+                          {row.status === "PENDING_REVIEW" && <VarianceActions id={row.id} />}
+                          {row.status === "DRAFT" && <VarianceSubmitAction id={row.id} />}
                         </td>
                       </tr>
                     );
