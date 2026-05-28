@@ -3,7 +3,6 @@ export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { resourceForecasts, masterBomEntries, materials, projectUnits, projects } from "@/db/schema";
 import { eq, count } from "drizzle-orm";
-import { RaisePrButton } from "./RaisePrButton";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -115,12 +114,6 @@ export default async function MrpQueuePage() {
 
   return (
     <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
-      <style>{`
-        details.mrp-group > summary { list-style: none; cursor: pointer; }
-        details.mrp-group > summary::-webkit-details-marker { display: none; }
-        details.mrp-group > summary .mrp-chevron { transition: transform 0.2s; display: inline-block; }
-        details.mrp-group[open] > summary .mrp-chevron { transform: rotate(180deg); }
-      `}</style>
       <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
 
         {/* Header */}
@@ -133,23 +126,7 @@ export default async function MrpQueuePage() {
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>MRP Queue — Material Requirements</h1>
           <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>
             Resource forecasts of type MATERIAL generated from approved BOM entries on NTP issuance.
-            Click <strong>Raise PR</strong> to convert a pending line into a Purchase Requisition.
           </p>
-        </div>
-
-        {/* Flow callout */}
-        <div style={{
-          background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px",
-          padding: "0.75rem 1rem", fontSize: "0.8rem", color: "#1e40af",
-          marginBottom: "1.25rem", display: "flex", alignItems: "flex-start", gap: "0.6rem",
-        }}>
-          <span style={{ fontSize: "1rem" }}>🔄</span>
-          <div>
-            <strong>Cross-department flow:</strong>{" "}
-            BOM Entry (Planning) → NTP Issued → Forecast Lines Generated → <strong>Raise PR here</strong> →
-            PR Approved (Procurement) → PO Issued → Materials Delivered.
-            {" "}For concrete materials linked to a mix design, PR approval also auto-creates a Batching Plant IPO.
-          </div>
         </div>
 
         {/* KPI Cards */}
@@ -177,24 +154,21 @@ export default async function MrpQueuePage() {
             {Array.from(projectMap.values()).map((proj) => {
               const projPending = proj.rows.filter((r) => r.status === "PENDING_PR").length;
               return (
-                <details key={proj.projId} className="mrp-group" open style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                  <summary>
-                    <div style={{ padding: "0.75rem 1.25rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-                      <span className="mrp-chevron" style={{ color: "#9ca3af", fontSize: "0.8rem" }}>▾</span>
-                      <span style={{ fontWeight: 700, color: "#111827" }}>{proj.projName}</span>
-                      <span style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{proj.rows.length} line{proj.rows.length !== 1 ? "s" : ""}</span>
-                      {projPending > 0 && (
-                        <span style={{ fontSize: "0.72rem", background: "#fef2f2", color: "#b91c1c", padding: "0.2rem 0.55rem", borderRadius: "999px", fontWeight: 600 }}>
-                          {projPending} pending PR
-                        </span>
-                      )}
-                    </div>
-                  </summary>
+                <div key={proj.projId} style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                  <div style={{ padding: "0.75rem 1.25rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700, color: "#111827" }}>{proj.projName}</span>
+                    <span style={{ fontSize: "0.75rem", color: "#9ca3af" }}>{proj.rows.length} line{proj.rows.length !== 1 ? "s" : ""}</span>
+                    {projPending > 0 && (
+                      <span style={{ fontSize: "0.72rem", background: "#fef2f2", color: "#b91c1c", padding: "0.2rem 0.55rem", borderRadius: "999px", fontWeight: 600 }}>
+                        {projPending} pending PR
+                      </span>
+                    )}
+                  </div>
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
                       <thead>
                         <tr>
-                          {["Unit Code", "Model / Type", "Material", "Unit", "Gross Qty", "Consumed", "Remaining", "Status", "Action"].map((h) => (
+                          {["Unit Code", "Model / Type", "Material", "Unit", "Gross Qty", "Consumed", "Remaining", "Status", "PR"].map((h) => (
                             <th key={h} style={{
                               background: "#f9fafb", borderBottom: "1px solid #e5e7eb",
                               fontSize: "0.75rem", fontWeight: 600, color: "#6b7280",
@@ -250,9 +224,7 @@ export default async function MrpQueuePage() {
                                 <ForecastStatusBadge status={row.status} />
                               </td>
                               <td style={{ padding: "0.65rem 1rem", fontSize: "0.82rem" }}>
-                                {row.status === "PENDING_PR" ? (
-                                  <RaisePrButton forecastId={row.id} />
-                                ) : row.purchaseRequisitionId ? (
+                                {row.purchaseRequisitionId ? (
                                   <a
                                     href={`/procurement/purchase-requisitions/${row.purchaseRequisitionId}`}
                                     style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
@@ -268,7 +240,7 @@ export default async function MrpQueuePage() {
                       </tbody>
                     </table>
                   </div>
-                </details>
+                </div>
               );
             })}
           </div>

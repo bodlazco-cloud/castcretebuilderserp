@@ -6,11 +6,11 @@ import {
   subcontractors, activityDefinitions, milestoneDefinitions, blocks, projectUnits, projectUnitModels,
   developerRateCards, developerRateCardDeductions,
   materialPriceHistory, subcontractorRateCards, subcontractorRateCardDeductions,
-  bomStandards, costCenters, materialSuppliers, departments,
+  bomStandards, costCenters, materialSuppliers, vendorPriceHistory, departments,
   phaseCategories, phaseScopes, phaseActivities, phaseBillingMilestones,
   globalSettings,
 } from "@/db/schema";
-import { eq, count } from "drizzle-orm";
+import { eq, count, and, or, ilike } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
@@ -30,6 +30,10 @@ export async function createDeveloper(
 ): Promise<MutationResult> {
   const parsed = DeveloperSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const [dup] = await db.select({ id: developers.id }).from(developers)
+    .where(ilike(developers.name, parsed.data.name));
+  if (dup) return { success: false, error: `A developer named "${parsed.data.name}" already exists.` };
 
   const [row] = await db
     .insert(developers)
@@ -116,6 +120,14 @@ export async function createMaterial(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const d = parsed.data;
+  const [dup] = await db.select({ id: materials.id, code: materials.code, name: materials.name }).from(materials)
+    .where(or(ilike(materials.code, d.code), ilike(materials.name, d.name)));
+  if (dup) {
+    if (dup.code.toLowerCase() === d.code.toLowerCase())
+      return { success: false, error: `A material with code "${d.code}" already exists.` };
+    return { success: false, error: `A material named "${d.name}" already exists.` };
+  }
+
   const [row] = await db
     .insert(materials)
     .values({
@@ -181,6 +193,10 @@ export async function createSupplier(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
   const d = parsed.data;
 
+  const [dup] = await db.select({ id: suppliers.id }).from(suppliers)
+    .where(ilike(suppliers.name, d.name));
+  if (dup) return { success: false, error: `A vendor named "${d.name}" already exists.` };
+
   const [row] = await db
     .insert(suppliers)
     .values({
@@ -244,6 +260,14 @@ export async function createSubcontractor(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const d = parsed.data;
+  const [dup] = await db.select({ id: subcontractors.id, code: subcontractors.code, name: subcontractors.name }).from(subcontractors)
+    .where(or(ilike(subcontractors.code, d.code), ilike(subcontractors.name, d.name)));
+  if (dup) {
+    if (dup.code.toLowerCase() === d.code.toLowerCase())
+      return { success: false, error: `A subcontractor with code "${d.code}" already exists.` };
+    return { success: false, error: `A subcontractor named "${d.name}" already exists.` };
+  }
+
   const [row] = await db
     .insert(subcontractors)
     .values({
@@ -938,6 +962,128 @@ export async function removeMaterialSupplier(id: string, materialId: string): Pr
   await db.delete(materialSuppliers).where(eq(materialSuppliers.id, id));
   revalidatePath(`/admin/materials/${materialId}`);
   return { success: true };
+}
+
+// ─── Vendor Price List ────────────────────────────────────────────────────────
+
+const VendorPriceEntrySchema = z.object({
+  materialId:      z.string().uuid(),
+  unitPrice:       z.coerce.number().positive(),
+  uom:             z.string().max(30).optional(),
+  minimumQuantity: z.coerce.number().min(0).optional(),
+  effectiveDate:   z.string().optional(),
+  notes:           z.string().max(500).optional(),
+});
+
+export async function addVendorPriceEntry(
+  vendorId: string,
+  input: z.infer<typeof VendorPriceEntrySchema>,
+): Promise<{ success: boolean; error?: string }> {
+  const parsed = VendorPriceEntrySchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+  try {
+    const [existing] = await db
+      .select()
+      .from(materialSuppliers)
+      .where(and(
+        eq(materialSuppliers.supplierId, vendorId),
+        eq(materialSuppliers.materialId, d.materialId),
+      ));
+
+    if (existing) {
+      // Copy current price to history, then update the row
+      await db.insert(vendorPriceHistory).values({
+        supplierId:      vendorId,
+        materialId:      d.materialId,
+        unitPrice:       existing.unitPrice ?? null,
+        uom:             existing.uom ?? null,
+        minimumQuantity: existing.minimumQuantity ?? null,
+        effectiveDate:   existing.effectiveDate ?? null,
+        notes:           existing.notes ?? null,
+      });
+      await db.update(materialSuppliers)
+        .set({
+          unitPrice:       String(d.unitPrice),
+          uom:             d.uom ?? null,
+          minimumQuantity: d.minimumQuantity != null ? String(d.minimumQuantity) : null,
+          effectiveDate:   d.effectiveDate ?? null,
+          notes:           d.notes ?? null,
+        })
+        .where(eq(materialSuppliers.id, existing.id));
+    } else {
+      await db.insert(materialSuppliers).values({
+        supplierId:      vendorId,
+        materialId:      d.materialId,
+        unitPrice:       String(d.unitPrice),
+        uom:             d.uom ?? null,
+        minimumQuantity: d.minimumQuantity != null ? String(d.minimumQuantity) : null,
+        effectiveDate:   d.effectiveDate ?? null,
+        notes:           d.notes ?? null,
+        isCurrent:       true,
+      });
+    }
+    revalidatePath(`/master-list/vendors/${vendorId}`);
+    revalidatePath(`/master-list/materials/${d.materialId}`);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: `Failed to save: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+export async function updateVendorPriceEntry(
+  id: string,
+  vendorId: string,
+  materialId: string,
+  input: { unitPrice: number; uom?: string; minimumQuantity?: number; effectiveDate?: string; notes?: string },
+): Promise<{ success: boolean; error?: string }> {
+  if (!input.unitPrice || input.unitPrice <= 0) return { success: false, error: "Unit price must be positive." };
+  try {
+    await db.update(materialSuppliers)
+      .set({
+        unitPrice:       String(input.unitPrice),
+        uom:             input.uom ?? null,
+        minimumQuantity: input.minimumQuantity != null ? String(input.minimumQuantity) : null,
+        effectiveDate:   input.effectiveDate ?? null,
+        notes:           input.notes ?? null,
+      })
+      .where(eq(materialSuppliers.id, id));
+    revalidatePath(`/master-list/vendors/${vendorId}`);
+    revalidatePath(`/master-list/materials/${materialId}`);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: `Update failed: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+export async function deleteVendorPriceEntry(
+  id: string,
+  vendorId: string,
+  materialId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await db.delete(materialSuppliers).where(eq(materialSuppliers.id, id));
+    revalidatePath(`/master-list/vendors/${vendorId}`);
+    revalidatePath(`/master-list/materials/${materialId}`);
+    return { success: true };
+  } catch {
+    return { success: false, error: "Delete failed." };
+  }
+}
+
+export async function deleteVendorPriceHistoryEntry(
+  id: string,
+  vendorId: string,
+  materialId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await db.delete(vendorPriceHistory).where(eq(vendorPriceHistory.id, id));
+    revalidatePath(`/master-list/vendors/${vendorId}`);
+    revalidatePath(`/master-list/materials/${materialId}`);
+    return { success: true };
+  } catch {
+    return { success: false, error: "Delete failed." };
+  }
 }
 
 // ─── Phase Categories ──────────────────────────────────────────────────────

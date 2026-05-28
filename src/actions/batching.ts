@@ -4,27 +4,17 @@ import { db } from "@/db";
 import {
   batchingProductionLogs, concreteDeliveryNotes,
   concreteDeliveryReceipts, batchingInternalSales,
-  mixDesigns, standardMixes, inventoryStock, inventoryLedger,
+  mixDesigns, mixDesignBom, standardMixes, inventoryStock,
 } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { materials } from "@/db/schema";
+import { eq, and, sql, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// BATCHING PLANT — Yield Variance & Theft Prevention
-//
-// Mass Balance logic (Triple-Lock System):
-//   Gate 1 (Input):    Every kg of raw material entering the mixer is logged.
-//   Gate 2 (Mix Design): Theoretical yield is calculated from Planning's mix design.
-//   Gate 3 (Delivery): Site Engineer digitally acknowledges volume received.
-//
-// Flags:
-//   Production Leak:  Actual produced < Theoretical yield  (>2% variance → Audit)
-//   Delivery Leak:    Volume dispatched > Volume received at site
-// ═══════════════════════════════════════════════════════════════════════════════
+const YIELD_VARIANCE_THRESHOLD_PCT = 2.0;
+const DELIVERY_VARIANCE_THRESHOLD_M3 = 0;
 
-const YIELD_VARIANCE_THRESHOLD_PCT = 2.0;   // >2% triggers Audit flag
-const DELIVERY_VARIANCE_THRESHOLD_M3 = 0;   // any gap triggers flag
+// ── Gate 1 + 2: Log batch production ─────────────────────────────────────────
 
 const LogBatchSchema = z.object({
   projectId:        z.string().uuid(),
@@ -38,14 +28,12 @@ const LogBatchSchema = z.object({
   operatorId:       z.string().uuid(),
 });
 
+export type StockWarning = { materialName: string; neededQty: number; availableQty: number; shortfall: number; uom: string };
+
 export type LogBatchResult =
-  | { success: true; logId: string; isFlagged: boolean; yieldVariancePct: number; flagReason?: string }
+  | { success: true; logId: string; isFlagged: boolean; yieldVariancePct: number; flagReason?: string; stockWarnings: StockWarning[] }
   | { success: false; error: string };
 
-/**
- * Gate 1 + Gate 2: Log raw material inputs, compute theoretical yield,
- * check variance, and auto-flag to Audit if >2%.
- */
 export async function logBatchProduction(
   input: z.infer<typeof LogBatchSchema>,
 ): Promise<LogBatchResult> {
@@ -56,7 +44,6 @@ export async function logBatchProduction(
           cementUsedBags, sandUsedKg, gravelUsedKg,
           volumeProducedM3, operatorId } = parsed.data;
 
-  // ── Fetch mix design for theoretical yield calculation ────────────────────
   const [mix] = await db
     .select()
     .from(mixDesigns)
@@ -65,8 +52,6 @@ export async function logBatchProduction(
 
   if (!mix) return { success: false, error: "Mix design not found or inactive." };
 
-  // ── Gate 2: Theoretical yield from actual raw material inputs ─────────────
-  // Limiting reagent: whichever material gives the smallest yield
   const yieldFromCement  = cementUsedBags  / Number(mix.cementBagsPerM3);
   const yieldFromSand    = sandUsedKg      / Number(mix.sandKgPerM3);
   const yieldFromGravel  = gravelUsedKg    / Number(mix.gravelKgPerM3);
@@ -82,7 +67,39 @@ export async function logBatchProduction(
     ? `Production yield variance of ${yieldVariancePct.toFixed(2)}% exceeds the 2% threshold. Possible raw material theft or equipment error.`
     : undefined;
 
-  // ── Insert production log ─────────────────────────────────────────────────
+  // Gap #2: Pre-flight stock check — soft warning, does not block the batch
+  const bomItems = await db
+    .select({
+      materialId:       mixDesignBom.materialId,
+      requiredQuantity: mixDesignBom.requiredQuantity,
+      unitOfMeasure:    mixDesignBom.unitOfMeasure,
+      materialName:     materials.name,
+    })
+    .from(mixDesignBom)
+    .leftJoin(materials, eq(mixDesignBom.materialId, materials.id))
+    .where(eq(mixDesignBom.mixDesignId, mixDesignId));
+
+  const stockWarnings: StockWarning[] = [];
+  for (const item of bomItems) {
+    if (!item.materialId) continue;
+    const neededQty = Number(item.requiredQuantity) * volumeProducedM3;
+    const [stock] = await db
+      .select({ quantityOnHand: inventoryStock.quantityOnHand })
+      .from(inventoryStock)
+      .where(and(eq(inventoryStock.materialId, item.materialId), eq(inventoryStock.projectId, projectId)))
+      .limit(1);
+    const availableQty = Number(stock?.quantityOnHand ?? 0);
+    if (availableQty < neededQty) {
+      stockWarnings.push({
+        materialName: item.materialName ?? item.materialId,
+        neededQty,
+        availableQty,
+        shortfall: neededQty - availableQty,
+        uom: item.unitOfMeasure,
+      });
+    }
+  }
+
   const [log] = await db
     .insert(batchingProductionLogs)
     .values({
@@ -95,40 +112,83 @@ export async function logBatchProduction(
       gravelUsedKg:       String(gravelUsedKg),
       volumeProducedM3:   String(volumeProducedM3),
       theoreticalYieldM3: String(theoreticalYieldM3),
+      yieldVariancePct:   String(yieldVariancePct.toFixed(4)),
       isProductionFlagged,
-      flagReason: flagReason ?? null,
+      flagReason:         flagReason ?? null,
       operatorId,
     })
     .returning({ id: batchingProductionLogs.id });
 
-  revalidatePath(`/projects/${projectId}/batching`);
+  revalidatePath("/batching/production");
+  revalidatePath("/batching");
   return {
     success: true,
     logId: log.id,
     isFlagged: isProductionFlagged,
     yieldVariancePct: Number(yieldVariancePct.toFixed(4)),
     flagReason,
+    stockWarnings,
   };
 }
 
-// ─── Gate 3: Record concrete delivery receipt at site ─────────────────────────
+// ── Dispatch: Batching Plant sends batch to site ──────────────────────────────
+
+const DispatchSchema = z.object({
+  productionLogId:    z.string().uuid(),
+  projectId:          z.string().uuid(),
+  unitId:             z.string().uuid(),
+  volumeDispatchedM3: z.number().positive(),
+  dispatchedBy:       z.string().uuid(),
+});
+
+export type DispatchResult =
+  | { success: true; noteId: string }
+  | { success: false; error: string };
+
+export async function dispatchConcreteDelivery(
+  input: z.infer<typeof DispatchSchema>,
+): Promise<DispatchResult> {
+  const parsed = DispatchSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const { productionLogId, projectId, unitId, volumeDispatchedM3, dispatchedBy } = parsed.data;
+
+  // Check production log exists and belongs to correct project
+  const [log] = await db
+    .select({ id: batchingProductionLogs.id, volumeProducedM3: batchingProductionLogs.volumeProducedM3 })
+    .from(batchingProductionLogs)
+    .where(eq(batchingProductionLogs.id, productionLogId))
+    .limit(1);
+  if (!log) return { success: false, error: "Production log not found." };
+
+  if (volumeDispatchedM3 > Number(log.volumeProducedM3)) {
+    return { success: false, error: `Cannot dispatch more than produced volume (${Number(log.volumeProducedM3).toFixed(2)} m³).` };
+  }
+
+  const [note] = await db
+    .insert(concreteDeliveryNotes)
+    .values({ productionLogId, projectId, unitId, volumeDispatchedM3: String(volumeDispatchedM3), dispatchedBy })
+    .returning({ id: concreteDeliveryNotes.id });
+
+  revalidatePath("/batching/dispatch");
+  revalidatePath("/batching/deliver");
+  return { success: true, noteId: note.id };
+}
+
+// ── Gate 3: Site Engineer signs delivery receipt → IDB + inventory drawdown ───
+
 const ReceiveDeliverySchema = z.object({
-  deliveryNoteId:   z.string().uuid(),
-  unitId:           z.string().uuid(),
-  volumeReceivedM3: z.number().positive(),
+  deliveryNoteId:    z.string().uuid(),
+  unitId:            z.string().uuid(),
+  volumeReceivedM3:  z.number().positive(),
   internalRatePerM3: z.number().positive(),
-  receivedBy:       z.string().uuid(),
+  receivedBy:        z.string().uuid(),
 });
 
 export type ReceiveDeliveryResult =
-  | { success: true; receiptId: string; isFlagged: boolean; varianceM3: number }
+  | { success: true; receiptId: string; isFlagged: boolean; varianceM3: number; idbTotal: number }
   | { success: false; error: string };
 
-/**
- * Gate 3: Site Engineer confirms volume received.
- * Any gap between dispatched and received is flagged to Audit immediately.
- * Also creates the internal sale entry (Batching P&L credit).
- */
 export async function receiveConcreteDelivery(
   input: z.infer<typeof ReceiveDeliverySchema>,
 ): Promise<ReceiveDeliveryResult> {
@@ -137,20 +197,41 @@ export async function receiveConcreteDelivery(
 
   const { deliveryNoteId, unitId, volumeReceivedM3, internalRatePerM3, receivedBy } = parsed.data;
 
-  // ── Fetch delivery note ───────────────────────────────────────────────────
+  // Fetch delivery note + production log + mix design
   const [note] = await db
-    .select()
+    .select({
+      id:                concreteDeliveryNotes.id,
+      productionLogId:   concreteDeliveryNotes.productionLogId,
+      projectId:         concreteDeliveryNotes.projectId,
+      volumeDispatchedM3: concreteDeliveryNotes.volumeDispatchedM3,
+    })
     .from(concreteDeliveryNotes)
     .where(eq(concreteDeliveryNotes.id, deliveryNoteId))
     .limit(1);
 
   if (!note) return { success: false, error: "Delivery note not found." };
 
+  // Check not already received
+  const [existing] = await db
+    .select({ id: concreteDeliveryReceipts.id })
+    .from(concreteDeliveryReceipts)
+    .where(eq(concreteDeliveryReceipts.deliveryNoteId, deliveryNoteId))
+    .limit(1);
+  if (existing) return { success: false, error: "This delivery has already been signed off." };
+
+  const [log] = await db
+    .select({ mixDesignId: batchingProductionLogs.mixDesignId, projectId: batchingProductionLogs.projectId })
+    .from(batchingProductionLogs)
+    .where(eq(batchingProductionLogs.id, note.productionLogId))
+    .limit(1);
+  if (!log) return { success: false, error: "Production log not found." };
+
   const volumeDispatchedM3 = Number(note.volumeDispatchedM3);
   const varianceM3 = volumeDispatchedM3 - volumeReceivedM3;
   const isDeliveryFlagged = varianceM3 > DELIVERY_VARIANCE_THRESHOLD_M3;
+  const idbTotal = volumeReceivedM3 * internalRatePerM3;
 
-  // ── Insert receipt ────────────────────────────────────────────────────────
+  // Insert receipt
   const [receipt] = await db
     .insert(concreteDeliveryReceipts)
     .values({
@@ -163,35 +244,53 @@ export async function receiveConcreteDelivery(
     })
     .returning({ id: concreteDeliveryReceipts.id });
 
-  // ── Create internal sale (Batching P&L credit, no external cash) ──────────
+  // Auto IDB: create internal sale (debit project, credit batching revenue)
   await db.insert(batchingInternalSales).values({
     deliveryReceiptId:    receipt.id,
     projectId:            note.projectId,
     unitId,
     volumeM3:             String(volumeReceivedM3),
     internalRatePerM3:    String(internalRatePerM3),
-    totalInternalRevenue: String(volumeReceivedM3 * internalRatePerM3),
+    totalInternalRevenue: String(idbTotal),
     transactionDate:      new Date().toISOString().split("T")[0],
   });
 
-  revalidatePath(`/projects/${note.projectId}/batching`);
-  return {
-    success: true,
-    receiptId: receipt.id,
-    isFlagged: isDeliveryFlagged,
-    varianceM3,
-  };
+  // Inventory drawdown: BOM × volume received subtracted from Batching Plant stock
+  const bomItems = await db
+    .select({ materialId: mixDesignBom.materialId, requiredQuantity: mixDesignBom.requiredQuantity })
+    .from(mixDesignBom)
+    .where(eq(mixDesignBom.mixDesignId, log.mixDesignId));
+
+  for (const item of bomItems) {
+    if (!item.materialId) continue;
+    const drawdown = Number(item.requiredQuantity) * volumeReceivedM3;
+    await db
+      .update(inventoryStock)
+      .set({
+        quantityOnHand: sql`GREATEST(0, ${inventoryStock.quantityOnHand} - ${String(drawdown)})`,
+        lastUpdated: new Date(),
+      })
+      .where(and(
+        eq(inventoryStock.materialId, item.materialId),
+        eq(inventoryStock.projectId, log.projectId),
+      ));
+  }
+
+  revalidatePath("/batching/deliver");
+  revalidatePath("/batching/internal-sales");
+  revalidatePath("/batching");
+  return { success: true, receiptId: receipt.id, isFlagged: isDeliveryFlagged, varianceM3, idbTotal };
 }
 
 // ─── Standard Mixes ───────────────────────────────────────────────────────────
 
 const StandardMixSchema = z.object({
-  projectId:        z.string().uuid(),
-  unitModel:        z.string().min(1).max(50),
-  unitType:         z.enum(["BEG", "MID", "END", "SHOP"]),
-  mixDesignId:      z.string().uuid().optional(),
-  volumePerUnitM3:  z.number().positive().optional(),
-  description:      z.string().max(500).optional(),
+  projectId:       z.string().uuid(),
+  unitModel:       z.string().min(1).max(50),
+  unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
+  mixDesignId:     z.string().uuid().optional(),
+  volumePerUnitM3: z.number().positive().optional(),
+  description:     z.string().max(500).optional(),
 });
 
 export type StandardMixResult =
@@ -217,6 +316,6 @@ export async function createStandardMix(
     })
     .returning({ id: standardMixes.id });
 
-  revalidatePath("/batching/mix-designs");
+  revalidatePath("/batching/recipes");
   return { success: true, id: row.id };
 }

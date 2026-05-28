@@ -3,8 +3,7 @@ import { db } from "@/db";
 import { materials, suppliers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
-import { deleteMaterial } from "@/actions/master-list";
-import { DeleteRowButton } from "../DeleteRowButton";
+import MaterialsTable from "./MaterialsTable";
 
 export default async function MaterialsPage() {
   await getAuthUser();
@@ -41,51 +40,7 @@ export default async function MaterialsPage() {
           }}>+ Add Material</a>
         </div>
 
-        {rows.length === 0 ? (
-          <div style={{ padding: "3rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af" }}>
-            No materials yet. Click &ldquo;+ Add Material&rdquo; to get started.
-          </div>
-        ) : (
-          <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem", minWidth: "820px" }}>
-                <thead>
-                  <tr style={{ background: "#f9fafb" }}>
-                    {["Code", "Name", "Unit", "Category", "Admin Price", "Pref. Supplier", "Status", ""].map((h, i) => (
-                      <th key={i} style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.82rem", color: "#374151" }}>{r.code}</td>
-                      <td style={{ padding: "0.65rem 1rem", fontWeight: 500, color: "#111827" }}>{r.name}</td>
-                      <td style={{ padding: "0.65rem 1rem", color: "#6b7280" }}>{r.unit}</td>
-                      <td style={{ padding: "0.65rem 1rem", color: "#6b7280" }}>{r.category}</td>
-                      <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>
-                        PHP {Number(r.adminPrice).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                      </td>
-                      <td style={{ padding: "0.65rem 1rem", color: "#6b7280" }}>{r.supName ?? "—"}</td>
-                      <td style={{ padding: "0.65rem 1rem" }}>
-                        <span style={{
-                          display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600,
-                          background: r.isActive ? "#dcfce7" : "#f3f4f6", color: r.isActive ? "#166534" : "#6b7280",
-                        }}>{r.isActive ? "Active" : "Inactive"}</span>
-                      </td>
-                      <td style={{ padding: "0.65rem 1rem", textAlign: "right" }}>
-                        <span style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center" }}>
-                          <a href={`/master-list/materials/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
-                          <DeleteRowButton action={deleteMaterial.bind(null, r.id)} />
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        <MaterialsTable rows={rows} />
       </div>
     </main>
   );

@@ -11,7 +11,14 @@ export default async function LogBatchPage() {
   const [projects, mixDesigns] = await Promise.all([
     db.select({ id: schema.projects.id, name: schema.projects.name })
       .from(schema.projects).orderBy(schema.projects.name),
-    db.select({ id: schema.mixDesigns.id, code: schema.mixDesigns.code, name: schema.mixDesigns.name })
+    db.select({
+        id:                schema.mixDesigns.id,
+        code:              schema.mixDesigns.code,
+        name:              schema.mixDesigns.name,
+        cementBagsPerM3:   schema.mixDesigns.cementBagsPerM3,
+        sandKgPerM3:       schema.mixDesigns.sandKgPerM3,
+        gravelKgPerM3:     schema.mixDesigns.gravelKgPerM3,
+      })
       .from(schema.mixDesigns).where(eq(schema.mixDesigns.isActive, true)).orderBy(schema.mixDesigns.code),
   ]);
 

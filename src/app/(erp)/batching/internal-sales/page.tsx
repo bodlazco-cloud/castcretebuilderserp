@@ -1,169 +1,184 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
-import { batchingInternalSales, projects, projectUnits } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import {
+  batchingInternalSales, concreteDeliveryReceipts,
+  projects, projectUnits,
+} from "@/db/schema";
+import { eq, desc, sql } from "drizzle-orm";
 
-function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
-  ]);
-}
+const ACCENT = "#1a56db";
+const PHP = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" });
 
 export default async function InternalSalesPage() {
-  const rows = await safe(
+  const [sales, totals] = await Promise.all([
     db
       .select({
-        id: batchingInternalSales.id,
-        transactionDate: batchingInternalSales.transactionDate,
-        volumeM3: batchingInternalSales.volumeM3,
-        internalRatePerM3: batchingInternalSales.internalRatePerM3,
+        id:                   batchingInternalSales.id,
+        transactionDate:      batchingInternalSales.transactionDate,
+        projectName:          projects.name,
+        unitCode:             projectUnits.unitCode,
+        volumeM3:             batchingInternalSales.volumeM3,
+        internalRatePerM3:    batchingInternalSales.internalRatePerM3,
         totalInternalRevenue: batchingInternalSales.totalInternalRevenue,
-        projectName: projects.name,
-        projectId: batchingInternalSales.projectId,
-        unitCode: projectUnits.unitCode,
-        unitModel: projectUnits.unitModel,
+        isDeliveryFlagged:    concreteDeliveryReceipts.isDeliveryFlagged,
       })
       .from(batchingInternalSales)
       .leftJoin(projects, eq(batchingInternalSales.projectId, projects.id))
       .leftJoin(projectUnits, eq(batchingInternalSales.unitId, projectUnits.id))
-      .orderBy(desc(batchingInternalSales.transactionDate))
-      .limit(200),
-    []
-  );
+      .leftJoin(concreteDeliveryReceipts, eq(batchingInternalSales.deliveryReceiptId, concreteDeliveryReceipts.id))
+      .orderBy(desc(batchingInternalSales.transactionDate)),
 
-  const totalRevenue = rows.reduce((sum, r) => sum + Number(r.totalInternalRevenue ?? 0), 0);
-  const totalVolume = rows.reduce((sum, r) => sum + Number(r.volumeM3), 0);
+    db
+      .select({
+        totalVolume:  sql<string>`COALESCE(SUM(${batchingInternalSales.volumeM3}), 0)`,
+        totalRevenue: sql<string>`COALESCE(SUM(${batchingInternalSales.totalInternalRevenue}), 0)`,
+        txCount:      sql<string>`COUNT(*)`,
+        flaggedCount: sql<string>`COUNT(*) FILTER (WHERE ${concreteDeliveryReceipts.isDeliveryFlagged} = true)`,
+      })
+      .from(batchingInternalSales)
+      .leftJoin(concreteDeliveryReceipts, eq(batchingInternalSales.deliveryReceiptId, concreteDeliveryReceipts.id)),
+  ]);
 
-  const projectMap = new Map<string, { projectName: string; rows: typeof rows; projectTotal: number }>();
-  for (const row of rows) {
-    const key = row.projectId;
-    if (!projectMap.has(key)) {
-      projectMap.set(key, { projectName: row.projectName ?? "Unknown Project", rows: [], projectTotal: 0 });
-    }
-    const entry = projectMap.get(key)!;
-    entry.rows.push(row);
-    entry.projectTotal += Number(row.totalInternalRevenue ?? 0);
-  }
+  const t = totals[0];
 
-  function formatDate(d: string | null): string {
-    if (!d) return "—";
-    const dt = new Date(d + "T00:00:00");
-    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }
-
-  const ACCENT = "#0e9f6e";
+  const kpis = [
+    { label: "Total Transactions", value: Number(t.txCount).toLocaleString() },
+    { label: "Total Volume Billed", value: `${Number(t.totalVolume).toFixed(2)} m³` },
+    { label: "Total IDB Revenue", value: PHP.format(Number(t.totalRevenue)) },
+    { label: "Flagged Deliveries", value: Number(t.flaggedCount).toLocaleString(), warn: Number(t.flaggedCount) > 0 },
+  ];
 
   return (
-    <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      <style>{`
-        details > summary { list-style: none; cursor: pointer; }
-        details > summary::-webkit-details-marker { display: none; }
-        details > summary .chevron { display: inline-block; transition: transform 0.2s ease; margin-right: 0.5rem; }
-        details[open] > summary .chevron { transform: rotate(90deg); }
-      `}</style>
+    <main style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui, sans-serif" }}>
+      <nav style={{
+        display: "flex", alignItems: "center", padding: "0 2rem", height: "56px",
+        background: "#fff", borderBottom: "1px solid #e5e7eb", position: "sticky", top: 0, zIndex: 10,
+      }}>
+        <span style={{ fontWeight: 700, fontSize: "1.1rem" }}>Castcrete 360</span>
+      </nav>
 
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
+      <div style={{ padding: "2rem", maxWidth: "1100px", margin: "0 auto" }}>
         <div style={{ marginBottom: "1.5rem" }}>
-          <a href="/batching" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none", fontWeight: 500 }}>
-            ← Batching
+          <a href="/batching" style={{ fontSize: "0.85rem", color: ACCENT, textDecoration: "none" }}>← Back to Batching</a>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Internal Sales (IDB)</h1>
+            <p style={{ margin: "0.25rem 0 0", fontSize: "0.875rem", color: "#6b7280" }}>
+              Inter-departmental billing records. Each entry debits a Project Cost Center and credits Batching Plant Internal Revenue.
+            </p>
+          </div>
+          <a href="/batching/deliver" style={{
+            padding: "0.5rem 1rem", background: ACCENT, color: "#fff",
+            borderRadius: "7px", fontSize: "0.82rem", fontWeight: 600, textDecoration: "none",
+          }}>
+            Pending Deliveries →
           </a>
         </div>
 
-        <h1 style={{ margin: "0 0 0.3rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827", borderLeft: `4px solid ${ACCENT}`, paddingLeft: "0.75rem" }}>
-          Internal Sales
-        </h1>
-        <p style={{ margin: "0 0 1.75rem 1rem", color: "#6b7280", fontSize: "0.9rem" }}>
-          Concrete billed from the batching plant to internal construction units.
-        </p>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "2rem" }}>
-          <div style={{ background: "#fff", borderRadius: "8px", padding: "1.25rem 1.5rem", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", borderTop: `3px solid ${ACCENT}` }}>
-            <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#111" }}>{rows.length}</div>
-            <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.25rem" }}>Total Transactions</div>
-          </div>
-          <div style={{ background: "#fff", borderRadius: "8px", padding: "1.25rem 1.5rem", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", borderTop: "3px solid #1a56db" }}>
-            <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#111" }}>{totalVolume.toFixed(2)} m³</div>
-            <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.25rem" }}>Total Volume</div>
-          </div>
-          <div style={{ background: "#fff", borderRadius: "8px", padding: "1.25rem 1.5rem", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", borderTop: "3px solid #7e3af2" }}>
-            <div style={{ fontSize: "1.75rem", fontWeight: 700, color: "#111" }}>
-              ₱{totalRevenue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+        {/* KPIs */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
+          {kpis.map((k) => (
+            <div key={k.label} style={{
+              background: "#fff", borderRadius: "10px", padding: "1.1rem 1.25rem",
+              boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+              borderLeft: k.warn ? "4px solid #dc2626" : `4px solid ${ACCENT}`,
+            }}>
+              <div style={{ fontSize: "0.72rem", color: "#9ca3af", fontWeight: 600, marginBottom: "0.3rem", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                {k.label}
+              </div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 700, color: k.warn ? "#dc2626" : "#111827" }}>
+                {k.value}
+              </div>
             </div>
-            <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.25rem" }}>Total Revenue</div>
-          </div>
+          ))}
         </div>
 
-        {rows.length === 0 ? (
-          <div style={{ background: "#fff", borderRadius: "8px", padding: "3rem", textAlign: "center", color: "#9ca3af", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
-            No internal sales recorded yet.
+        {/* IDB note */}
+        <div style={{
+          marginBottom: "1.25rem", padding: "0.75rem 1rem",
+          background: "#f3e8ff", border: "1px solid #e9d5ff",
+          borderRadius: "8px", fontSize: "0.8rem", color: "#6b21a8",
+        }}>
+          <strong>Accounting Treatment:</strong> Each IDB entry is a net-zero internal transfer — Project P&amp;L is debited,
+          Batching Plant Internal Revenue is credited. These are eliminated in consolidated reporting.
+        </div>
+
+        {sales.length === 0 ? (
+          <div style={{
+            padding: "3rem", background: "#fff", borderRadius: "10px",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af",
+          }}>
+            No IDB records yet. Records are created automatically when a site engineer signs a delivery receipt.
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {Array.from(projectMap.entries()).map(([projectId, group]) => (
-              <details key={projectId} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                <summary style={{
-                  padding: "1rem 1.25rem",
-                  borderBottom: "1px solid #e5e7eb",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  fontWeight: 600,
-                  fontSize: "0.92rem",
-                  color: "#111827",
-                  userSelect: "none",
-                }}>
-                  <span className="chevron" style={{ color: ACCENT, fontSize: "0.8rem" }}>▶</span>
-                  <span style={{ flex: 1 }}>{group.projectName}</span>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 400, color: "#6b7280" }}>
-                    {group.rows.length} transaction{group.rows.length !== 1 ? "s" : ""}
-                  </span>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 400, color: "#6b7280", margin: "0 0.5rem" }}>·</span>
-                  <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#7e3af2" }}>
-                    ₱{group.projectTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                  </span>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 400, color: "#6b7280", margin: "0 0.5rem" }}>·</span>
-                  <span style={{ fontSize: "0.85rem", fontWeight: 500, color: "#1a56db" }}>
-                    {group.rows.reduce((s, r) => s + Number(r.volumeM3), 0).toFixed(2)} m³
-                  </span>
-                </summary>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-                    <thead>
-                      <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                        {["Date", "Unit", "Volume (m³)", "Rate (₱/m³)", "Revenue"].map((h) => (
-                          <th key={h} style={{ padding: "0.65rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.rows.map((row, i) => (
-                        <tr key={row.id} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                          <td style={{ padding: "0.65rem 1rem", whiteSpace: "nowrap", color: "#374151" }}>
-                            {formatDate(row.transactionDate)}
-                          </td>
-                          <td style={{ padding: "0.65rem 1rem", whiteSpace: "nowrap", color: "#374151" }}>
-                            {row.unitCode && row.unitModel
-                              ? `${row.unitCode} · ${row.unitModel}`
-                              : row.unitCode ?? "—"}
-                          </td>
-                          <td style={{ padding: "0.65rem 1rem", whiteSpace: "nowrap", color: "#374151" }}>
-                            {Number(row.volumeM3).toFixed(2)} m³
-                          </td>
-                          <td style={{ padding: "0.65rem 1rem", whiteSpace: "nowrap", color: "#374151" }}>
-                            ₱{Number(row.internalRatePerM3).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                          </td>
-                          <td style={{ padding: "0.65rem 1rem", whiteSpace: "nowrap", fontWeight: 700, color: "#111827" }}>
-                            ₱{Number(row.totalInternalRevenue ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
-            ))}
+          <div style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.83rem" }}>
+                <thead>
+                  <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                    {["Date", "Project", "Unit", "Volume (m³)", "Rate / m³", "IDB Total", "Status"].map((h, i) => (
+                      <th key={i} style={{
+                        padding: "0.65rem 1rem", fontWeight: 600, color: "#374151",
+                        textAlign: [3, 4, 5].includes(i) ? "right" : "left", whiteSpace: "nowrap",
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sales.map((s, i) => (
+                    <tr key={s.id} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                      <td style={{ padding: "0.65rem 1rem", color: "#6b7280", whiteSpace: "nowrap" }}>
+                        {s.transactionDate}
+                      </td>
+                      <td style={{ padding: "0.65rem 1rem", fontWeight: 500, color: "#374151" }}>
+                        {s.projectName ?? "—"}
+                      </td>
+                      <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontWeight: 600, color: ACCENT }}>
+                        {s.unitCode ?? "—"}
+                      </td>
+                      <td style={{ padding: "0.65rem 1rem", textAlign: "right", fontFamily: "monospace", fontWeight: 600, color: "#374151" }}>
+                        {Number(s.volumeM3).toFixed(2)}
+                      </td>
+                      <td style={{ padding: "0.65rem 1rem", textAlign: "right", fontFamily: "monospace", color: "#6b7280" }}>
+                        {PHP.format(Number(s.internalRatePerM3))}
+                      </td>
+                      <td style={{ padding: "0.65rem 1rem", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#111827" }}>
+                        {PHP.format(Number(s.totalInternalRevenue))}
+                      </td>
+                      <td style={{ padding: "0.65rem 1rem" }}>
+                        {s.isDeliveryFlagged ? (
+                          <span style={{ padding: "0.15rem 0.45rem", background: "#fef2f2", color: "#dc2626", borderRadius: "4px", fontSize: "0.68rem", fontWeight: 700 }}>
+                            FLAGGED
+                          </span>
+                        ) : (
+                          <span style={{ padding: "0.15rem 0.45rem", background: "#ecfdf5", color: "#057a55", borderRadius: "4px", fontSize: "0.68rem", fontWeight: 700 }}>
+                            POSTED
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: "#f9fafb", borderTop: "2px solid #e5e7eb" }}>
+                    <td colSpan={3} style={{ padding: "0.75rem 1rem", fontSize: "0.8rem", fontWeight: 700, color: "#374151" }}>
+                      TOTAL
+                    </td>
+                    <td style={{ padding: "0.75rem 1rem", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#374151" }}>
+                      {Number(t.totalVolume).toFixed(2)}
+                    </td>
+                    <td />
+                    <td style={{ padding: "0.75rem 1rem", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: "#111827" }}>
+                      {PHP.format(Number(t.totalRevenue))}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         )}
       </div>

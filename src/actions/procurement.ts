@@ -7,12 +7,15 @@ import {
   purchaseOrders, purchaseOrderItems,
   poPriceChangeRequests, suppliers,
   materialReceivingReports, mrrItems, inventoryLedger,
+  financialLedger, departments, costCenters,
 } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notifyPrApproved, notifyPrRejected, notifyPoBodyApproved } from "@/lib/notifications";
+import { premixMaterialLinks, mixDesignBom } from "@/db/schema";
+import { createInternalPO, explodeIPORequirements, generateBatchingPlantPR } from "./batching-bom";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PHASE II — Auto-populate PO from Master BOM
@@ -339,14 +342,72 @@ export type SimpleResult = { success: boolean; error?: string };
 export async function approvePr(id: string): Promise<SimpleResult> {
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
+
   await db
     .update(purchaseRequisitions)
     .set({ status: "APPROVED", approvedBy: user.id, approvedAt: new Date() })
     .where(eq(purchaseRequisitions.id, id));
+
+  // Auto-trigger Batching Plant IPO for any Premix line items
+  void triggerBatchingIPOsForPR(id, user.id);
+
   revalidatePath(`/procurement/pr/${id}`);
   revalidatePath("/procurement/pr");
   void notifyPrApproved(id);
   return { success: true };
+}
+
+async function triggerBatchingIPOsForPR(prId: string, userId: string): Promise<void> {
+  try {
+    const [pr] = await db
+      .select({ projectId: purchaseRequisitions.projectId, unitId: purchaseRequisitions.unitId })
+      .from(purchaseRequisitions)
+      .where(eq(purchaseRequisitions.id, prId))
+      .limit(1);
+    if (!pr?.unitId) return;
+
+    const items = await db
+      .select({
+        materialId:      purchaseRequisitionItems.materialId,
+        quantityToOrder: purchaseRequisitionItems.quantityToOrder,
+      })
+      .from(purchaseRequisitionItems)
+      .where(eq(purchaseRequisitionItems.prId, prId));
+
+    for (const item of items) {
+      if (!item.materialId) continue;
+      const [link] = await db
+        .select({ mixDesignId: premixMaterialLinks.mixDesignId })
+        .from(premixMaterialLinks)
+        .where(eq(premixMaterialLinks.materialId, item.materialId))
+        .limit(1);
+      if (!link) continue;
+
+      // Only create IPO when there is a recipe BOM defined
+      const [bomCheck] = await db
+        .select({ id: mixDesignBom.id })
+        .from(mixDesignBom)
+        .where(eq(mixDesignBom.mixDesignId, link.mixDesignId))
+        .limit(1);
+      if (!bomCheck) continue;
+
+      const ipoResult = await createInternalPO({
+        projectId:        pr.projectId,
+        unitId:           pr.unitId,
+        mixDesignId:      link.mixDesignId,
+        requestedVolumeM3: Number(item.quantityToOrder ?? 0),
+        triggeredBy:      `PR-APPROVED:${prId}`,
+        requestedBy:      userId,
+      });
+      if (!ipoResult.success) continue;
+
+      // Auto-explode BOM and generate raw material PR immediately at IPO creation
+      await explodeIPORequirements(ipoResult.id);
+      await generateBatchingPlantPR(ipoResult.id, userId);
+    }
+  } catch {
+    // Non-blocking — IPO generation failure does not roll back PR approval
+  }
 }
 
 export async function rejectPr(id: string, reason: string): Promise<SimpleResult> {
@@ -495,6 +556,44 @@ export async function createMrr(input: z.infer<typeof CreateMrrSchema>): Promise
         quantityOnHand:   String(item.quantityReceived),
         quantityReserved: "0",
       });
+    }
+  }
+
+  // Gap #3: Post MRR accounting entries to financial ledger (Debit Raw Inventory / Credit AP)
+  // Look up the BATCHING dept + its primary cost center; skip ledger if not configured yet.
+  const [batchingDept] = await db
+    .select({ id: departments.id })
+    .from(departments)
+    .where(eq(departments.code, "BATCHING"))
+    .limit(1);
+
+  if (batchingDept) {
+    const [batchingCC] = await db
+      .select({ id: costCenters.id })
+      .from(costCenters)
+      .where(and(eq(costCenters.deptId, batchingDept.id), eq(costCenters.isActive, true)))
+      .limit(1);
+
+    if (batchingCC) {
+      const txDate = receivedDate;
+      await db.insert(financialLedger).values(
+        items
+          .filter((item) => item.unitPrice > 0)
+          .map((item) => ({
+            projectId:       projectId,
+            costCenterId:    batchingCC.id,
+            deptId:          batchingDept.id,
+            resourceType:    "MATERIAL" as const,
+            resourceId:      item.materialId,
+            transactionType: "OUTFLOW" as const,
+            referenceType:   "MRR",
+            referenceId:     mrr.id,
+            amount:          String((item.quantityReceived * item.unitPrice).toFixed(2)),
+            isExternal:      true,
+            transactionDate: txDate,
+            description:     `Raw material receipt — MRR (${mrr.id.slice(0, 8)})`,
+          })),
+      );
     }
   }
 
