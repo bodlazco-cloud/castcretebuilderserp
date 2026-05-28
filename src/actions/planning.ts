@@ -317,6 +317,55 @@ export async function reviewVarianceRequest(
   return { success: true };
 }
 
+// ─── Update Draft BOM Entry ───────────────────────────────────────────────────
+
+const UpdateDraftBomSchema = z.object({
+  id:              z.string().uuid(),
+  materialId:      z.string().uuid(),
+  quantityPerUnit: z.number().positive(),
+  equipmentType:   z.string().max(100).optional(),
+});
+
+export type UpdateDraftBomResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function updateDraftBomEntry(
+  input: z.infer<typeof UpdateDraftBomSchema>,
+): Promise<UpdateDraftBomResult> {
+  const parsed = UpdateDraftBomSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may edit BOM entries." };
+  }
+
+  const [existing] = await db
+    .select({ status: masterBomEntries.status })
+    .from(masterBomEntries)
+    .where(eq(masterBomEntries.id, parsed.data.id));
+
+  if (!existing) return { success: false, error: "BOM entry not found." };
+  if (existing.status !== "DRAFT") return { success: false, error: "Only DRAFT entries can be edited." };
+
+  await db
+    .update(masterBomEntries)
+    .set({
+      materialId:      parsed.data.materialId,
+      quantityPerUnit: String(parsed.data.quantityPerUnit),
+      equipmentType:   parsed.data.equipmentType ?? null,
+      updatedAt:       new Date(),
+    })
+    .where(eq(masterBomEntries.id, parsed.data.id));
+
+  revalidatePath("/planning/bom");
+  return { success: true };
+}
+
 // ─── Manpower Logs (kept for resource-forecasting page) ───────────────────────
 
 const CreateManpowerLogSchema = z.object({
