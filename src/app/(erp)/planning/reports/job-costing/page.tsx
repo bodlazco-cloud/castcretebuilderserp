@@ -43,7 +43,7 @@ export default async function JobCostingPage() {
         })
         .from(purchaseRequisitionItems)
         .leftJoin(purchaseRequisitions, eq(purchaseRequisitionItems.prId, purchaseRequisitions.id)),
-      [] as { projectId: string | null; status: string; quantityToOrder: string; unitPrice: string }[],
+      [] as { projectId: string | null; status: string; quantityToOrder: string; unitPrice: string }[] as any[],
     ),
     safe(
       db.select({ projectId: resourceForecasts.projectId, status: resourceForecasts.status })
