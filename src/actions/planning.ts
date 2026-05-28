@@ -6,6 +6,8 @@ import {
   resourceForecasts,
   planningVarianceRequests,
   constructionManpowerLogs,
+  projectUnits,
+  materials,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -358,4 +360,79 @@ export async function createManpowerLog(
 
   revalidatePath("/planning/resource-forecasting");
   return { success: true, id: row.id };
+}
+
+// ─── Generate Resource Forecasts for Unit ─────────────────────────────────────
+
+export async function generateResourceForecastsForUnit(
+  projectId: string,
+  unitId: string,
+): Promise<void> {
+  const [unit] = await db
+    .select({ unitModel: projectUnits.unitModel, unitType: projectUnits.unitType })
+    .from(projectUnits)
+    .where(eq(projectUnits.id, unitId))
+    .limit(1);
+
+  if (!unit) return;
+
+  const bomEntries = await db
+    .select({
+      id:              masterBomEntries.id,
+      quantityPerUnit: masterBomEntries.quantityPerUnit,
+      equipmentType:   masterBomEntries.equipmentType,
+      matCategory:     materials.category,
+    })
+    .from(masterBomEntries)
+    .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
+    .where(
+      and(
+        eq(masterBomEntries.projectId, projectId),
+        eq(masterBomEntries.unitModel, unit.unitModel),
+        eq(masterBomEntries.unitType, unit.unitType as any),
+        eq(masterBomEntries.status, "APPROVED"),
+        eq(masterBomEntries.isActive, true),
+      ),
+    );
+
+  if (bomEntries.length === 0) return;
+
+  const existing = await db
+    .select({ masterBomEntryId: resourceForecasts.masterBomEntryId })
+    .from(resourceForecasts)
+    .where(
+      and(
+        eq(resourceForecasts.projectId, projectId),
+        eq(resourceForecasts.unitId, unitId),
+      ),
+    );
+
+  const existingSet = new Set(existing.map((r) => r.masterBomEntryId));
+  const toCreate = bomEntries.filter((b) => !existingSet.has(b.id));
+
+  if (toCreate.length === 0) return;
+
+  await db.insert(resourceForecasts).values(
+    toCreate.map((b) => ({
+      projectId,
+      unitId,
+      masterBomEntryId: b.id,
+      forecastType: (
+        b.equipmentType
+          ? "EQUIPMENT"
+          : b.matCategory === "CONCRETE"
+          ? "CONCRETE"
+          : "MATERIAL"
+      ) as "MATERIAL" | "CONCRETE" | "EQUIPMENT",
+      grossQuantity:    b.quantityPerUnit,
+      quantityConsumed: "0",
+      status:           "PENDING_PR" as const,
+      equipmentType:    b.equipmentType ?? null,
+    })),
+  );
+
+  revalidatePath("/planning/mrp-queue");
+  revalidatePath("/planning/batching-forecast");
+  revalidatePath("/planning/motorpool-needs");
+  revalidatePath("/planning");
 }
