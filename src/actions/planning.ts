@@ -438,7 +438,6 @@ export async function generateResourceForecastsForUnit(
   revalidatePath("/planning/motorpool-needs");
   revalidatePath("/planning");
 }
-<<<<<<< HEAD
 
 // ─── Raise MRP Purchase Requisition ──────────────────────────────────────────
 
@@ -522,5 +521,3 @@ export async function raiseMrpPurchaseRequisition(
 
   return { success: true, prId: pr.id };
 }
-=======
->>>>>>> origin/main
