@@ -1,4 +1,60 @@
-import ComingSoon from "@/components/ComingSoon";
-export default function Page() {
-  return <ComingSoon title="Audit Reports" section="Audit & Quality" />;
+export default function AuditReportsPage() {
+  const cards = [
+    {
+      href: "/audit/reports/material-variance",
+      icon: "📊",
+      title: "Material Variance Report",
+      desc: "Discrepancies between ordered and received materials",
+    },
+    {
+      href: "/audit/po-verification",
+      icon: "🔍",
+      title: "PO Verification",
+      desc: "Purchase orders pending audit review",
+    },
+    {
+      href: "/audit/variance-audit",
+      icon: "⚠",
+      title: "Variance Audit",
+      desc: "Fuel and batching production anomalies",
+    },
+    {
+      href: "/audit/milestone-audit",
+      icon: "🏗",
+      title: "Milestone Audit",
+      desc: "Work accomplished report review",
+    },
+  ];
+
+  return (
+    <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "32px 24px" }}>
+      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+        <div style={{ marginBottom: "20px" }}>
+          <a href="/audit" style={{ fontSize: "13px", color: "#0694a2", textDecoration: "none", fontWeight: 500 }}>
+            ← Audit & Quality
+          </a>
+        </div>
+        <h1 style={{ margin: "0 0 6px", fontSize: "26px", fontWeight: 700, color: "#111827" }}>Audit Reports</h1>
+        <p style={{ margin: "0 0 32px", fontSize: "14px", color: "#6b7280" }}>
+          Reports and analytics for the Audit & Quality department
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          {cards.map((card) => (
+            <a
+              key={card.href}
+              href={card.href}
+              style={{ textDecoration: "none", display: "flex", flexDirection: "column", background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "24px", transition: "box-shadow 0.15s", minHeight: "140px", border: "1px solid #f3f4f6", position: "relative" }}
+              onMouseOver={(e) => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = "0 4px 16px rgba(6,148,162,0.10)"; (e.currentTarget as HTMLAnchorElement).style.borderColor = "#a5f3fc"; }}
+              onMouseOut={(e) => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = "0 1px 4px rgba(0,0,0,0.07)"; (e.currentTarget as HTMLAnchorElement).style.borderColor = "#f3f4f6"; }}
+            >
+              <div style={{ fontSize: "28px", marginBottom: "12px" }}>{card.icon}</div>
+              <div style={{ fontWeight: 700, fontSize: "15px", color: "#111827", marginBottom: "6px" }}>{card.title}</div>
+              <div style={{ fontSize: "13px", color: "#6b7280", flex: 1 }}>{card.desc}</div>
+              <div style={{ textAlign: "right", color: "#0694a2", fontSize: "18px", marginTop: "16px" }}>→</div>
+            </a>
+          ))}
+        </div>
+      </div>
+    </main>
+  );
 }
