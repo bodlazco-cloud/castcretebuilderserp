@@ -24,17 +24,20 @@ const NAV: NavSection[] = [
   {
     title: "Planning & Engineering",
     items: [
-      { label: "Overview",              href: "/planning" },
-      { label: "Engineering",           isDivider: true },
-      { label: "Bill of Materials",     href: "/planning/bom" },
-      { label: "Resource Mapping",      isDivider: true },
-      { label: "MRP Queue",             href: "/planning/mrp-queue" },
-      { label: "Batching Forecast",     href: "/planning/batching-forecast" },
-      { label: "Motorpool Needs",       href: "/planning/motorpool-needs" },
-      { label: "Variance Requests",     href: "/planning/variance-requests" },
-      { label: "Reports",               isDivider: true },
-      { label: "Budget vs Actual",      href: "/planning/reports/budget-vs-actual" },
-      { label: "Job Costing Report",    href: "/planning/reports/job-costing" },
+      { label: "Overview",          href: "/planning" },
+      { label: "Engineering", isGroup: true, items: [
+        { label: "Bill of Materials",   href: "/planning/bom" },
+      ]},
+      { label: "Resource Mapping", isGroup: true, items: [
+        { label: "MRP Queue",           href: "/planning/mrp-queue" },
+        { label: "Batching Forecast",   href: "/planning/batching-forecast" },
+        { label: "Motorpool Needs",     href: "/planning/motorpool-needs" },
+        { label: "Variance Requests",   href: "/planning/variance-requests" },
+      ]},
+      { label: "Reports", isGroup: true, items: [
+        { label: "Budget vs Actual",    href: "/planning/reports/budget-vs-actual" },
+        { label: "Job Costing Report",  href: "/planning/reports/job-costing" },
+      ]},
     ],
   },
   {
@@ -46,9 +49,10 @@ const NAV: NavSection[] = [
       { label: "Daily Progress",        href: "/construction/daily-progress" },
       { label: "Manpower Logs",         href: "/construction/manpower" },
       { label: "WAR",                   href: "/construction/war" },
-      { label: "Reports",               isDivider: true },
-      { label: "Site Profitability",    href: "/construction/reports/site-profitability-report" },
-      { label: "Progress Report",       href: "/construction/reports/progress-report" },
+      { label: "Reports", isGroup: true, items: [
+        { label: "Site Profitability",  href: "/construction/reports/site-profitability-report" },
+        { label: "Progress Report",     href: "/construction/reports/progress-report" },
+      ]},
     ],
   },
   {
@@ -58,8 +62,9 @@ const NAV: NavSection[] = [
       { label: "PR/PO Management",      href: "/procurement/pr-po" },
       { label: "Logistics",             href: "/procurement/logistics" },
       { label: "Inventory",             href: "/procurement/inventory" },
-      { label: "Reports",               isDivider: true },
-      { label: "Procurement Reports",   href: "/procurement/reports" },
+      { label: "Reports", isGroup: true, items: [
+        { label: "Procurement Reports", href: "/procurement/reports" },
+      ]},
     ],
   },
   {
@@ -94,8 +99,9 @@ const NAV: NavSection[] = [
       { label: "Maintenance",           href: "/motorpool/maintenance" },
       { label: "Internal Rental Logs",  href: "/motorpool/internal-rental-logs" },
       { label: "Fleet Manpower",        href: "/motorpool/manpower" },
-      { label: "Reports",               isDivider: true },
-      { label: "Fleet Reports",         href: "/motorpool/reports" },
+      { label: "Reports", isGroup: true, items: [
+        { label: "Fleet Reports",       href: "/motorpool/reports" },
+      ]},
     ],
   },
   {
@@ -106,8 +112,9 @@ const NAV: NavSection[] = [
       { label: "Milestone Audit",       href: "/audit/milestone-audit" },
       { label: "Variance Audit",        href: "/audit/variance-audit" },
       { label: "QA Punch-lists",        href: "/audit/qa-punch-list" },
-      { label: "Reports",               isDivider: true },
-      { label: "Audit Reports",         href: "/audit/reports" },
+      { label: "Reports", isGroup: true, items: [
+        { label: "Audit Reports",       href: "/audit/reports" },
+      ]},
     ],
   },
   {
@@ -121,16 +128,17 @@ const NAV: NavSection[] = [
       { label: "Expense",               href: "/finance/expense" },
       { label: "Banking / Recon",       href: "/finance/banking" },
       { label: "Chart of Accounts",     href: "/finance/chart-of-accounts" },
-      { label: "Reports",               isDivider: true },
-      { label: "P&L by Dept",           href: "/finance/reports/profit-and-loss" },
-      { label: "Balance Sheet",         href: "/finance/reports/balance-sheet" },
-      { label: "Cash Flow Projections", href: "/finance/reports/cash-flow" },
-      { label: "General Ledger",        href: "/finance/reports/ledger" },
-      { label: "Trial Balance",         href: "/finance/reports/trial-balance" },
-      { label: "Vendor Summary",        href: "/finance/reports/vendor-summary" },
-      { label: "Developer Summary",     href: "/finance/reports/developer-summary" },
-      { label: "Aged Payables",         href: "/finance/reports/aged-payables" },
-      { label: "Aged Receivables",      href: "/finance/reports/aged-receivables" },
+      { label: "Reports", isGroup: true, items: [
+        { label: "P&L by Dept",           href: "/finance/reports/profit-and-loss" },
+        { label: "Balance Sheet",         href: "/finance/reports/balance-sheet" },
+        { label: "Cash Flow Projections", href: "/finance/reports/cash-flow" },
+        { label: "General Ledger",        href: "/finance/reports/ledger" },
+        { label: "Trial Balance",         href: "/finance/reports/trial-balance" },
+        { label: "Vendor Summary",        href: "/finance/reports/vendor-summary" },
+        { label: "Developer Summary",     href: "/finance/reports/developer-summary" },
+        { label: "Aged Payables",         href: "/finance/reports/aged-payables" },
+        { label: "Aged Receivables",      href: "/finance/reports/aged-receivables" },
+      ]},
     ],
   },
   {
@@ -140,8 +148,9 @@ const NAV: NavSection[] = [
       { label: "Employee Registry",   href: "/hr/registry" },
       { label: "Payroll Processor",   href: "/hr/payroll" },
       { label: "Leave Management",    href: "/hr/leaves" },
-      { label: "Reports",             isDivider: true },
-      { label: "Employee List",       href: "/hr/reports/employee-list" },
+      { label: "Reports", isGroup: true, items: [
+        { label: "Employee List",     href: "/hr/reports/employee-list" },
+      ]},
     ],
   },
   {
