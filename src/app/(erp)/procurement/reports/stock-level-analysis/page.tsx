@@ -21,7 +21,7 @@ type StockRow = {
   materialUnit: string | null;
   materialCategory: string | null;
   minimumQuantity: string | null;
-  adminPrice: string;
+  adminPrice: string | null;
   projectName: string | null;
 };
 
@@ -74,7 +74,7 @@ export default async function StockLevelAnalysisPage() {
   });
 
   const totalInventoryValue = rows.reduce((sum, r) => {
-    const price = Number(r.adminPrice);
+    const price = Number(r.adminPrice ?? "0");
     return sum + r.quantityAvailable * price;
   }, 0);
 
@@ -181,7 +181,7 @@ export default async function StockLevelAnalysisPage() {
                               const unit = row.materialUnit ?? "";
                               const isAmber = !row.isLowStock && minQty > 0 && row.quantityAvailable < minQty * 2;
                               const availColor = row.isLowStock ? "#dc2626" : isAmber ? "#d97706" : "#057a55";
-                              const stockValue = row.quantityAvailable * Number(row.adminPrice);
+                              const stockValue = row.quantityAvailable * Number(row.adminPrice ?? "0");
                               const rowBg = row.isLowStock ? "#fef2f2" : i % 2 === 0 ? "#fff" : "#fafafa";
                               return (
                                 <tr key={row.id} style={{ background: rowBg }}>
@@ -193,7 +193,7 @@ export default async function StockLevelAnalysisPage() {
                                   <td style={{ padding: "0.6rem 1rem", borderBottom: "1px solid #f3f4f6", textAlign: "right", fontWeight: 700, color: availColor, whiteSpace: "nowrap" }}>{fmtQty(row.quantityAvailable)} {unit}</td>
                                   <td style={{ padding: "0.6rem 1rem", borderBottom: "1px solid #f3f4f6", textAlign: "right", color: "#6b7280", whiteSpace: "nowrap" }}>{minQty > 0 ? `${fmtQty(minQty)} ${unit}` : "—"}</td>
                                   <td style={{ padding: "0.6rem 1rem", borderBottom: "1px solid #f3f4f6", textAlign: "right", color: "#374151", whiteSpace: "nowrap" }}>
-                                    {Number(row.adminPrice) > 0 ? `₱${stockValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "—"}
+                                    {Number(row.adminPrice ?? "0") > 0 ? `₱${stockValue.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "—"}
                                   </td>
                                   <td style={{ padding: "0.6rem 1rem", borderBottom: "1px solid #f3f4f6", color: "#6b7280", whiteSpace: "nowrap" }}>{fmtDate(row.lastUpdated)}</td>
                                   <td style={{ padding: "0.6rem 1rem", borderBottom: "1px solid #f3f4f6", textAlign: "center", whiteSpace: "nowrap" }}>

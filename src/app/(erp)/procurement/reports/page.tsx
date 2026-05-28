@@ -44,8 +44,6 @@ export default function ProcurementReportsPage() {
               key={card.href}
               href={card.href}
               style={{ textDecoration: "none", display: "flex", flexDirection: "column", background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "24px", minHeight: "140px", border: "1px solid #f3f4f6", position: "relative" }}
-              onMouseOver={(e) => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = "0 4px 16px rgba(227,160,8,0.12)"; (e.currentTarget as HTMLAnchorElement).style.borderColor = "#fcd34d"; }}
-              onMouseOut={(e) => { (e.currentTarget as HTMLAnchorElement).style.boxShadow = "0 1px 4px rgba(0,0,0,0.07)"; (e.currentTarget as HTMLAnchorElement).style.borderColor = "#f3f4f6"; }}
             >
               <div style={{ fontSize: "28px", marginBottom: "12px" }}>{card.icon}</div>
               <div style={{ fontWeight: 700, fontSize: "15px", color: "#111827", marginBottom: "6px" }}>{card.title}</div>
