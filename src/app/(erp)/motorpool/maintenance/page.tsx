@@ -1,9 +1,11 @@
 export const dynamic = "force-dynamic";
 
+import { getAuthUser } from "@/lib/supabase-server";
 import { db } from "@/db";
 import { maintenanceRecords, equipment } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import Link from "next/link";
+import { AddMaintenanceForm } from "./AddMaintenanceForm";
 
 async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try {
@@ -73,9 +75,12 @@ function downtimeDisplay(days: number | string | null | undefined) {
 }
 
 export default async function Page() {
-  const rows = await safe(
-    () =>
-      db
+  const user = await getAuthUser();
+
+  const [equipmentList, rows] = await Promise.all([
+    db.select({ id: equipment.id, code: equipment.code, name: equipment.name })
+      .from(equipment).orderBy(equipment.code),
+    safe(() => db
         .select({
           id: maintenanceRecords.id,
           maintenanceType: maintenanceRecords.maintenanceType,
@@ -94,9 +99,8 @@ export default async function Page() {
         .from(maintenanceRecords)
         .leftJoin(equipment, eq(maintenanceRecords.equipmentId, equipment.id))
         .orderBy(desc(maintenanceRecords.maintenanceDate))
-        .limit(200),
-    []
-  );
+        .limit(200), []),
+  ]);
 
   const totalCostAll = rows.reduce((s, r) => s + Number(r.totalCost ?? 0), 0);
   const pendingCount = rows.filter((r) => r.status === "PENDING").length;
@@ -118,9 +122,10 @@ export default async function Page() {
         </Link>
       </div>
 
-      <h1 style={{ fontSize: 26, fontWeight: 700, color: "#111827", margin: "0 0 24px" }}>
-        Maintenance Records
-      </h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: "#111827", margin: 0 }}>Maintenance Records</h1>
+        <AddMaintenanceForm equipmentList={equipmentList} userId={user?.id ?? ""} />
+      </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 16 }}>
         {kpis.map((k) => (

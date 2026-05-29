@@ -430,7 +430,94 @@ export async function createEquipmentAssignment(
   return { success: true, assignmentId: assignment.id };
 }
 
-// ─── Equipment Deployments (fixed monthly rate) ───────────────────────────────
+// ─── Add Maintenance Record ───────────────────────────────────────────────────
+
+const AddMaintenanceSchema = z.object({
+  equipmentId:     z.string().uuid(),
+  maintenanceType: z.enum(["PREVENTIVE", "CORRECTIVE", "EMERGENCY"]),
+  description:     z.string().min(1).max(1000),
+  partsCost:       z.number().min(0),
+  laborCost:       z.number().min(0),
+  downtimeDays:    z.number().int().min(0),
+  maintenanceDate: z.string().date(),
+  recordedBy:      z.string().uuid(),
+});
+
+export type AddMaintenanceResult =
+  | { success: true; recordId: string }
+  | { success: false; error: string };
+
+export async function addMaintenanceRecord(
+  input: z.infer<typeof AddMaintenanceSchema>,
+): Promise<AddMaintenanceResult> {
+  const parsed = AddMaintenanceSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+
+  const totalCost = d.partsCost + d.laborCost;
+
+  const [record] = await db
+    .insert(maintenanceRecords)
+    .values({
+      equipmentId:     d.equipmentId,
+      maintenanceType: d.maintenanceType,
+      description:     d.description,
+      partsCost:       String(d.partsCost),
+      laborCost:       String(d.laborCost),
+      totalCost:       String(totalCost),
+      downtimeDays:    d.downtimeDays,
+      maintenanceDate: d.maintenanceDate,
+      status:          "PENDING",
+      recordedBy:      d.recordedBy,
+    })
+    .returning({ id: maintenanceRecords.id });
+
+  revalidatePath("/motorpool/maintenance");
+  revalidatePath("/motorpool");
+  return { success: true, recordId: record.id };
+}
+
+// ─── Log Fleet Manpower ───────────────────────────────────────────────────────
+
+const LogFleetManpowerSchema = z.object({
+  logDate:      z.string().date(),
+  employeeId:   z.string().uuid(),
+  equipmentId:  z.string().uuid().optional(),
+  hoursWorked:  z.number().positive(),
+  overtimeHours: z.number().min(0),
+  costCenterId: z.string().uuid(),
+  recordedBy:   z.string().uuid(),
+});
+
+export type LogFleetManpowerResult =
+  | { success: true; logId: string }
+  | { success: false; error: string };
+
+export async function logFleetManpower(
+  input: z.infer<typeof LogFleetManpowerSchema>,
+): Promise<LogFleetManpowerResult> {
+  const parsed = LogFleetManpowerSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const d = parsed.data;
+
+  const { fleetManpowerLogs } = await import("@/db/schema");
+
+  const [log] = await db
+    .insert(fleetManpowerLogs)
+    .values({
+      logDate:      d.logDate,
+      employeeId:   d.employeeId,
+      equipmentId:  d.equipmentId ?? null,
+      hoursWorked:  String(d.hoursWorked),
+      overtimeHours: String(d.overtimeHours),
+      costCenterId: d.costCenterId,
+      recordedBy:   d.recordedBy,
+    })
+    .returning({ id: fleetManpowerLogs.id });
+
+  revalidatePath("/motorpool/manpower");
+  return { success: true, logId: log.id };
+}
 
 const CreateDeploymentSchema = z.object({
   equipmentId:      z.string().uuid(),
