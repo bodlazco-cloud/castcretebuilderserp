@@ -78,7 +78,6 @@ const NAV: NavSection[] = [
         { label: "IPO Queue",           href: "/batching/ipo" },
         { label: "Material Receiving",  href: "/batching/mrr" },
         { label: "Production Logs",     href: "/batching/production" },
-        { label: "Equipment Rentals",   href: "/batching/equipment-rentals" },
         { label: "Yield Analysis",      href: "/batching/yield" },
       ]},
       { label: "Delivery", isGroup: true, items: [
@@ -98,8 +97,11 @@ const NAV: NavSection[] = [
       { label: "Overview",              href: "/motorpool" },
       { label: "Equipment Directory",   href: "/motorpool/equipment" },
       { label: "Maintenance",           href: "/motorpool/maintenance" },
-      { label: "Internal Rental Logs",  href: "/motorpool/internal-rental-logs" },
       { label: "Fleet Manpower",        href: "/motorpool/manpower" },
+      { label: "Rentals", isGroup: true, items: [
+        { label: "Deployments",         href: "/motorpool/deployments" },
+        { label: "Monthly Billing",     href: "/motorpool/billing" },
+      ]},
       { label: "Reports", isGroup: true, items: [
         { label: "Fleet Reports",       href: "/motorpool/reports" },
       ]},

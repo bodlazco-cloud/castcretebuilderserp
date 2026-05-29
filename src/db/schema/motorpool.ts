@@ -2,7 +2,7 @@ import {
   pgTable, uuid, varchar, numeric, integer, boolean,
   timestamp, date, text, jsonb,
 } from "drizzle-orm/pg-core";
-import { users, costCenters } from "./core";
+import { users, costCenters, departments } from "./core";
 import { projects } from "./projects";
 import { projectUnits } from "./units";
 import { fixOrFlipEnum } from "./enums";
@@ -89,6 +89,36 @@ export const equipmentDailyChecklists = pgTable("equipment_daily_checklists", {
   equipmentLocked:  boolean("equipment_locked").notNull().default(false),
   operatorId:       uuid("operator_id").notNull().references(() => users.id),
   createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── Fixed-rate equipment deployments ─────────────────────────────────────────
+// Replaces per-batch rental logging. Motorpool assigns a machine to a dept
+// at a fixed monthly rate; billing auto-posts on the 1st of each month.
+export const equipmentDeployments = pgTable("equipment_deployments", {
+  id:               uuid("id").primaryKey().defaultRandom(),
+  equipmentId:      uuid("equipment_id").notNull().references(() => equipment.id),
+  deployedToDeptId: uuid("deployed_to_dept_id").notNull().references(() => departments.id),
+  projectId:        uuid("project_id").references(() => projects.id),
+  monthlyRate:      numeric("monthly_rate", { precision: 15, scale: 2 }).notNull(),
+  startDate:        date("start_date").notNull(),
+  endDate:          date("end_date"),
+  status:           varchar("status", { length: 20 }).notNull().default("ACTIVE"),
+  notes:            text("notes"),
+  approvedBy:       uuid("approved_by").references(() => users.id),
+  createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const equipmentMonthlyBillings = pgTable("equipment_monthly_billings", {
+  id:           uuid("id").primaryKey().defaultRandom(),
+  deploymentId: uuid("deployment_id").notNull().references(() => equipmentDeployments.id),
+  equipmentId:  uuid("equipment_id").notNull().references(() => equipment.id),
+  deptId:       uuid("dept_id").notNull().references(() => departments.id),
+  projectId:    uuid("project_id").references(() => projects.id),
+  billingMonth: varchar("billing_month", { length: 7 }).notNull(), // YYYY-MM
+  monthlyRate:  numeric("monthly_rate", { precision: 15, scale: 2 }).notNull(),
+  status:       varchar("status", { length: 20 }).notNull().default("PENDING"),
+  postedAt:     timestamp("posted_at", { withTimezone: true }),
+  createdAt:    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const fixOrFlipAssessments = pgTable("fix_or_flip_assessments", {

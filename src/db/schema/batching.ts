@@ -7,7 +7,6 @@ import { projectUnits } from "./units";
 import { unitTypeEnum, bomStatusEnum } from "./enums";
 import { materials } from "./admin";
 import { purchaseRequisitions, purchaseRequisitionItems } from "./procurement";
-import { equipment } from "./motorpool";
 
 export const mixDesigns = pgTable("mix_designs", {
   id:                  uuid("id").primaryKey().defaultRandom(),
@@ -138,20 +137,6 @@ export const ipoRawMaterialRequirements = pgTable("ipo_raw_material_requirements
 
 // Tags a purchase_requisition as "deliver to Batching Plant" and links it back to the IPO.
 // Keeps procurement.ts clean — no modifications to that schema.
-export const batchingEquipmentRentals = pgTable("batching_equipment_rentals", {
-  id:                uuid("id").primaryKey().defaultRandom(),
-  productionLogId:   uuid("production_log_id").references(() => batchingProductionLogs.id),
-  equipmentId:       uuid("equipment_id").notNull().references(() => equipment.id),
-  projectId:         uuid("project_id").notNull().references(() => projects.id),
-  usageDate:         date("usage_date").notNull(),
-  hoursOperated:     numeric("hours_operated", { precision: 8, scale: 2 }).notNull(),
-  dailyRateSnapshot: numeric("daily_rate_snapshot", { precision: 15, scale: 2 }).notNull(),
-  totalCost:         numeric("total_cost", { precision: 15, scale: 2 }).notNull(),
-  notes:             text("notes"),
-  loggedBy:          uuid("logged_by").notNull().references(() => users.id),
-  createdAt:         timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 export const batchingPlantPRFlags = pgTable("batching_plant_pr_flags", {
   id:                uuid("id").primaryKey().defaultRandom(),
   prId:              uuid("pr_id").notNull().unique().references(() => purchaseRequisitions.id),

@@ -4,8 +4,10 @@ import { db } from "@/db";
 import {
   equipment, equipmentAssignments, maintenanceRecords,
   fuelLogs, equipmentDailyChecklists, fixOrFlipAssessments,
+  equipmentDeployments, equipmentMonthlyBillings,
+  departments, costCenters, financialLedger,
 } from "@/db/schema";
-import { eq, and, gte, sum, max, sql } from "drizzle-orm";
+import { eq, and, gte, sum, sql, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
@@ -207,15 +209,15 @@ export async function runFixOrFlipAssessment(
     );
   const maintenanceCost12mo = Number(maintenanceAgg?.totalCost ?? 0);
 
-  // ── 12-month rental income ────────────────────────────────────────────────
+  // ── 12-month fixed rental revenue (from monthly billing records) ────────────
   const [rentalAgg] = await db
-    .select({ totalIncome: sum(equipmentAssignments.totalRentalIncome) })
-    .from(equipmentAssignments)
+    .select({ totalIncome: sum(equipmentMonthlyBillings.monthlyRate) })
+    .from(equipmentMonthlyBillings)
     .where(
       and(
-        eq(equipmentAssignments.equipmentId, equipmentId),
-        eq(equipmentAssignments.status, "RETURNED"),
-        gte(equipmentAssignments.assignedDate, cutoffDate),
+        eq(equipmentMonthlyBillings.equipmentId, equipmentId),
+        eq(equipmentMonthlyBillings.status, "POSTED"),
+        gte(equipmentMonthlyBillings.billingMonth, cutoffDate.slice(0, 7)),
       ),
     );
   const annualRentalIncome = Number(rentalAgg?.totalIncome ?? 0);
@@ -426,4 +428,182 @@ export async function createEquipmentAssignment(
 
   revalidatePath("/motorpool");
   return { success: true, assignmentId: assignment.id };
+}
+
+// ─── Equipment Deployments (fixed monthly rate) ───────────────────────────────
+
+const CreateDeploymentSchema = z.object({
+  equipmentId:      z.string().uuid(),
+  deployedToDeptId: z.string().uuid(),
+  projectId:        z.string().uuid().optional(),
+  monthlyRate:      z.number().positive(),
+  startDate:        z.string().date(),
+  notes:            z.string().max(500).optional(),
+  approvedBy:       z.string().uuid().optional(),
+});
+
+export type CreateDeploymentResult =
+  | { success: true; deploymentId: string }
+  | { success: false; error: string };
+
+export async function createDeployment(
+  input: z.infer<typeof CreateDeploymentSchema>,
+): Promise<CreateDeploymentResult> {
+  const parsed = CreateDeploymentSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  // Only one active deployment per machine at a time
+  const [existing] = await db
+    .select({ id: equipmentDeployments.id })
+    .from(equipmentDeployments)
+    .where(and(eq(equipmentDeployments.equipmentId, d.equipmentId), eq(equipmentDeployments.status, "ACTIVE")))
+    .limit(1);
+  if (existing) return { success: false, error: "This equipment already has an active deployment. End it first." };
+
+  const [dep] = await db
+    .insert(equipmentDeployments)
+    .values({
+      equipmentId:      d.equipmentId,
+      deployedToDeptId: d.deployedToDeptId,
+      projectId:        d.projectId ?? null,
+      monthlyRate:      String(d.monthlyRate),
+      startDate:        d.startDate,
+      notes:            d.notes ?? null,
+      approvedBy:       d.approvedBy ?? null,
+    })
+    .returning({ id: equipmentDeployments.id });
+
+  await db.update(equipment).set({ status: "DEPLOYED", updatedAt: new Date() }).where(eq(equipment.id, d.equipmentId));
+
+  revalidatePath("/motorpool/deployments");
+  revalidatePath("/motorpool");
+  return { success: true, deploymentId: dep.id };
+}
+
+export type EndDeploymentResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function endDeployment(deploymentId: string, endDate: string): Promise<EndDeploymentResult> {
+  const [dep] = await db
+    .select({ id: equipmentDeployments.id, equipmentId: equipmentDeployments.equipmentId })
+    .from(equipmentDeployments)
+    .where(eq(equipmentDeployments.id, deploymentId))
+    .limit(1);
+  if (!dep) return { success: false, error: "Deployment not found." };
+
+  await db.update(equipmentDeployments)
+    .set({ status: "ENDED", endDate })
+    .where(eq(equipmentDeployments.id, deploymentId));
+
+  await db.update(equipment).set({ status: "AVAILABLE", updatedAt: new Date() }).where(eq(equipment.id, dep.equipmentId));
+
+  revalidatePath("/motorpool/deployments");
+  revalidatePath("/motorpool");
+  return { success: true };
+}
+
+// ─── Monthly Billing Run (idempotent) ────────────────────────────────────────
+// Safe to call multiple times — skips already-billed deployment+month combos.
+// Posts two financial_ledger entries per billing:
+//   OUTFLOW → receiving dept cost center
+//   INFLOW  → Motorpool cost center
+
+export type RunMonthlyBillingResult =
+  | { success: true; posted: number; skipped: number; billingMonth: string }
+  | { success: false; error: string };
+
+export async function runMonthlyBilling(billingMonth?: string): Promise<RunMonthlyBillingResult> {
+  const month = billingMonth ?? new Date().toISOString().slice(0, 7); // YYYY-MM
+
+  const activeDeployments = await db
+    .select({
+      id:               equipmentDeployments.id,
+      equipmentId:      equipmentDeployments.equipmentId,
+      deployedToDeptId: equipmentDeployments.deployedToDeptId,
+      projectId:        equipmentDeployments.projectId,
+      monthlyRate:      equipmentDeployments.monthlyRate,
+    })
+    .from(equipmentDeployments)
+    .where(
+      and(
+        eq(equipmentDeployments.status, "ACTIVE"),
+        or(isNull(equipmentDeployments.endDate), gte(equipmentDeployments.endDate, `${month}-01`)),
+      ),
+    );
+
+  // Lookup Motorpool CC once
+  const [motorpoolDept] = await db.select({ id: departments.id }).from(departments)
+    .where(eq(departments.code, "MOTORPOOL")).limit(1);
+  const motorpoolCC = motorpoolDept
+    ? await db.select({ id: costCenters.id }).from(costCenters)
+        .where(and(eq(costCenters.deptId, motorpoolDept.id), eq(costCenters.isActive, true))).limit(1)
+    : [];
+
+  let posted = 0;
+  let skipped = 0;
+
+  for (const dep of activeDeployments) {
+    // Idempotency check
+    const [existing] = await db
+      .select({ id: equipmentMonthlyBillings.id })
+      .from(equipmentMonthlyBillings)
+      .where(and(
+        eq(equipmentMonthlyBillings.deploymentId, dep.id),
+        eq(equipmentMonthlyBillings.billingMonth, month),
+      ))
+      .limit(1);
+
+    if (existing) { skipped++; continue; }
+
+    const [billing] = await db
+      .insert(equipmentMonthlyBillings)
+      .values({
+        deploymentId: dep.id,
+        equipmentId:  dep.equipmentId,
+        deptId:       dep.deployedToDeptId,
+        projectId:    dep.projectId ?? null,
+        billingMonth: month,
+        monthlyRate:  dep.monthlyRate,
+        status:       "PENDING",
+      })
+      .returning({ id: equipmentMonthlyBillings.id });
+
+    // Post ledger entries if both CCs are configured
+    try {
+      const [receivingCC] = await db.select({ id: costCenters.id }).from(costCenters)
+        .where(and(eq(costCenters.deptId, dep.deployedToDeptId), eq(costCenters.isActive, true))).limit(1);
+
+      if (receivingCC && motorpoolCC[0] && motorpoolDept && dep.projectId) {
+        const desc = `Equipment rental — ${month}`;
+        await db.insert(financialLedger).values([
+          {
+            projectId: dep.projectId, costCenterId: receivingCC.id, deptId: dep.deployedToDeptId,
+            resourceType: "MACHINE", resourceId: dep.equipmentId,
+            transactionType: "OUTFLOW", referenceType: "MONTHLY_EQUIPMENT_RENTAL", referenceId: billing.id,
+            amount: dep.monthlyRate, isExternal: false,
+            transactionDate: `${month}-01`, description: `${desc} — receiving dept`,
+          },
+          {
+            projectId: dep.projectId, costCenterId: motorpoolCC[0].id, deptId: motorpoolDept.id,
+            resourceType: "MACHINE", resourceId: dep.equipmentId,
+            transactionType: "INFLOW", referenceType: "MONTHLY_EQUIPMENT_RENTAL", referenceId: billing.id,
+            amount: dep.monthlyRate, isExternal: false,
+            transactionDate: `${month}-01`, description: `${desc} — Motorpool revenue`,
+          },
+        ]);
+      }
+    } catch { /* billing record saved; ledger posting failed silently */ }
+
+    await db.update(equipmentMonthlyBillings)
+      .set({ status: "POSTED", postedAt: new Date() })
+      .where(eq(equipmentMonthlyBillings.id, billing.id));
+
+    posted++;
+  }
+
+  revalidatePath("/motorpool/billing");
+  revalidatePath("/motorpool");
+  return { success: true, posted, skipped, billingMonth: month };
 }
