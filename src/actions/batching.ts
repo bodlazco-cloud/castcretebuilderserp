@@ -5,9 +5,11 @@ import {
   batchingProductionLogs, concreteDeliveryNotes,
   concreteDeliveryReceipts, batchingInternalSales,
   mixDesigns, mixDesignBom, standardMixes, inventoryStock,
+  batchingEquipmentRentals, equipment,
+  departments, costCenters, financialLedger,
 } from "@/db/schema";
 import { materials } from "@/db/schema";
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
@@ -280,6 +282,100 @@ export async function receiveConcreteDelivery(
   revalidatePath("/batching/internal-sales");
   revalidatePath("/batching");
   return { success: true, receiptId: receipt.id, isFlagged: isDeliveryFlagged, varianceM3, idbTotal };
+}
+
+// ── Equipment Rental Logging ──────────────────────────────────────────────────
+
+const LogEquipmentRentalSchema = z.object({
+  equipmentId:     z.string().uuid(),
+  projectId:       z.string().uuid(),
+  productionLogId: z.string().uuid().optional(),
+  usageDate:       z.string().date(),
+  hoursOperated:   z.number().positive(),
+  notes:           z.string().max(500).optional(),
+  loggedBy:        z.string().uuid(),
+});
+
+export type LogEquipmentRentalResult =
+  | { success: true; rentalId: string; totalCost: number; ledgerPosted: boolean }
+  | { success: false; error: string };
+
+export async function logEquipmentRental(
+  input: z.infer<typeof LogEquipmentRentalSchema>,
+): Promise<LogEquipmentRentalResult> {
+  const parsed = LogEquipmentRentalSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+
+  const { equipmentId, projectId, productionLogId, usageDate, hoursOperated, notes, loggedBy } = parsed.data;
+
+  const [equip] = await db
+    .select({ dailyRentalRate: equipment.dailyRentalRate, name: equipment.name, code: equipment.code })
+    .from(equipment)
+    .where(eq(equipment.id, equipmentId))
+    .limit(1);
+
+  if (!equip) return { success: false, error: "Equipment not found." };
+
+  const dailyRate  = Number(equip.dailyRentalRate);
+  const totalCost  = hoursOperated * (dailyRate / 8);
+
+  const [rental] = await db
+    .insert(batchingEquipmentRentals)
+    .values({
+      equipmentId,
+      projectId,
+      productionLogId: productionLogId ?? null,
+      usageDate,
+      hoursOperated:     String(hoursOperated),
+      dailyRateSnapshot: String(dailyRate),
+      totalCost:         String(totalCost.toFixed(2)),
+      notes:             notes ?? null,
+      loggedBy,
+    })
+    .returning({ id: batchingEquipmentRentals.id });
+
+  // Post double-entry ledger: Debit Batching / Credit Motorpool
+  let ledgerPosted = false;
+  try {
+    const [batchingDept] = await db.select({ id: departments.id }).from(departments)
+      .where(eq(departments.code, "BATCHING")).limit(1);
+    const [motorpoolDept] = await db.select({ id: departments.id }).from(departments)
+      .where(eq(departments.code, "MOTORPOOL")).limit(1);
+
+    if (batchingDept && motorpoolDept) {
+      const [batchingCC] = await db.select({ id: costCenters.id }).from(costCenters)
+        .where(and(eq(costCenters.deptId, batchingDept.id), eq(costCenters.isActive, true))).limit(1);
+      const [motorpoolCC] = await db.select({ id: costCenters.id }).from(costCenters)
+        .where(and(eq(costCenters.deptId, motorpoolDept.id), eq(costCenters.isActive, true))).limit(1);
+
+      if (batchingCC && motorpoolCC) {
+        const desc = `${equip.code} — ${equip.name} | ${hoursOperated}h`;
+        await db.insert(financialLedger).values([
+          {
+            projectId, costCenterId: batchingCC.id, deptId: batchingDept.id,
+            resourceType: "MACHINE", resourceId: equipmentId,
+            transactionType: "OUTFLOW", referenceType: "EQUIPMENT_RENTAL", referenceId: rental.id,
+            amount: String(totalCost.toFixed(2)), isExternal: false,
+            transactionDate: usageDate, description: `Batching cost — ${desc}`,
+          },
+          {
+            projectId, costCenterId: motorpoolCC.id, deptId: motorpoolDept.id,
+            resourceType: "MACHINE", resourceId: equipmentId,
+            transactionType: "INFLOW", referenceType: "EQUIPMENT_RENTAL", referenceId: rental.id,
+            amount: String(totalCost.toFixed(2)), isExternal: false,
+            transactionDate: usageDate, description: `Motorpool revenue — ${desc}`,
+          },
+        ]);
+        ledgerPosted = true;
+      }
+    }
+  } catch {
+    // Rental record saved; ledger posting failed silently
+  }
+
+  revalidatePath("/batching/equipment-rentals");
+  revalidatePath("/batching");
+  return { success: true, rentalId: rental.id, totalCost, ledgerPosted };
 }
 
 // ─── Standard Mixes ───────────────────────────────────────────────────────────

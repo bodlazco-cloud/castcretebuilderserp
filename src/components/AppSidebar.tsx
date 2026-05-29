@@ -73,6 +73,7 @@ const NAV: NavSection[] = [
         { label: "IPO Queue",           href: "/batching/ipo" },
         { label: "Material Receiving",  href: "/batching/mrr" },
         { label: "Production Logs",     href: "/batching/production" },
+        { label: "Equipment Rentals",   href: "/batching/equipment-rentals" },
         { label: "Yield Analysis",      href: "/batching/yield" },
       ]},
       { label: "Delivery", isGroup: true, items: [
