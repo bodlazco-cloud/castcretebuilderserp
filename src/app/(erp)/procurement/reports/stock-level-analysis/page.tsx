@@ -21,7 +21,7 @@ type StockRow = {
   materialUnit: string | null;
   materialCategory: string | null;
   minimumQuantity: string | null;
-  adminPrice: string;
+  adminPrice: string | null;
   projectName: string | null;
 };
 
@@ -74,7 +74,7 @@ export default async function StockLevelAnalysisPage() {
   });
 
   const totalInventoryValue = rows.reduce((sum, r) => {
-    const price = Number(r.adminPrice);
+    const price = Number(r.adminPrice ?? 0);
     return sum + r.quantityAvailable * price;
   }, 0);
 
