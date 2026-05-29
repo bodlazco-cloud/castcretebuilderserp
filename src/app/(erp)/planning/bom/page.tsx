@@ -304,7 +304,14 @@ export default async function BomRegisterPage({
                                     <td style={{ padding: "0.5rem 1rem 0.5rem 0" }}>
                                       <BomStatusBadge status={line.status} />
                                     </td>
-                                    <td style={{ padding: "0.5rem 0" }}>
+                                    <td style={{ padding: "0.5rem 0", whiteSpace: "nowrap" }}>
+                                      {line.status === "DRAFT" && (
+                                        <Link
+                                          href={`/planning/bom/${line.id}/edit`}
+                                          style={{ fontSize: "0.78rem", fontWeight: 600, color: "#1a56db", textDecoration: "none", padding: "0.2rem 0.55rem", border: "1px solid #bfdbfe", borderRadius: "5px", background: "#eff6ff" }}>
+                                          Edit
+                                        </Link>
+                                      )}
                                       {line.status === "PENDING_REVIEW" && (
                                         <BomReviewActions id={line.id} />
                                       )}
