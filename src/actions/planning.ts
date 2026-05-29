@@ -317,23 +317,28 @@ export async function reviewVarianceRequest(
   return { success: true };
 }
 
-// ─── Update Draft BOM Entry ───────────────────────────────────────────────────
+// ─── Edit Draft BOM Group ─────────────────────────────────────────────────────
 
-const UpdateDraftBomSchema = z.object({
-  id:              z.string().uuid(),
+const BomGroupLineSchema = z.object({
+  id:              z.string().uuid().optional(),   // existing line; omit for new
   materialId:      z.string().uuid(),
   quantityPerUnit: z.number().positive(),
   equipmentType:   z.string().max(100).optional(),
 });
 
-export type UpdateDraftBomResult =
+const SaveEditedBomGroupSchema = z.object({
+  referenceId: z.string().uuid(),                  // any existing line in the group
+  lines:       z.array(BomGroupLineSchema).min(1, "At least one material line is required"),
+});
+
+export type SaveEditedBomGroupResult =
   | { success: true }
   | { success: false; error: string };
 
-export async function updateDraftBomEntry(
-  input: z.infer<typeof UpdateDraftBomSchema>,
-): Promise<UpdateDraftBomResult> {
-  const parsed = UpdateDraftBomSchema.safeParse(input);
+export async function saveEditedBomGroup(
+  input: z.infer<typeof SaveEditedBomGroupSchema>,
+): Promise<SaveEditedBomGroupResult> {
+  const parsed = SaveEditedBomGroupSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const user = await getAuthUser();
@@ -344,27 +349,88 @@ export async function updateDraftBomEntry(
     return { success: false, error: "Only Planning, Admin, or BOD may edit BOM entries." };
   }
 
-  const [existing] = await db
-    .select({ status: masterBomEntries.status })
-    .from(masterBomEntries)
-    .where(eq(masterBomEntries.id, parsed.data.id));
-
-  if (!existing) return { success: false, error: "BOM entry not found." };
-  if (existing.status !== "DRAFT") return { success: false, error: "Only DRAFT entries can be edited." };
-
-  await db
-    .update(masterBomEntries)
-    .set({
-      materialId:      parsed.data.materialId,
-      quantityPerUnit: String(parsed.data.quantityPerUnit),
-      equipmentType:   parsed.data.equipmentType ?? null,
-      updatedAt:       new Date(),
+  // Load reference line to identify the group
+  const [ref] = await db
+    .select({
+      projectId:       masterBomEntries.projectId,
+      phaseScopeId:    masterBomEntries.phaseScopeId,
+      phaseActivityId: masterBomEntries.phaseActivityId,
+      unitModel:       masterBomEntries.unitModel,
+      unitType:        masterBomEntries.unitType,
+      status:          masterBomEntries.status,
     })
-    .where(eq(masterBomEntries.id, parsed.data.id));
+    .from(masterBomEntries)
+    .where(eq(masterBomEntries.id, parsed.data.referenceId));
+
+  if (!ref) return { success: false, error: "BOM entry not found." };
+  if (ref.status !== "DRAFT") return { success: false, error: "Only DRAFT entries can be edited." };
+
+  // All current DRAFT lines in this group
+  const currentLines = await db
+    .select({ id: masterBomEntries.id })
+    .from(masterBomEntries)
+    .where(
+      and(
+        eq(masterBomEntries.projectId,  ref.projectId),
+        eq(masterBomEntries.phaseScopeId, ref.phaseScopeId!),
+        eq(masterBomEntries.unitModel,  ref.unitModel),
+        eq(masterBomEntries.unitType,   ref.unitType),
+        eq(masterBomEntries.isActive,   true),
+        eq(masterBomEntries.status,     "DRAFT"),
+      ),
+    );
+
+  const submittedIds = new Set(parsed.data.lines.map((l) => l.id).filter(Boolean) as string[]);
+
+  // Soft-delete lines not in the submitted set
+  const toDelete = currentLines.map((l) => l.id).filter((id) => !submittedIds.has(id));
+  if (toDelete.length > 0) {
+    await db
+      .update(masterBomEntries)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(inArray(masterBomEntries.id, toDelete));
+  }
+
+  // Update existing lines
+  for (const line of parsed.data.lines) {
+    if (!line.id) continue;
+    await db
+      .update(masterBomEntries)
+      .set({
+        materialId:      line.materialId,
+        quantityPerUnit: String(line.quantityPerUnit),
+        equipmentType:   line.equipmentType ?? null,
+        updatedAt:       new Date(),
+      })
+      .where(and(eq(masterBomEntries.id, line.id), eq(masterBomEntries.status, "DRAFT")));
+  }
+
+  // Insert new lines
+  const newLines = parsed.data.lines.filter((l) => !l.id);
+  if (newLines.length > 0) {
+    await db.insert(masterBomEntries).values(
+      newLines.map((line) => ({
+        projectId:       ref.projectId,
+        phaseScopeId:    ref.phaseScopeId,
+        phaseActivityId: ref.phaseActivityId ?? null,
+        unitModel:       ref.unitModel,
+        unitType:        ref.unitType,
+        materialId:      line.materialId,
+        quantityPerUnit: String(line.quantityPerUnit),
+        equipmentType:   line.equipmentType ?? null,
+        activityDefId:   null,
+        status:          "DRAFT" as const,
+        createdBy:       user.id,
+      })),
+    );
+  }
 
   revalidatePath("/planning/bom");
   return { success: true };
 }
+
+// kept for any external callers
+export type UpdateDraftBomResult = SaveEditedBomGroupResult;
 
 // ─── Manpower Logs (kept for resource-forecasting page) ───────────────────────
 
