@@ -67,7 +67,7 @@ export const subcontractorPerformanceRatings = pgTable("subcontractor_performanc
 
 export const subcontractorRateCards = pgTable("subcontractor_rate_cards", {
   id:              uuid("id").primaryKey().defaultRandom(),
-  subconId:        uuid("subcon_id").notNull().references(() => subcontractors.id),
+  subconId:        uuid("subcon_id").references(() => subcontractors.id),
   projectId:       uuid("project_id").notNull().references(() => projects.id),
   activityDefId:   uuid("activity_def_id").references(() => activityDefinitions.id),
   phaseActivityId: uuid("phase_activity_id").references(() => phaseActivities.id),

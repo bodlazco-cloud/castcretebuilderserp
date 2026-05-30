@@ -1,5 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { db } from "@/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 /**
  * Server-side Supabase client for Server Components and Route Handlers.
@@ -35,4 +38,20 @@ export async function getAuthUser() {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
   return user;
+}
+
+/** Returns true if the logged-in user has ADMIN or BOD role in the DB users table. */
+export async function isAdminOrBod(): Promise<boolean> {
+  const authUser = await getAuthUser();
+  if (!authUser?.email) return false;
+  try {
+    const [dbUser] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.email, authUser.email));
+    if (!dbUser) return false;
+    return dbUser.role === "ADMIN" || dbUser.role === "BOD";
+  } catch {
+    return false;
+  }
 }

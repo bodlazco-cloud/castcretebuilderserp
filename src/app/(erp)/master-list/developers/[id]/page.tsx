@@ -1,21 +1,18 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { developers, projects, developerRateCards, developerRateCardDeductions, phaseCategories, phaseScopes, phaseActivities } from "@/db/schema";
+import { developers, projects, developerRateCards, developerRateCardDeductions, phaseCategories, phaseScopes, phaseActivities, projectUnits } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { getAuthUser } from "@/lib/supabase-server";
+import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { DevRateCards } from "./DevRateCards";
 import { EditDeveloperForm } from "./EditDeveloperForm";
 
 export default async function DeveloperDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await getAuthUser();
+  const isAdmin = await isAdminOrBod();
   const { id } = await params;
 
-  const [dev] = await db
-    .select()
-    .from(developers)
-    .where(eq(developers.id, id));
-
+  const [dev] = await db.select().from(developers).where(eq(developers.id, id));
   if (!dev) notFound();
 
   const projectRows = await db
@@ -25,21 +22,21 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
     .orderBy(projects.name);
 
   const devProjectIds = projectRows.map((p) => p.id);
+  const DUMMY = ["00000000-0000-0000-0000-000000000000"];
 
-  type RateCardRow = {
+  let rateCardRows: {
     id: string; projectName: string | null;
     phaseActivityId: string | null; unitModel: string | null; unitType: string | null;
     phaseCategoryName: string | null; phaseScopeName: string | null;
     phaseActivityCode: string | null; phaseActivityName: string | null;
     grossRatePerUnit: string; retentionPct: string; dpRecoupmentPct: string;
     taxPct: string; version: number; isActive: boolean;
-  };
-
-  let rateCardRows: RateCardRow[] = [];
+  }[] = [];
   let deductionRows: { id: string; rateCardId: string; name: string; deductionPct: string; isActive: boolean }[] = [];
   let phaseCategoryList: { id: string; name: string }[] = [];
   let phaseScopeList: { id: string; categoryId: string; name: string }[] = [];
   let phaseActivityList: { id: string; scopeId: string; code: string; name: string }[] = [];
+  let unitModelOptions: { projectId: string; projectName: string; unitModel: string; unitType: string }[] = [];
 
   try {
     [rateCardRows, phaseCategoryList, phaseScopeList, phaseActivityList] = await Promise.all([
@@ -61,16 +58,30 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
         isActive:          developerRateCards.isActive,
       })
       .from(developerRateCards)
-      .leftJoin(projects,         eq(developerRateCards.projectId,        projects.id))
-      .leftJoin(phaseActivities,  eq(developerRateCards.phaseActivityId,  phaseActivities.id))
-      .leftJoin(phaseScopes,      eq(phaseActivities.scopeId,             phaseScopes.id))
-      .leftJoin(phaseCategories,  eq(phaseScopes.categoryId,              phaseCategories.id))
-      .where(inArray(developerRateCards.projectId, devProjectIds.length > 0 ? devProjectIds : ["00000000-0000-0000-0000-000000000000"]))
+      .leftJoin(projects,        eq(developerRateCards.projectId,       projects.id))
+      .leftJoin(phaseActivities, eq(developerRateCards.phaseActivityId, phaseActivities.id))
+      .leftJoin(phaseScopes,     eq(phaseActivities.scopeId,            phaseScopes.id))
+      .leftJoin(phaseCategories, eq(phaseScopes.categoryId,             phaseCategories.id))
+      .where(inArray(developerRateCards.projectId, devProjectIds.length > 0 ? devProjectIds : DUMMY))
       .orderBy(developerRateCards.createdAt),
       db.select({ id: phaseCategories.id, name: phaseCategories.name }).from(phaseCategories).where(eq(phaseCategories.isActive, true)).orderBy(phaseCategories.sequenceOrder),
       db.select({ id: phaseScopes.id, categoryId: phaseScopes.categoryId, name: phaseScopes.name }).from(phaseScopes).where(eq(phaseScopes.isActive, true)).orderBy(phaseScopes.sequenceOrder),
       db.select({ id: phaseActivities.id, scopeId: phaseActivities.scopeId, code: phaseActivities.code, name: phaseActivities.name }).from(phaseActivities).where(eq(phaseActivities.isActive, true)).orderBy(phaseActivities.sequenceOrder),
     ]);
+
+    if (devProjectIds.length > 0) {
+      const unitRows = await db
+        .select({ projectId: projectUnits.projectId, unitModel: projectUnits.unitModel, unitType: projectUnits.unitType })
+        .from(projectUnits)
+        .where(inArray(projectUnits.projectId, devProjectIds))
+        .orderBy(projectUnits.unitModel);
+      unitModelOptions = unitRows.map((u) => ({
+        projectId:   u.projectId,
+        projectName: projectRows.find((p) => p.id === u.projectId)?.name ?? "",
+        unitModel:   u.unitModel,
+        unitType:    u.unitType,
+      }));
+    }
 
     if (rateCardRows.length > 0) {
       deductionRows = await db
@@ -108,7 +119,7 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
               background: dev.isActive ? "#dcfce7" : "#f3f4f6", color: dev.isActive ? "#166534" : "#6b7280",
             }}>{dev.isActive ? "Active" : "Inactive"}</span>
           </div>
-          <EditDeveloperForm developer={{ id: dev.id, name: dev.name }} />
+          {isAdmin && <EditDeveloperForm developer={{ id: dev.id, name: dev.name }} />}
         </div>
 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginBottom: "1.5rem" }}>
@@ -166,6 +177,8 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
           phaseCategories={phaseCategoryList}
           phaseScopes={phaseScopeList}
           phaseActivities={phaseActivityList}
+          unitModelOptions={unitModelOptions}
+          isAdmin={isAdmin}
         />
       </div>
     </main>

@@ -11,7 +11,7 @@ type Row = {
   createdAt: Date;
 };
 
-export default function DevelopersTable({ rows }: { rows: Row[] }) {
+export default function DevelopersTable({ rows, isAdmin }: { rows: Row[]; isAdmin: boolean }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = q ? rows.filter(r => r.name.toLowerCase().includes(q)) : rows;
@@ -67,7 +67,7 @@ export default function DevelopersTable({ rows }: { rows: Row[] }) {
                   <td style={{ padding: "0.75rem 1rem", textAlign: "right" }}>
                     <span style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center" }}>
                       <a href={`/master-list/developers/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
-                      <DeleteRowButton action={deleteDeveloper.bind(null, r.id)} />
+                      {isAdmin && <DeleteRowButton action={deleteDeveloper.bind(null, r.id)} />}
                     </span>
                   </td>
                 </tr>
