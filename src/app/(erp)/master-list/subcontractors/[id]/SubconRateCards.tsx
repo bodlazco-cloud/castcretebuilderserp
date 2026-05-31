@@ -93,8 +93,10 @@ function AddDeductionForm({ rateCardId, onAdded }: { rateCardId: string; onAdded
   );
 }
 
+type UnitModelOption = { projectId: string; unitModel: string };
+
 export function SubconRateCards({
-  rateCards, deductions, projects, phaseCategories, phaseScopes, phaseActivities, isAdmin,
+  rateCards, deductions, projects, phaseCategories, phaseScopes, phaseActivities, unitModelOptions, isAdmin,
 }: {
   rateCards: RateCard[];
   deductions: Deduction[];
@@ -102,6 +104,7 @@ export function SubconRateCards({
   phaseCategories: PhaseCategory[];
   phaseScopes: PhaseScope[];
   phaseActivities: PhaseActivity[];
+  unitModelOptions: UnitModelOption[];
   isAdmin: boolean;
 }) {
   const router = useRouter();
@@ -120,6 +123,9 @@ export function SubconRateCards({
 
   const filteredScopes = phaseScopes.filter((s) => s.categoryId === selectedCategory);
   const filteredActivities = phaseActivities.filter((a) => a.scopeId === selectedScope);
+  const filteredUnitModels = selectedProject
+    ? unitModelOptions.filter((u) => u.projectId === selectedProject)
+    : [];
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -182,7 +188,7 @@ export function SubconRateCards({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
             <label>
               <span style={labelStyle}>Project (Site) *</span>
-              <select required value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} style={inputStyle}>
+              <select required value={selectedProject} onChange={(e) => { setSelectedProject(e.target.value); setUnitModel(""); }} style={inputStyle}>
                 <option value="">Select project…</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -213,7 +219,17 @@ export function SubconRateCards({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
             <label>
               <span style={labelStyle}>Unit Model</span>
-              <input value={unitModel} onChange={(e) => setUnitModel(e.target.value)} placeholder="e.g. 2-story, Penthouse" style={inputStyle} />
+              <select
+                value={unitModel}
+                onChange={(e) => setUnitModel(e.target.value)}
+                style={inputStyle}
+                disabled={!selectedProject}
+              >
+                <option value="">{selectedProject ? "Any / not specified" : "Select project first…"}</option>
+                {filteredUnitModels.map((u) => (
+                  <option key={u.unitModel} value={u.unitModel}>{u.unitModel}</option>
+                ))}
+              </select>
             </label>
             <label>
               <span style={labelStyle}>Unit Type</span>
