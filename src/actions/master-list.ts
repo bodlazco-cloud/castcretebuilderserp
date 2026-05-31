@@ -10,7 +10,7 @@ import {
   phaseCategories, phaseScopes, phaseActivities, phaseBillingMilestones,
   globalSettings,
 } from "@/db/schema";
-import { eq, count, and, or, ilike } from "drizzle-orm";
+import { eq, count, and, or, ilike, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getAuthUser } from "@/lib/supabase-server";
@@ -741,6 +741,22 @@ export async function createSubconRateCard(
 
   const d = parsed.data;
   try {
+    // Enforce one rate per project + activity + unit model + unit type
+    const activityMatch = d.phaseActivityId
+      ? eq(subcontractorRateCards.phaseActivityId, d.phaseActivityId)
+      : isNull(subcontractorRateCards.phaseActivityId);
+    const modelMatch = d.unitModel
+      ? eq(subcontractorRateCards.unitModel, d.unitModel)
+      : isNull(subcontractorRateCards.unitModel);
+    const typeMatch = d.unitType
+      ? eq(subcontractorRateCards.unitType, d.unitType as "BEG" | "MID" | "END" | "SHOP")
+      : isNull(subcontractorRateCards.unitType);
+    const [existing] = await db
+      .select({ id: subcontractorRateCards.id })
+      .from(subcontractorRateCards)
+      .where(and(eq(subcontractorRateCards.projectId, d.projectId), activityMatch, modelMatch, typeMatch));
+    if (existing) return { success: false, error: "A rate card for this project / activity / unit model / unit type already exists." };
+
     const [row] = await db
       .insert(subcontractorRateCards)
       .values({
