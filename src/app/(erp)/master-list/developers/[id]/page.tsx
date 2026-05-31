@@ -12,7 +12,10 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
   const isAdmin = await isAdminOrBod();
   const { id } = await params;
 
-  const [dev] = await db.select().from(developers).where(eq(developers.id, id));
+  const [dev] = await db
+    .select({ id: developers.id, name: developers.name, isActive: developers.isActive, createdAt: developers.createdAt })
+    .from(developers)
+    .where(eq(developers.id, id));
   if (!dev) notFound();
 
   const projectRows = await db
