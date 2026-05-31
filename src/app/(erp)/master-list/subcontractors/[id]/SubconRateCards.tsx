@@ -94,15 +94,15 @@ function AddDeductionForm({ rateCardId, onAdded }: { rateCardId: string; onAdded
 }
 
 export function SubconRateCards({
-  subconId, rateCards, deductions, projects, phaseCategories, phaseScopes, phaseActivities,
+  rateCards, deductions, projects, phaseCategories, phaseScopes, phaseActivities, isAdmin,
 }: {
-  subconId: string;
   rateCards: RateCard[];
   deductions: Deduction[];
   projects: Project[];
   phaseCategories: PhaseCategory[];
   phaseScopes: PhaseScope[];
   phaseActivities: PhaseActivity[];
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
@@ -126,7 +126,6 @@ export function SubconRateCards({
     setError(null);
     startTransition(async () => {
       const result = await createSubconRateCard({
-        subconId,
         projectId:       selectedProject,
         phaseActivityId: selectedActivity || undefined,
         unitModel:       unitModel || undefined,
@@ -161,17 +160,22 @@ export function SubconRateCards({
 
   return (
     <div style={{ marginTop: "2rem" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.35rem" }}>
         <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#374151" }}>
-          Rate Cards ({rateCards.length})
+          Labor Rate Schedule ({rateCards.length})
         </h2>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          style={{ padding: "0.45rem 1rem", borderRadius: "6px", background: ACCENT, color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
-        >
-          {showForm ? "Cancel" : "+ Add Rate Card"}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            style={{ padding: "0.45rem 1rem", borderRadius: "6px", background: ACCENT, color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
+          >
+            {showForm ? "Cancel" : "+ Add Rate"}
+          </button>
+        )}
       </div>
+      <p style={{ margin: "0 0 0.75rem", fontSize: "0.78rem", color: "#9ca3af" }}>
+        Global labor rates per project / scope / unit — apply to all subcontractors assigned to that scope.
+      </p>
 
       {showForm && (
         <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.25rem", marginBottom: "1rem" }}>
@@ -279,19 +283,23 @@ export function SubconRateCards({
                     <div style={VALUE}>{(Number(rc.retentionPct) * 100).toFixed(1)}%</div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", alignItems: "flex-end" }}>
-                    <button
-                      onClick={() => handleToggle(rc.id, !rc.isActive)}
-                      disabled={isPending}
-                      style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "none", fontSize: "0.75rem", fontWeight: 600, background: rc.isActive ? "#fee2e2" : "#dcfce7", color: rc.isActive ? "#991b1b" : "#166534", cursor: isPending ? "not-allowed" : "pointer" }}
-                    >
-                      {rc.isActive ? "Deactivate" : "Activate"}
-                    </button>
-                    <button
-                      onClick={() => setOpenDeductions(showDed ? null : rc.id)}
-                      style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}
-                    >
-                      Deductions {rcDeductions.length > 0 ? `(${rcDeductions.length})` : ""}
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleToggle(rc.id, !rc.isActive)}
+                        disabled={isPending}
+                        style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "none", fontSize: "0.75rem", fontWeight: 600, background: rc.isActive ? "#fee2e2" : "#dcfce7", color: rc.isActive ? "#991b1b" : "#166534", cursor: isPending ? "not-allowed" : "pointer" }}
+                      >
+                        {rc.isActive ? "Deactivate" : "Activate"}
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
+                        onClick={() => setOpenDeductions(showDed ? null : rc.id)}
+                        style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}
+                      >
+                        Deductions {rcDeductions.length > 0 ? `(${rcDeductions.length})` : ""}
+                      </button>
+                    )}
                   </div>
                 </div>
 

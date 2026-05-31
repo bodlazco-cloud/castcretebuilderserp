@@ -27,6 +27,7 @@ type Project = { id: string; name: string };
 type PhaseCategory = { id: string; name: string };
 type PhaseScope = { id: string; categoryId: string; name: string };
 type PhaseActivity = { id: string; scopeId: string; code: string; name: string };
+type UnitModelOption = { projectId: string; projectName: string; unitModel: string; unitType: string };
 
 const ACCENT = "#6366f1";
 const inputStyle: React.CSSProperties = {
@@ -96,7 +97,7 @@ function AddDeductionForm({ rateCardId, onAdded }: { rateCardId: string; onAdded
 }
 
 export function DevRateCards({
-  devProjects, rateCards, deductions, phaseCategories, phaseScopes, phaseActivities,
+  devProjects, rateCards, deductions, phaseCategories, phaseScopes, phaseActivities, unitModelOptions, isAdmin,
 }: {
   devProjects: Project[];
   rateCards: RateCard[];
@@ -104,6 +105,8 @@ export function DevRateCards({
   phaseCategories: PhaseCategory[];
   phaseScopes: PhaseScope[];
   phaseActivities: PhaseActivity[];
+  unitModelOptions: UnitModelOption[];
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
@@ -169,12 +172,14 @@ export function DevRateCards({
         <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#374151" }}>
           Rate Cards ({rateCards.length})
         </h2>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          style={{ padding: "0.45rem 1rem", borderRadius: "6px", background: ACCENT, color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
-        >
-          {showForm ? "Cancel" : "+ Add Rate Card"}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            style={{ padding: "0.45rem 1rem", borderRadius: "6px", background: ACCENT, color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
+          >
+            {showForm ? "Cancel" : "+ Add Rate Card"}
+          </button>
+        )}
       </div>
 
       {showForm && (
@@ -213,7 +218,20 @@ export function DevRateCards({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
             <label>
               <span style={labelStyle}>Unit Model</span>
-              <input value={unitModel} onChange={(e) => setUnitModel(e.target.value)} placeholder="e.g. 2-story, Penthouse" style={inputStyle} />
+              <select
+                value={unitModel}
+                onChange={(e) => {
+                  setUnitModel(e.target.value);
+                  const match = unitModelOptions.find((u) => u.unitModel === e.target.value);
+                  if (match && !unitType) setUnitType(match.unitType);
+                }}
+                style={inputStyle}
+              >
+                <option value="">Any / not specified</option>
+                {[...new Set(unitModelOptions.map((u) => u.unitModel))].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
             </label>
             <label>
               <span style={labelStyle}>Unit Type</span>
@@ -299,19 +317,23 @@ export function DevRateCards({
                     <div style={VALUE}>{(Number(rc.taxPct) * 100).toFixed(1)}%</div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", alignItems: "flex-end" }}>
-                    <button
-                      onClick={() => handleToggle(rc.id, !rc.isActive)}
-                      disabled={isPending}
-                      style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "none", fontSize: "0.75rem", fontWeight: 600, background: rc.isActive ? "#fee2e2" : "#dcfce7", color: rc.isActive ? "#991b1b" : "#166534", cursor: isPending ? "not-allowed" : "pointer" }}
-                    >
-                      {rc.isActive ? "Deactivate" : "Activate"}
-                    </button>
-                    <button
-                      onClick={() => setOpenDeductions(showDed ? null : rc.id)}
-                      style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}
-                    >
-                      Deductions {rcDeductions.length > 0 ? `(${rcDeductions.length})` : ""}
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleToggle(rc.id, !rc.isActive)}
+                        disabled={isPending}
+                        style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "none", fontSize: "0.75rem", fontWeight: 600, background: rc.isActive ? "#fee2e2" : "#dcfce7", color: rc.isActive ? "#991b1b" : "#166534", cursor: isPending ? "not-allowed" : "pointer" }}
+                      >
+                        {rc.isActive ? "Deactivate" : "Activate"}
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
+                        onClick={() => setOpenDeductions(showDed ? null : rc.id)}
+                        style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}
+                      >
+                        Deductions {rcDeductions.length > 0 ? `(${rcDeductions.length})` : ""}
+                      </button>
+                    )}
                   </div>
                 </div>
 

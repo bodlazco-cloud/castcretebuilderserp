@@ -604,22 +604,25 @@ export async function createDeveloperRateCard(
 
   const { projectId, phaseActivityId, unitModel, unitType, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
 
-  const [row] = await db
-    .insert(developerRateCards)
-    .values({
-      projectId,
-      phaseActivityId:  phaseActivityId ?? null,
-      unitModel:        unitModel ?? null,
-      unitType:         (unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
-      grossRatePerUnit: String(grossRatePerUnit),
-      retentionPct:     String(retentionPct),
-      dpRecoupmentPct:  String(dpRecoupmentPct),
-      taxPct:           String(taxPct),
-    })
-    .returning({ id: developerRateCards.id });
-
-  revalidatePath("/master-list/developers");
-  return { success: true, id: row.id };
+  try {
+    const [row] = await db
+      .insert(developerRateCards)
+      .values({
+        projectId,
+        phaseActivityId:  phaseActivityId ?? null,
+        unitModel:        unitModel ?? null,
+        unitType:         (unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
+        grossRatePerUnit: String(grossRatePerUnit),
+        retentionPct:     String(retentionPct),
+        dpRecoupmentPct:  String(dpRecoupmentPct),
+        taxPct:           String(taxPct),
+      })
+      .returning({ id: developerRateCards.id });
+    revalidatePath("/master-list/developers");
+    return { success: true, id: row.id };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Database error saving rate card." };
+  }
 }
 
 export async function updateDeveloperRateCard(
@@ -721,7 +724,7 @@ export async function deleteSupplier(id: string): Promise<{ success: boolean; er
 // ─── Subcontractor Rate Cards ───────────────────────────────────────────────
 
 const SubconRateCardSchema = z.object({
-  subconId:        z.string().uuid(),
+  subconId:        z.string().uuid().optional(),
   projectId:       z.string().uuid(),
   phaseActivityId: z.string().uuid().optional(),
   unitModel:       z.string().max(50).optional(),
@@ -737,21 +740,25 @@ export async function createSubconRateCard(
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const d = parsed.data;
-  const [row] = await db
-    .insert(subcontractorRateCards)
-    .values({
-      subconId:        d.subconId,
-      projectId:       d.projectId,
-      phaseActivityId: d.phaseActivityId ?? null,
-      unitModel:       d.unitModel ?? null,
-      unitType:        (d.unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
-      ratePerUnit:     String(d.ratePerUnit),
-      retentionPct:    String(d.retentionPct),
-    })
-    .returning({ id: subcontractorRateCards.id });
-
-  revalidatePath("/master-list/subcontractors");
-  return { success: true, id: row.id };
+  try {
+    const [row] = await db
+      .insert(subcontractorRateCards)
+      .values({
+        subconId:        d.subconId ?? null,
+        projectId:       d.projectId,
+        phaseActivityId: d.phaseActivityId ?? null,
+        unitModel:       d.unitModel ?? null,
+        unitType:        (d.unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
+        ratePerUnit:     String(d.ratePerUnit),
+        retentionPct:    String(d.retentionPct),
+      })
+      .returning({ id: subcontractorRateCards.id });
+    revalidatePath("/master-list/subcontractors");
+    revalidatePath("/admin/labor-rates");
+    return { success: true, id: row.id };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Database error saving rate card." };
+  }
 }
 
 export async function updateSubconRateCard(

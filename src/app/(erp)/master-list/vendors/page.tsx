@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { suppliers } from "@/db/schema";
-import { getAuthUser } from "@/lib/supabase-server";
+import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
 import VendorsTable from "./VendorsTable";
 
 export default async function VendorsPage() {
   await getAuthUser();
+  const isAdmin = await isAdminOrBod();
   const rows = await db
     .select({ id: suppliers.id, name: suppliers.name, isActive: suppliers.isActive, createdAt: suppliers.createdAt })
     .from(suppliers)
@@ -22,13 +23,15 @@ export default async function VendorsPage() {
             <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Vendors / Suppliers</h1>
             <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>Approved vendor accreditation and preferred material links.</p>
           </div>
-          <a href="/master-list/vendors/new" style={{
-            padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#6366f1",
-            color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
-          }}>+ Add Vendor</a>
+          {isAdmin && (
+            <a href="/master-list/vendors/new" style={{
+              padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#6366f1",
+              color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
+            }}>+ Add Vendor</a>
+          )}
         </div>
 
-        <VendorsTable rows={rows} />
+        <VendorsTable rows={rows} isAdmin={isAdmin} />
       </div>
     </main>
   );
