@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { subcontractors, taskAssignments, projects, subcontractorRateCards, subcontractorRateCardDeductions, phaseCategories, phaseScopes, phaseActivities } from "@/db/schema";
+import { subcontractors, taskAssignments, projects, subcontractorRateCards, subcontractorRateCardDeductions, phaseCategories, phaseScopes, phaseActivities, projectUnits } from "@/db/schema";
 import { eq, inArray, isNull, or } from "drizzle-orm";
 import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
@@ -53,9 +53,10 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
   let phaseCategoryList: { id: string; name: string }[] = [];
   let phaseScopeList: { id: string; categoryId: string; name: string }[] = [];
   let phaseActivityList: { id: string; scopeId: string; code: string; name: string }[] = [];
+  let unitModelOptions: { projectId: string; unitModel: string }[] = [];
 
   try {
-    [rateCards, allProjects, phaseCategoryList, phaseScopeList, phaseActivityList] = await Promise.all([
+    [rateCards, allProjects, phaseCategoryList, phaseScopeList, phaseActivityList, unitModelOptions] = await Promise.all([
       // Show all global rate cards (no subcon_id) — project-level labor rate schedule
       db.select({
         id:                subcontractorRateCards.id,
@@ -83,6 +84,7 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
       db.select({ id: phaseCategories.id, name: phaseCategories.name }).from(phaseCategories).where(eq(phaseCategories.isActive, true)).orderBy(phaseCategories.sequenceOrder),
       db.select({ id: phaseScopes.id, categoryId: phaseScopes.categoryId, name: phaseScopes.name }).from(phaseScopes).where(eq(phaseScopes.isActive, true)).orderBy(phaseScopes.sequenceOrder),
       db.select({ id: phaseActivities.id, scopeId: phaseActivities.scopeId, code: phaseActivities.code, name: phaseActivities.name }).from(phaseActivities).where(eq(phaseActivities.isActive, true)).orderBy(phaseActivities.sequenceOrder),
+      db.selectDistinct({ projectId: projectUnits.projectId, unitModel: projectUnits.unitModel }).from(projectUnits).orderBy(projectUnits.unitModel),
     ]);
     if (rateCards.length > 0) {
       deductions = await db
@@ -193,6 +195,7 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
           phaseCategories={phaseCategoryList}
           phaseScopes={phaseScopeList}
           phaseActivities={phaseActivityList}
+          unitModelOptions={unitModelOptions}
           isAdmin={isAdmin}
         />
       </div>
