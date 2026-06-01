@@ -14,7 +14,10 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
   await getAuthUser();
   const { id } = await params;
 
-  const [vendor] = await db.select().from(suppliers).where(eq(suppliers.id, id));
+  const [vendor] = await db
+    .select({ id: suppliers.id, name: suppliers.name, isActive: suppliers.isActive, phone: suppliers.phone, email: suppliers.email, address: suppliers.address, contactPerson: suppliers.contactPerson, createdAt: suppliers.createdAt })
+    .from(suppliers)
+    .where(eq(suppliers.id, id));
   if (!vendor) notFound();
 
   const [priceRows, historyRows, allMaterials] = await Promise.all([

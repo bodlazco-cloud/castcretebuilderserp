@@ -41,11 +41,12 @@ export function SubmitWarForm({ projects, units, assignments, milestones, userId
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
       const result = await submitWorkAccomplishedReport({
-        projectId:        fd.get("projectId") as string,
-        unitId:           fd.get("unitId") as string,
-        unitMilestoneId:  fd.get("unitMilestoneId") as string,
-        taskAssignmentId: fd.get("taskAssignmentId") as string,
-        submittedBy:      userId,
+        projectId:           fd.get("projectId") as string,
+        unitId:              fd.get("unitId") as string,
+        unitMilestoneId:     fd.get("unitMilestoneId") as string,
+        taskAssignmentId:    fd.get("taskAssignmentId") as string,
+        grossAccomplishment: 0,
+        submittedBy:         userId,
       });
       if (result.success) {
         router.push("/construction");

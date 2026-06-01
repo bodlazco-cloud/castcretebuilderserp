@@ -80,7 +80,7 @@ export default async function MaterialsPage({ searchParams }: { searchParams: Se
           values={filterValues}
           fields={[
             { type: "text",   name: "q",        placeholder: "Search name or code…" },
-            { type: "select", name: "category",  placeholder: "All categories", options: allCats.filter((c) => c.category != null).map((c) => ({ value: c.category as string, label: c.category as string })) },
+            { type: "select", name: "category",  placeholder: "All categories", options: allCats.filter((c) => c.category != null).map((c) => ({ value: c.category!, label: c.category! })) },
             { type: "select", name: "status",    placeholder: "All status", options: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }] },
           ]}
         />
