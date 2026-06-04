@@ -9,48 +9,59 @@ export default async function MotorpoolPage() {
   const deptCode: string = user?.user_metadata?.dept_code ?? "";
   const displayName: string = user?.user_metadata?.full_name ?? user?.email ?? "Guest";
 
-  const [availableRows, onSiteRows, flaggedFlipRows, lockedRows] = await Promise.all([
-    db.select({ value: count() }).from(schema.equipment).where(eq(schema.equipment.status, "AVAILABLE")),
-    db.select({ value: count() }).from(schema.equipment).where(eq(schema.equipment.status, "ON_SITE")),
-    db.select({ value: count() }).from(schema.equipment).where(eq(schema.equipment.isFlaggedForFlip, true)),
-    db.select({ value: count() }).from(schema.equipment).where(eq(schema.equipment.isLocked, true)),
-  ]);
+  let availableCount = 0;
+  let onSiteCount = 0;
+  let flaggedFlipCount = 0;
+  let lockedCount = 0;
+  let equipmentRows: { code: string; name: string; type: string; status: string; totalEngineHours: string | null; dailyRentalRate: string; isFlaggedForFlip: boolean; isLocked: boolean }[] = [];
+  let maintenanceRows: { equipCode: string | null; equipName: string | null; maintenanceType: string; description: string; partsCost: string; laborCost: string; totalCost: string | null; status: string; maintenanceDate: string }[] = [];
+  let dbError: string | null = null;
 
-  const availableCount = availableRows[0]?.value ?? 0;
-  const onSiteCount = onSiteRows[0]?.value ?? 0;
-  const flaggedFlipCount = flaggedFlipRows[0]?.value ?? 0;
-  const lockedCount = lockedRows[0]?.value ?? 0;
+  try {
+    const [availableRows, onSiteRows, flaggedFlipRows, lockedRows] = await Promise.all([
+      db.select({ value: count() }).from(schema.equipment).where(eq(schema.equipment.status, "AVAILABLE")),
+      db.select({ value: count() }).from(schema.equipment).where(eq(schema.equipment.status, "ON_SITE")),
+      db.select({ value: count() }).from(schema.equipment).where(eq(schema.equipment.isFlaggedForFlip, true)),
+      db.select({ value: count() }).from(schema.equipment).where(eq(schema.equipment.isLocked, true)),
+    ]);
+    availableCount = availableRows[0]?.value ?? 0;
+    onSiteCount    = onSiteRows[0]?.value    ?? 0;
+    flaggedFlipCount = flaggedFlipRows[0]?.value ?? 0;
+    lockedCount    = lockedRows[0]?.value    ?? 0;
 
-  const equipmentRows = await db
-    .select({
-      code: schema.equipment.code,
-      name: schema.equipment.name,
-      type: schema.equipment.type,
-      status: schema.equipment.status,
-      totalEngineHours: schema.equipment.totalEngineHours,
-      dailyRentalRate: schema.equipment.dailyRentalRate,
-      isFlaggedForFlip: schema.equipment.isFlaggedForFlip,
-      isLocked: schema.equipment.isLocked,
-    })
-    .from(schema.equipment)
-    .orderBy(schema.equipment.code);
+    equipmentRows = await db
+      .select({
+        code: schema.equipment.code,
+        name: schema.equipment.name,
+        type: schema.equipment.type,
+        status: schema.equipment.status,
+        totalEngineHours: schema.equipment.totalEngineHours,
+        dailyRentalRate: schema.equipment.dailyRentalRate,
+        isFlaggedForFlip: schema.equipment.isFlaggedForFlip,
+        isLocked: schema.equipment.isLocked,
+      })
+      .from(schema.equipment)
+      .orderBy(schema.equipment.code);
 
-  const maintenanceRows = await db
-    .select({
-      equipCode: schema.equipment.code,
-      equipName: schema.equipment.name,
-      maintenanceType: schema.maintenanceRecords.maintenanceType,
-      description: schema.maintenanceRecords.description,
-      partsCost: schema.maintenanceRecords.partsCost,
-      laborCost: schema.maintenanceRecords.laborCost,
-      totalCost: schema.maintenanceRecords.totalCost,
-      status: schema.maintenanceRecords.status,
-      maintenanceDate: schema.maintenanceRecords.maintenanceDate,
-    })
-    .from(schema.maintenanceRecords)
-    .leftJoin(schema.equipment, eq(schema.maintenanceRecords.equipmentId, schema.equipment.id))
-    .orderBy(desc(schema.maintenanceRecords.maintenanceDate))
-    .limit(10);
+    maintenanceRows = await db
+      .select({
+        equipCode: schema.equipment.code,
+        equipName: schema.equipment.name,
+        maintenanceType: schema.maintenanceRecords.maintenanceType,
+        description: schema.maintenanceRecords.description,
+        partsCost: schema.maintenanceRecords.partsCost,
+        laborCost: schema.maintenanceRecords.laborCost,
+        totalCost: schema.maintenanceRecords.totalCost,
+        status: schema.maintenanceRecords.status,
+        maintenanceDate: schema.maintenanceRecords.maintenanceDate,
+      })
+      .from(schema.maintenanceRecords)
+      .leftJoin(schema.equipment, eq(schema.maintenanceRecords.equipmentId, schema.equipment.id))
+      .orderBy(desc(schema.maintenanceRecords.maintenanceDate))
+      .limit(10);
+  } catch (err) {
+    dbError = err instanceof Error ? err.message : String(err);
+  }
 
   const ACCENT = "#0694a2";
 
@@ -106,6 +117,11 @@ export default async function MotorpoolPage() {
       </nav>
 
       <div style={{ padding: "2rem" }}>
+        {dbError && (
+          <div style={{ padding: "1rem", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "6px", marginBottom: "1.5rem", color: "#b91c1c", fontSize: "0.85rem", fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+            <strong>DB Error:</strong>{"\n"}{dbError}
+          </div>
+        )}
         <div style={{ marginBottom: "1.5rem" }}>
           <a href="/main-dashboard" style={{ fontSize: "0.875rem", color: "#1a56db", textDecoration: "none" }}>
             ← Back to Dashboard
