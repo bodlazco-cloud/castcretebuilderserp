@@ -3,6 +3,7 @@ import {
   timestamp, date, text, jsonb,
 } from "drizzle-orm/pg-core";
 import { users, costCenters, departments } from "./core";
+import { employees } from "./hr";
 import { projects } from "./projects";
 import { projectUnits } from "./units";
 import { fixOrFlipEnum } from "./enums";
@@ -33,7 +34,7 @@ export const equipmentAssignments = pgTable("equipment_assignments", {
   projectId:        uuid("project_id").notNull().references(() => projects.id),
   unitId:           uuid("unit_id").references(() => projectUnits.id),
   costCenterId:     uuid("cost_center_id").notNull().references(() => costCenters.id),
-  operatorId:       uuid("operator_id").notNull().references(() => users.id),
+  operatorId:       uuid("operator_id").notNull().references(() => employees.id),
   assignedDate:     date("assigned_date").notNull(),
   returnedDate:     date("returned_date"),
   daysRented:       integer("days_rented"),      // generated in DB
