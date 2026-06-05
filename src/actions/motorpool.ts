@@ -432,8 +432,13 @@ export async function createEquipmentAssignment(
     revalidatePath("/motorpool");
     return { success: true, assignmentId: assignment.id };
   } catch (err) {
+    const e = err as Record<string, unknown>;
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, error: `DB error: ${msg}` };
+    const cause = e?.cause instanceof Error ? e.cause.message : e?.cause ? String(e.cause) : "";
+    const code = e?.code ? String(e.code) : "";
+    const detail = e?.detail ? String(e.detail) : "";
+    const hint = e?.hint ? String(e.hint) : "";
+    return { success: false, error: [msg, cause && `cause: ${cause}`, code && `code: ${code}`, detail && `detail: ${detail}`, hint && `hint: ${hint}`].filter(Boolean).join(" | ") };
   }
 }
 

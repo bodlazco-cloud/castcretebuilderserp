@@ -135,7 +135,7 @@ export function AssignEquipmentForm({ equipment, projects, costCenters, units, o
 
       <label>
         <span style={labelStyle}>
-          {rateType === "DAILY" ? "Daily" : rateType === "WEEKLY" ? "Weekly" : "Monthly"} Rate (PHP) *
+          {rateType === "DAILY" ? "Daily" : rateType === "WEEKLY" ? "Weekly" : "Monthly"} Rate *
         </span>
         <input name="rateAmount" type="number" min="0" step="0.01" required style={inputStyle} placeholder="0.00" />
       </label>
