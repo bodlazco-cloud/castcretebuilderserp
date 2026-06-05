@@ -2,6 +2,7 @@ import {
   pgTable, uuid, varchar, numeric, integer, boolean,
   timestamp, date, text, jsonb,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users, costCenters, departments } from "./core";
 import { employees } from "./hr";
 import { projects } from "./projects";
@@ -37,7 +38,7 @@ export const equipmentAssignments = pgTable("equipment_assignments", {
   operatorId:       uuid("operator_id").notNull().references(() => employees.id),
   assignedDate:     date("assigned_date").notNull(),
   returnedDate:     date("returned_date"),
-  daysRented:       integer("days_rented"),      // generated in DB
+  daysRented:       integer("days_rented").generatedAlwaysAs(sql`CASE WHEN returned_date IS NOT NULL THEN (returned_date - assigned_date) ELSE NULL END`),
   rateType:         varchar("rate_type", { length: 10 }).notNull().default("DAILY"),
   dailyRate:        numeric("daily_rate", { precision: 15, scale: 2 }).notNull(),
   totalRentalIncome: numeric("total_rental_income", { precision: 15, scale: 2 }),
