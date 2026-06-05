@@ -55,3 +55,8 @@ END $$;
 ALTER TABLE equipment_assignments
   ADD CONSTRAINT IF NOT EXISTS equipment_assignments_operator_id_fk
     FOREIGN KEY (operator_id) REFERENCES employees(id);
+
+-- ── Fix 5: activity_definitions.project_id ───────────────────────────────────
+-- Column exists in Drizzle schema but was missing from the original DB migration.
+ALTER TABLE activity_definitions
+  ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id);
