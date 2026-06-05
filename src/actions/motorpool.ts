@@ -383,6 +383,7 @@ const AssignEquipmentSchema = z.object({
   costCenterId: z.string().uuid(),
   operatorId:   z.string().uuid(),
   assignedDate: z.string().date(),
+  rateType:     z.enum(["DAILY", "WEEKLY", "MONTHLY"]).default("DAILY"),
   dailyRate:    z.number().positive(),
 });
 
@@ -416,6 +417,7 @@ export async function createEquipmentAssignment(
       costCenterId: d.costCenterId,
       operatorId:   d.operatorId,
       assignedDate: d.assignedDate,
+      rateType:     d.rateType,
       dailyRate:    String(d.dailyRate),
       status:       "ACTIVE",
     })

@@ -22,7 +22,7 @@ export const equipment = pgTable("equipment", {
   status:                       varchar("status", { length: 20 }).notNull().default("AVAILABLE"),
   isFlaggedForFlip:             boolean("is_flagged_for_flip").notNull().default(false),
   isLocked:                     boolean("is_locked").notNull().default(false),
-  imageUrl:                     text("image_url"),
+  imageUrl:                     text("image_url"),  // added by migration 032
   createdAt:                    timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:                    timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -37,6 +37,7 @@ export const equipmentAssignments = pgTable("equipment_assignments", {
   assignedDate:     date("assigned_date").notNull(),
   returnedDate:     date("returned_date"),
   daysRented:       integer("days_rented"),      // generated in DB
+  rateType:         varchar("rate_type", { length: 10 }).notNull().default("DAILY"),
   dailyRate:        numeric("daily_rate", { precision: 15, scale: 2 }).notNull(),
   totalRentalIncome: numeric("total_rental_income", { precision: 15, scale: 2 }),
   status:           varchar("status", { length: 20 }).notNull().default("ACTIVE"),
