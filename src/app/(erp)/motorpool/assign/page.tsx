@@ -6,21 +6,7 @@ import { eq } from "drizzle-orm";
 import { AssignEquipmentForm } from "./AssignEquipmentForm";
 
 export default async function AssignEquipmentPage() {
-  try {
-    return await renderPage();
-  } catch (err) {
-    const msg = err instanceof Error
-      ? `${err.name}: ${err.message}\n\n${err.stack ?? ""}`
-      : String(err);
-    return (
-      <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "monospace" }}>
-        <a href="/motorpool" style={{ fontSize: "0.875rem", color: "#1a56db", textDecoration: "none" }}>← Back to Motorpool</a>
-        <pre style={{ marginTop: "1rem", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "6px", padding: "1rem", whiteSpace: "pre-wrap", fontSize: "0.78rem", color: "#b91c1c" }}>
-          {msg}
-        </pre>
-      </main>
-    );
-  }
+  return await renderPage();
 }
 
 async function renderPage() {

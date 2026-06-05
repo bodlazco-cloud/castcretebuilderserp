@@ -40,9 +40,14 @@ ALTER TABLE equipment_assignments
 -- form populates operators from the employees table. Change FK to employees.
 DO $$ BEGIN
   ALTER TABLE equipment_assignments
+    DROP CONSTRAINT equipment_assignments_operator_id_users_id_fk;
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE equipment_assignments
     DROP CONSTRAINT equipment_assignments_operator_id_fkey;
 EXCEPTION WHEN undefined_object THEN NULL;
 END $$;
 ALTER TABLE equipment_assignments
-  ADD CONSTRAINT equipment_assignments_operator_id_fkey
+  ADD CONSTRAINT IF NOT EXISTS equipment_assignments_operator_id_fk
     FOREIGN KEY (operator_id) REFERENCES employees(id);

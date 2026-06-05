@@ -13,10 +13,6 @@ export default function AssignEquipmentError({
     console.error("Motorpool assign error:", error);
   }, [error]);
 
-  const allProps = Object.getOwnPropertyNames(error).map((k) => {
-    try { return `${k}: ${String((error as unknown as Record<string, unknown>)[k])}`; } catch { return `${k}: [unreadable]`; }
-  });
-
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
       <div style={{ maxWidth: "720px", margin: "0 auto" }}>
@@ -32,9 +28,9 @@ export default function AssignEquipmentError({
           <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.1rem", fontWeight: 700, color: "#111827" }}>
             Something went wrong loading this page
           </h2>
-          <pre style={{ margin: "0 0 1rem", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "6px", padding: "1rem", whiteSpace: "pre-wrap", fontSize: "0.75rem", color: "#b91c1c" }}>
-            {`name: ${error.name}\nmessage: ${error.message}\ndigest: ${error.digest ?? "(none)"}\n\n--- all props ---\n${allProps.join("\n")}\n\n--- stack ---\n${error.stack ?? "(none)"}`}
-          </pre>
+          <p style={{ margin: "0 0 1.25rem", color: "#6b7280", fontSize: "0.9rem" }}>
+            {error.message || "An unexpected error occurred."}
+          </p>
           <button
             onClick={reset}
             style={{
