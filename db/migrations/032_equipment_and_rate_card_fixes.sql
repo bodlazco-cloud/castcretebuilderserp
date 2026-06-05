@@ -17,6 +17,10 @@ DO $$ BEGIN
   ALTER TABLE developer_rate_cards ALTER COLUMN milestone_category DROP NOT NULL;
 EXCEPTION WHEN undefined_column THEN NULL;
 END $$;
+DO $$ BEGIN
+  ALTER TABLE developer_rate_cards ALTER COLUMN activity_def_id DROP NOT NULL;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
 
 -- ── Fix 2a: equipment.image_url ───────────────────────────────────────────────
 ALTER TABLE equipment ADD COLUMN IF NOT EXISTS image_url TEXT;
