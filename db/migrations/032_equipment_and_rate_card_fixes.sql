@@ -34,3 +34,15 @@ ALTER TABLE equipment
 ALTER TABLE equipment_assignments
   ADD COLUMN IF NOT EXISTS rate_type VARCHAR(10) NOT NULL DEFAULT 'DAILY'
     CHECK (rate_type IN ('DAILY', 'WEEKLY', 'MONTHLY'));
+
+-- ── Fix 4: equipment_assignments.operator_id FK ───────────────────────────────
+-- Original migration 010 set operator_id REFERENCES users(id) but the assign
+-- form populates operators from the employees table. Change FK to employees.
+DO $$ BEGIN
+  ALTER TABLE equipment_assignments
+    DROP CONSTRAINT equipment_assignments_operator_id_fkey;
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
+ALTER TABLE equipment_assignments
+  ADD CONSTRAINT equipment_assignments_operator_id_fkey
+    FOREIGN KEY (operator_id) REFERENCES employees(id);
