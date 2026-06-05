@@ -28,7 +28,7 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
   const DUMMY = ["00000000-0000-0000-0000-000000000000"];
 
   let rateCardRows: {
-    id: string; projectName: string | null;
+    id: string; projectId: string; projectName: string | null;
     phaseActivityId: string | null; unitModel: string | null; unitType: string | null;
     phaseCategoryName: string | null; phaseScopeName: string | null;
     phaseActivityCode: string | null; phaseActivityName: string | null;
@@ -45,6 +45,7 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
     [rateCardRows, phaseCategoryList, phaseScopeList, phaseActivityList] = await Promise.all([
       db.select({
         id:                developerRateCards.id,
+        projectId:         developerRateCards.projectId,
         projectName:       projects.name,
         phaseActivityId:   developerRateCards.phaseActivityId,
         unitModel:         developerRateCards.unitModel,

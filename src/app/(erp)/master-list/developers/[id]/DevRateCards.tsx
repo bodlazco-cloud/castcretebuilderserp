@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createDeveloperRateCard, toggleDeveloperRateCardActive, createDevRateCardDeduction, deleteDevRateCardDeduction } from "@/actions/master-list";
+import { createDeveloperRateCard, updateDeveloperRateCard, toggleDeveloperRateCardActive, createDevRateCardDeduction, deleteDevRateCardDeduction } from "@/actions/master-list";
 import { useRouter } from "next/navigation";
 
 type RateCard = {
   id: string;
+  projectId: string;
   projectName: string | null;
   phaseActivityId: string | null;
   unitModel: string | null;
@@ -96,6 +97,8 @@ function AddDeductionForm({ rateCardId, onAdded }: { rateCardId: string; onAdded
   );
 }
 
+const BLANK_EDIT = { project: "", category: "", scope: "", activity: "", unitModel: "", unitType: "", grossRate: "", retentionPct: "10", dpRecoupmentPct: "10", taxPct: "0" };
+
 export function DevRateCards({
   devProjects, rateCards, deductions, phaseCategories, phaseScopes, phaseActivities, unitModelOptions, isAdmin,
 }: {
@@ -124,8 +127,14 @@ export function DevRateCards({
   const [isPending, startTransition] = useTransition();
   const [openDeductions, setOpenDeductions] = useState<string | null>(null);
 
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState(BLANK_EDIT);
+
   const filteredScopes = phaseScopes.filter((s) => s.categoryId === selectedCategory);
   const filteredActivities = phaseActivities.filter((a) => a.scopeId === selectedScope);
+  const editFilteredScopes = phaseScopes.filter((s) => s.categoryId === editForm.category);
+  const editFilteredActivities = phaseActivities.filter((a) => a.scopeId === editForm.scope);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -152,6 +161,49 @@ export function DevRateCards({
     });
   }
 
+  function handleEditStart(rc: RateCard) {
+    const act = phaseActivities.find((a) => a.id === rc.phaseActivityId);
+    const scope = act ? phaseScopes.find((s) => s.id === act.scopeId) : null;
+    setEditForm({
+      project:        rc.projectId,
+      category:       scope?.categoryId ?? "",
+      scope:          act?.scopeId ?? "",
+      activity:       rc.phaseActivityId ?? "",
+      unitModel:      rc.unitModel ?? "",
+      unitType:       rc.unitType ?? "",
+      grossRate:      String(Number(rc.grossRatePerUnit)),
+      retentionPct:   String((Number(rc.retentionPct) * 100).toFixed(2)),
+      dpRecoupmentPct: String((Number(rc.dpRecoupmentPct) * 100).toFixed(2)),
+      taxPct:         String((Number(rc.taxPct) * 100).toFixed(2)),
+    });
+    setEditingId(rc.id);
+    setError(null);
+  }
+
+  function handleEditSubmit(e: React.FormEvent, id: string) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const result = await updateDeveloperRateCard(id, {
+        projectId:        editForm.project,
+        phaseActivityId:  editForm.activity || undefined,
+        unitModel:        editForm.unitModel || undefined,
+        unitType:         (editForm.unitType as "BEG" | "MID" | "END" | "SHOP") || undefined,
+        grossRatePerUnit: Number(editForm.grossRate),
+        retentionPct:     Number(editForm.retentionPct) / 100,
+        dpRecoupmentPct:  Number(editForm.dpRecoupmentPct) / 100,
+        taxPct:           Number(editForm.taxPct) / 100,
+      });
+      if (result.success) {
+        setEditingId(null);
+        setEditForm(BLANK_EDIT);
+        router.refresh();
+      } else {
+        setError(result.error ?? "Error saving.");
+      }
+    });
+  }
+
   function handleToggle(id: string, isActive: boolean) {
     startTransition(async () => {
       await toggleDeveloperRateCardActive(id, isActive);
@@ -166,6 +218,10 @@ export function DevRateCards({
     });
   }
 
+  function setEdit(field: keyof typeof BLANK_EDIT, value: string) {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  }
+
   return (
     <div style={{ marginTop: "2rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
@@ -174,7 +230,7 @@ export function DevRateCards({
         </h2>
         {isAdmin && (
           <button
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => { setShowForm((v) => !v); setEditingId(null); }}
             style={{ padding: "0.45rem 1rem", borderRadius: "6px", background: ACCENT, color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
           >
             {showForm ? "Cancel" : "+ Add Rate Card"}
@@ -214,23 +270,12 @@ export function DevRateCards({
               </select>
             </label>
           </div>
-
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
             <label>
               <span style={labelStyle}>Unit Model</span>
-              <select
-                value={unitModel}
-                onChange={(e) => {
-                  setUnitModel(e.target.value);
-                  const match = unitModelOptions.find((u) => u.unitModel === e.target.value);
-                  if (match && !unitType) setUnitType(match.unitType);
-                }}
-                style={inputStyle}
-              >
+              <select value={unitModel} onChange={(e) => { setUnitModel(e.target.value); const match = unitModelOptions.find((u) => u.unitModel === e.target.value); if (match && !unitType) setUnitType(match.unitType); }} style={inputStyle}>
                 <option value="">Any / not specified</option>
-                {[...new Set(unitModelOptions.map((u) => u.unitModel))].map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
+                {[...new Set(unitModelOptions.map((u) => u.unitModel))].map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </label>
             <label>
@@ -241,10 +286,9 @@ export function DevRateCards({
               </select>
             </label>
           </div>
-
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
             <label>
-              <span style={labelStyle}>Gross Rate / Unit (PHP) *</span>
+              <span style={labelStyle}>Gross Rate / Unit *</span>
               <input type="number" required min="0" step="0.01" value={grossRate} onChange={(e) => setGrossRate(e.target.value)} placeholder="0.00" style={inputStyle} />
             </label>
             <label>
@@ -260,17 +304,9 @@ export function DevRateCards({
               <input type="number" min="0" max="100" step="0.01" value={taxPct} onChange={(e) => setTaxPct(e.target.value)} style={inputStyle} />
             </label>
           </div>
-
-          {error && (
-            <div style={{ padding: "0.65rem 0.9rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.8rem", marginBottom: "1rem" }}>
-              {error}
-            </div>
-          )}
+          {error && <div style={{ padding: "0.65rem 0.9rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.8rem", marginBottom: "1rem" }}>{error}</div>}
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button type="submit" disabled={isPending} style={{
-              padding: "0.5rem 1.25rem", borderRadius: "6px", background: isPending ? "#a5b4fc" : ACCENT,
-              color: "#fff", border: "none", fontSize: "0.875rem", fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer",
-            }}>
+            <button type="submit" disabled={isPending} style={{ padding: "0.5rem 1.25rem", borderRadius: "6px", background: isPending ? "#a5b4fc" : ACCENT, color: "#fff", border: "none", fontSize: "0.875rem", fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer" }}>
               {isPending ? "Saving…" : "Save Rate Card"}
             </button>
           </div>
@@ -286,71 +322,148 @@ export function DevRateCards({
           {rateCards.map((rc) => {
             const rcDeductions = deductions.filter((d) => d.rateCardId === rc.id);
             const showDed = openDeductions === rc.id;
+            const isEditing = editingId === rc.id;
+
             return (
               <div key={rc.id} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "0.9rem 1.25rem", opacity: rc.isActive ? 1 : 0.6 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr auto", gap: "1rem", alignItems: "center" }}>
-                  <div>
-                    <div style={LABEL}>{rc.projectName ?? "—"}</div>
-                    {rc.phaseCategoryName && <div style={{ fontSize: "0.72rem", color: "#6366f1", fontWeight: 600, marginBottom: "0.1rem" }}>{rc.phaseCategoryName} › {rc.phaseScopeName}</div>}
-                    <div style={VALUE}>{rc.phaseActivityCode ? `${rc.phaseActivityCode} – ` : ""}{rc.phaseActivityName ?? "—"}</div>
-                    {(rc.unitModel || rc.unitType) && (
-                      <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "0.15rem" }}>
-                        {rc.unitModel && <span style={{ marginRight: "0.5rem" }}>Model: {rc.unitModel}</span>}
-                        {rc.unitType && <span>Type: {rc.unitType}</span>}
+                {isEditing ? (
+                  <form onSubmit={(e) => handleEditSubmit(e, rc.id)}>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", marginBottom: "0.75rem" }}>Edit Rate Card</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                      <label>
+                        <span style={labelStyle}>Project (Site) *</span>
+                        <select required value={editForm.project} onChange={(e) => setEdit("project", e.target.value)} style={inputStyle}>
+                          <option value="">Select project…</option>
+                          {devProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Phase Category</span>
+                        <select value={editForm.category} onChange={(e) => { setEdit("category", e.target.value); setEdit("scope", ""); setEdit("activity", ""); }} style={inputStyle}>
+                          <option value="">Select category…</option>
+                          {phaseCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Scope of Work</span>
+                        <select value={editForm.scope} onChange={(e) => { setEdit("scope", e.target.value); setEdit("activity", ""); }} style={inputStyle} disabled={!editForm.category}>
+                          <option value="">Select scope…</option>
+                          {editFilteredScopes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Activity</span>
+                        <select value={editForm.activity} onChange={(e) => setEdit("activity", e.target.value)} style={inputStyle} disabled={!editForm.scope}>
+                          <option value="">Select activity…</option>
+                          {editFilteredActivities.map((a) => <option key={a.id} value={a.id}>{a.code} – {a.name}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                      <label>
+                        <span style={labelStyle}>Unit Model</span>
+                        <select value={editForm.unitModel} onChange={(e) => setEdit("unitModel", e.target.value)} style={inputStyle}>
+                          <option value="">Any / not specified</option>
+                          {[...new Set(unitModelOptions.map((u) => u.unitModel))].map((m) => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Unit Type</span>
+                        <select value={editForm.unitType} onChange={(e) => setEdit("unitType", e.target.value)} style={inputStyle}>
+                          <option value="">Any / not specified</option>
+                          {UNIT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                      <label>
+                        <span style={labelStyle}>Gross Rate / Unit *</span>
+                        <input type="number" required min="0" step="0.01" value={editForm.grossRate} onChange={(e) => setEdit("grossRate", e.target.value)} style={inputStyle} />
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Retention %</span>
+                        <input type="number" min="0" max="100" step="0.01" value={editForm.retentionPct} onChange={(e) => setEdit("retentionPct", e.target.value)} style={inputStyle} />
+                      </label>
+                      <label>
+                        <span style={labelStyle}>DP Recoupment %</span>
+                        <input type="number" min="0" max="100" step="0.01" value={editForm.dpRecoupmentPct} onChange={(e) => setEdit("dpRecoupmentPct", e.target.value)} style={inputStyle} />
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Tax %</span>
+                        <input type="number" min="0" max="100" step="0.01" value={editForm.taxPct} onChange={(e) => setEdit("taxPct", e.target.value)} style={inputStyle} />
+                      </label>
+                    </div>
+                    {error && <div style={{ padding: "0.65rem 0.9rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.8rem", marginBottom: "0.75rem" }}>{error}</div>}
+                    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                      <button type="button" onClick={() => { setEditingId(null); setError(null); }} style={{ padding: "0.4rem 0.9rem", borderRadius: "5px", background: "#f3f4f6", border: "1px solid #d1d5db", fontSize: "0.8rem", color: "#374151", cursor: "pointer" }}>Cancel</button>
+                      <button type="submit" disabled={isPending} style={{ padding: "0.4rem 1rem", borderRadius: "5px", background: isPending ? "#a5b4fc" : ACCENT, color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer" }}>
+                        {isPending ? "Saving…" : "Save Changes"}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr auto", gap: "1rem", alignItems: "center" }}>
+                      <div>
+                        <div style={LABEL}>{rc.projectName ?? "—"}</div>
+                        {rc.phaseCategoryName && <div style={{ fontSize: "0.72rem", color: "#6366f1", fontWeight: 600, marginBottom: "0.1rem" }}>{rc.phaseCategoryName} › {rc.phaseScopeName}</div>}
+                        <div style={VALUE}>{rc.phaseActivityCode ? `${rc.phaseActivityCode} – ` : ""}{rc.phaseActivityName ?? "—"}</div>
+                        {(rc.unitModel || rc.unitType) && (
+                          <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "0.15rem" }}>
+                            {rc.unitModel && <span style={{ marginRight: "0.5rem" }}>Model: {rc.unitModel}</span>}
+                            {rc.unitType && <span>Type: {rc.unitType}</span>}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={LABEL}>Gross Rate</div>
-                    <div style={{ ...VALUE, fontWeight: 700 }}>PHP {Number(rc.grossRatePerUnit).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div>
-                  </div>
-                  <div>
-                    <div style={LABEL}>Retention</div>
-                    <div style={VALUE}>{(Number(rc.retentionPct) * 100).toFixed(1)}%</div>
-                  </div>
-                  <div>
-                    <div style={LABEL}>DP Recoup</div>
-                    <div style={VALUE}>{(Number(rc.dpRecoupmentPct) * 100).toFixed(1)}%</div>
-                  </div>
-                  <div>
-                    <div style={LABEL}>Tax</div>
-                    <div style={VALUE}>{(Number(rc.taxPct) * 100).toFixed(1)}%</div>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", alignItems: "flex-end" }}>
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleToggle(rc.id, !rc.isActive)}
-                        disabled={isPending}
-                        style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "none", fontSize: "0.75rem", fontWeight: 600, background: rc.isActive ? "#fee2e2" : "#dcfce7", color: rc.isActive ? "#991b1b" : "#166534", cursor: isPending ? "not-allowed" : "pointer" }}
-                      >
-                        {rc.isActive ? "Deactivate" : "Activate"}
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <button
-                        onClick={() => setOpenDeductions(showDed ? null : rc.id)}
-                        style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}
-                      >
-                        Deductions {rcDeductions.length > 0 ? `(${rcDeductions.length})` : ""}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                      <div>
+                        <div style={LABEL}>Gross Rate</div>
+                        <div style={{ ...VALUE, fontWeight: 700 }}>PHP {Number(rc.grossRatePerUnit).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div>
+                      </div>
+                      <div>
+                        <div style={LABEL}>Retention</div>
+                        <div style={VALUE}>{(Number(rc.retentionPct) * 100).toFixed(1)}%</div>
+                      </div>
+                      <div>
+                        <div style={LABEL}>DP Recoup</div>
+                        <div style={VALUE}>{(Number(rc.dpRecoupmentPct) * 100).toFixed(1)}%</div>
+                      </div>
+                      <div>
+                        <div style={LABEL}>Tax</div>
+                        <div style={VALUE}>{(Number(rc.taxPct) * 100).toFixed(1)}%</div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", alignItems: "flex-end" }}>
+                        {isAdmin && (
+                          <button onClick={() => handleEditStart(rc)} style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}>
+                            Edit
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={() => handleToggle(rc.id, !rc.isActive)} disabled={isPending} style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "none", fontSize: "0.75rem", fontWeight: 600, background: rc.isActive ? "#fee2e2" : "#dcfce7", color: rc.isActive ? "#991b1b" : "#166534", cursor: isPending ? "not-allowed" : "pointer" }}>
+                            {rc.isActive ? "Deactivate" : "Activate"}
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={() => setOpenDeductions(showDed ? null : rc.id)} style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}>
+                            Deductions {rcDeductions.length > 0 ? `(${rcDeductions.length})` : ""}
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-                {showDed && (
-                  <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid #f3f4f6" }}>
-                    <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.4rem" }}>Additional Billing Deductions</div>
-                    {rcDeductions.length === 0 ? (
-                      <div style={{ fontSize: "0.8rem", color: "#9ca3af", marginBottom: "0.4rem" }}>No extra deductions yet.</div>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginBottom: "0.5rem" }}>
-                        {rcDeductions.map((d) => (
-                          <DeductionRow key={d.id} d={d} isPending={isPending} onDelete={handleDeleteDeduction} />
-                        ))}
+                    {showDed && (
+                      <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid #f3f4f6" }}>
+                        <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.4rem" }}>Additional Billing Deductions</div>
+                        {rcDeductions.length === 0 ? (
+                          <div style={{ fontSize: "0.8rem", color: "#9ca3af", marginBottom: "0.4rem" }}>No extra deductions yet.</div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginBottom: "0.5rem" }}>
+                            {rcDeductions.map((d) => <DeductionRow key={d.id} d={d} isPending={isPending} onDelete={handleDeleteDeduction} />)}
+                          </div>
+                        )}
+                        <AddDeductionForm rateCardId={rc.id} onAdded={() => setOpenDeductions(rc.id)} />
                       </div>
                     )}
-                    <AddDeductionForm rateCardId={rc.id} onAdded={() => setOpenDeductions(rc.id)} />
-                  </div>
+                  </>
                 )}
               </div>
             );

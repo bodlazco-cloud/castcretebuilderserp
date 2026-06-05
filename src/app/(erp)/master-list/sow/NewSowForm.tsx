@@ -50,9 +50,9 @@ export function NewSowForm({ projects, phaseCats, phaseScps, phaseActs }: {
   const [sequenceOrder, setSequenceOrder] = useState("1");
 
   // Phase cascade state
-  const [selCatId, setSelCatId]   = useState("");
+  const [selCatId, setSelCatId]     = useState("");
   const [selScopeId, setSelScopeId] = useState("");
-  const [selActId, setSelActId]   = useState("");
+  const [selActId, setSelActId]     = useState("");
 
   const filteredScopes     = phaseScps.filter((s) => s.categoryId === selCatId);
   const filteredActivities = phaseActs.filter((a) => a.scopeId === selScopeId);
@@ -61,7 +61,6 @@ export function NewSowForm({ projects, phaseCats, phaseScps, phaseActs }: {
     setSelCatId(catId);
     setSelScopeId("");
     setSelActId("");
-    // auto-set category enum if code matches
     const cat = phaseCats.find((c) => c.id === catId);
     if (cat && CATEGORY_MAP[cat.code]) setCategory(CATEGORY_MAP[cat.code]);
   }
@@ -69,7 +68,6 @@ export function NewSowForm({ projects, phaseCats, phaseScps, phaseActs }: {
   function handleScopeChange(scopeId: string) {
     setSelScopeId(scopeId);
     setSelActId("");
-    // pre-fill scope fields
     const sc = phaseScps.find((s) => s.id === scopeId);
     if (sc) { setScopeCode(sc.code); setScopeName(sc.name); }
   }
@@ -119,42 +117,33 @@ export function NewSowForm({ projects, phaseCats, phaseScps, phaseActs }: {
         </div>
       )}
 
-      {/* ── Phase lookup (cascading) ─────────────────────────────── */}
+      {/* Phase cascade — shown only if data exists */}
       {phaseCats.length > 0 && (
-        <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: "8px", padding: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 600, color: "#0369a1", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            Auto-fill from Construction Phases
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
-            <label>
-              <span style={{ ...labelStyle, color: "#0369a1" }}>Phase Category</span>
-              <select value={selCatId} onChange={(e) => handleCatChange(e.target.value)} style={inputStyle}>
-                <option value="">Select category…</option>
-                {phaseCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </label>
-            <label>
-              <span style={{ ...labelStyle, color: "#0369a1" }}>Phase Scope</span>
-              <select value={selScopeId} onChange={(e) => handleScopeChange(e.target.value)} style={inputStyle} disabled={!selCatId}>
-                <option value="">Select scope…</option>
-                {filteredScopes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </label>
-            <label>
-              <span style={{ ...labelStyle, color: "#0369a1" }}>Phase Activity</span>
-              <select value={selActId} onChange={(e) => handleActivityChange(e.target.value)} style={inputStyle} disabled={!selScopeId}>
-                <option value="">Select activity…</option>
-                {filteredActivities.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            </label>
-          </div>
-          <p style={{ margin: 0, fontSize: "0.75rem", color: "#0369a1" }}>
-            Selecting a phase activity pre-fills the fields below. You can still edit them before saving.
-          </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+          <label>
+            <span style={labelStyle}>Phase Category</span>
+            <select value={selCatId} onChange={(e) => handleCatChange(e.target.value)} style={inputStyle}>
+              <option value="">Select phase category…</option>
+              {phaseCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span style={labelStyle}>Phase Scope</span>
+            <select value={selScopeId} onChange={(e) => handleScopeChange(e.target.value)} style={inputStyle} disabled={!selCatId}>
+              <option value="">Select phase scope…</option>
+              {filteredScopes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span style={labelStyle}>Phase Activity</span>
+            <select value={selActId} onChange={(e) => handleActivityChange(e.target.value)} style={inputStyle} disabled={!selScopeId}>
+              <option value="">Select activity to auto-fill…</option>
+              {filteredActivities.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </label>
         </div>
       )}
 
-      {/* ── Main fields ──────────────────────────────────────────── */}
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Project *</span>
@@ -191,13 +180,13 @@ export function NewSowForm({ projects, phaseCats, phaseScps, phaseActs }: {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "1rem" }}>
         <label>
-          <span style={labelStyle}>Activity Code *</span>
-          <input type="text" required value={activityCode} onChange={(e) => setActivityCode(e.target.value)}
+          <span style={labelStyle}>Activity Code</span>
+          <input type="text" value={activityCode} onChange={(e) => setActivityCode(e.target.value)}
             placeholder="e.g. STR-001-A" style={inputStyle} />
         </label>
         <label>
-          <span style={labelStyle}>Activity Name *</span>
-          <input type="text" required value={activityName} onChange={(e) => setActivityName(e.target.value)}
+          <span style={labelStyle}>Activity Name</span>
+          <input type="text" value={activityName} onChange={(e) => setActivityName(e.target.value)}
             placeholder="e.g. Excavation and Gravel Bedding" style={inputStyle} />
         </label>
       </div>
