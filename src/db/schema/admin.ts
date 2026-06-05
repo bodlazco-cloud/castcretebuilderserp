@@ -66,7 +66,7 @@ export const bomStandards = pgTable("bom_standards", {
 
 export const activityDefinitions = pgTable("activity_definitions", {
   id:                    uuid("id").primaryKey().defaultRandom(),
-  projectId:             uuid("project_id").notNull().references(() => projects.id),
+  projectId:             uuid("project_id").references(() => projects.id),
   category:              workCategoryEnum("category").notNull(),
   scopeCode:             varchar("scope_code", { length: 100 }).notNull(),
   scopeName:             varchar("scope_name", { length: 150 }).notNull(),
