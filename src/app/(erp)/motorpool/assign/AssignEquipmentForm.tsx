@@ -2,7 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createEquipmentAssignment } from "@/actions/motorpool";
+// DEBUG: import commented out to isolate crash
+// import { createEquipmentAssignment } from "@/actions/motorpool";
+async function createEquipmentAssignment(_: unknown): Promise<{ success: false; error: string }> {
+  return { success: false, error: "DEBUG stub — server action temporarily disabled" };
+}
 
 type Equip = { id: string; code: string; name: string; type: string };
 type Project = { id: string; name: string };
