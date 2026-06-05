@@ -14,7 +14,7 @@ export default function AssignEquipmentError({
   }, [error]);
 
   const allProps = Object.getOwnPropertyNames(error).map((k) => {
-    try { return `${k}: ${String((error as Record<string, unknown>)[k])}`; } catch { return `${k}: [unreadable]`; }
+    try { return `${k}: ${String((error as unknown as Record<string, unknown>)[k])}`; } catch { return `${k}: [unreadable]`; }
   });
 
   return (
