@@ -105,11 +105,13 @@ async function renderPage() {
           background: "#fff", borderRadius: "8px",
           boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.75rem",
         }}>
-          <p style={{ color: "#6b7280", fontSize: "0.9rem" }}>
-            DEBUG: loaded {equipmentRows.length} equipment, {projectRows.length} projects,
-            {costCenterRows.length} cost centers, {unitRows.length} units,
-            {employeeRows.length} operators.
-          </p>
+          <AssignEquipmentForm
+            equipment={equipmentRows}
+            projects={projectRows}
+            costCenters={costCenterRows}
+            units={unitRows}
+            operators={employeeRows}
+          />
         </div>
       </div>
     </main>
