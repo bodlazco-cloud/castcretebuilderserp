@@ -40,7 +40,7 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
     .orderBy(taskAssignments.startDate);
 
   type RateCardRow = {
-    id: string; projectName: string | null;
+    id: string; projectId: string; projectName: string | null;
     phaseActivityId: string | null; unitModel: string | null; unitType: string | null;
     phaseCategoryName: string | null; phaseScopeName: string | null;
     phaseActivityCode: string | null; phaseActivityName: string | null;
@@ -60,6 +60,7 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
       // Show all global rate cards (no subcon_id) — project-level labor rate schedule
       db.select({
         id:                subcontractorRateCards.id,
+        projectId:         subcontractorRateCards.projectId,
         projectName:       projects.name,
         phaseActivityId:   subcontractorRateCards.phaseActivityId,
         unitModel:         subcontractorRateCards.unitModel,
