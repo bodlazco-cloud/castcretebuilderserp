@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
-import { projects, materials, projectUnitModels, suppliers } from "@/db/schema";
+import { projects, materials, projectUnitModels, suppliers, activityDefinitions } from "@/db/schema";
 import { phaseScopes, phaseActivities } from "@/db/schema/phases";
 import { eq } from "drizzle-orm";
 import { BomEntryForm } from "../BomEntryForm";
@@ -82,6 +82,35 @@ export default async function NewBomEntryPage({ searchParams }: { searchParams: 
     ),
   ]);
 
+  // If arriving from a SOW item, pre-resolve its scope/activity to matching Construction Phases entries
+  let initialProjectId: string | undefined;
+  let initialScopeId: string | undefined;
+  let initialActivityId: string | undefined;
+  if (activityDefId) {
+    const [sow] = await safe(
+      db
+        .select({
+          projectId:    activityDefinitions.projectId,
+          scopeCode:    activityDefinitions.scopeCode,
+          activityCode: activityDefinitions.activityCode,
+        })
+        .from(activityDefinitions)
+        .where(eq(activityDefinitions.id, activityDefId)),
+      [] as { projectId: string | null; scopeCode: string; activityCode: string | null }[],
+    );
+    if (sow) {
+      initialProjectId = sow.projectId ?? undefined;
+      const matchedScope = scopeRows.find((s) => s.code === sow.scopeCode);
+      if (matchedScope) {
+        initialScopeId = matchedScope.id;
+        if (sow.activityCode) {
+          const matchedActivity = activityRows.find((a) => a.scopeId === matchedScope.id && a.code === sow.activityCode);
+          if (matchedActivity) initialActivityId = matchedActivity.id;
+        }
+      }
+    }
+  }
+
   return (
     <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
       <div style={{ maxWidth: "900px", margin: "0 auto" }}>
@@ -106,6 +135,9 @@ export default async function NewBomEntryPage({ searchParams }: { searchParams: 
             materials={materialRows}
             vendors={vendorRows}
             activityDefId={activityDefId}
+            initialProjectId={initialProjectId}
+            initialScopeId={initialScopeId}
+            initialActivityId={initialActivityId}
           />
         </div>
       </div>
