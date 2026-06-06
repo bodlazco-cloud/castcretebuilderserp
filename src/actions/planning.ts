@@ -34,6 +34,7 @@ const BomLineSchema = z.object({
 
 const SaveMasterBomSchema = z.object({
   projectId:       z.string().uuid(),
+  activityDefId:   z.string().uuid().optional(),
   phaseScopeId:    z.string().uuid(),
   phaseActivityId: z.string().uuid().optional(),
   unitModel:       z.string().min(1).max(50),
@@ -59,7 +60,7 @@ export async function saveMasterBomEntries(
     return { success: false, error: "Only Planning, Admin, or BOD may create BOM entries." };
   }
 
-  const { projectId, phaseScopeId, phaseActivityId, unitModel, unitType, items } = parsed.data;
+  const { projectId, activityDefId, phaseScopeId, phaseActivityId, unitModel, unitType, items } = parsed.data;
 
   // Deactivate existing DRAFT entries for same scope (soft version bump)
   await db
@@ -79,7 +80,7 @@ export async function saveMasterBomEntries(
   await db.insert(masterBomEntries).values(
     items.map((item) => ({
       projectId,
-      activityDefId:   null,
+      activityDefId:   activityDefId ?? null,
       phaseScopeId,
       phaseActivityId: phaseActivityId ?? null,
       unitModel,

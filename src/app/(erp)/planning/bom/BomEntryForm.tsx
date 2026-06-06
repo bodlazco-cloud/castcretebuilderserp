@@ -28,13 +28,14 @@ const UNIT_TYPES = [
 
 type LineItem = { materialId: string; qty: string; unitPrice: string; preferredSupplierId: string };
 
-export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModels, materials, vendors }: {
+export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModels, materials, vendors, activityDefId }: {
   projects:        Project[];
   phaseScopes:     PhaseScope[];
   phaseActivities: PhaseActivity[];
   unitModels:      UnitModel[];
   materials:       Material[];
   vendors:         Vendor[];
+  activityDefId?:  string;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error,   setError]   = useState<string | null>(null);
@@ -102,6 +103,7 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
     startTransition(async () => {
       const result = await saveMasterBomEntries({
         projectId:       selectedProject,
+        activityDefId:   activityDefId || undefined,
         phaseScopeId:    selectedScope,
         phaseActivityId: selectedActivity || undefined,
         unitModel,
