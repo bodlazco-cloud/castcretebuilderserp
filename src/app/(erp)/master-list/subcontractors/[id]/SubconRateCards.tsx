@@ -8,6 +8,7 @@ type RateCard = {
   id: string;
   projectId: string;
   projectName: string | null;
+  phaseScopeId: string | null;
   phaseActivityId: string | null;
   unitModel: string | null;
   unitType: string | null;
@@ -141,6 +142,7 @@ export function SubconRateCards({
     startTransition(async () => {
       const result = await createSubconRateCard({
         projectId:       selectedProject,
+        phaseScopeId:    selectedScope || undefined,
         phaseActivityId: selectedActivity || undefined,
         unitModel:       unitModel || undefined,
         unitType:        (unitType as "BEG" | "MID" | "END" | "SHOP") || undefined,
@@ -160,11 +162,13 @@ export function SubconRateCards({
 
   function handleEditStart(rc: RateCard) {
     const act = phaseActivities.find((a) => a.id === rc.phaseActivityId);
-    const scope = act ? phaseScopes.find((s) => s.id === act.scopeId) : null;
+    const scopeViaAct = act ? phaseScopes.find((s) => s.id === act.scopeId) : null;
+    const scopeDirect = phaseScopes.find((s) => s.id === rc.phaseScopeId);
+    const resolvedScope = scopeViaAct ?? scopeDirect ?? null;
     setEditForm({
       project:     rc.projectId,
-      category:    scope?.categoryId ?? "",
-      scope:       act?.scopeId ?? "",
+      category:    resolvedScope?.categoryId ?? "",
+      scope:       resolvedScope?.id ?? "",
       activity:    rc.phaseActivityId ?? "",
       unitModel:   rc.unitModel ?? "",
       unitType:    rc.unitType ?? "",
@@ -181,6 +185,7 @@ export function SubconRateCards({
     startTransition(async () => {
       const result = await updateSubconRateCard(id, {
         projectId:       editForm.project,
+        phaseScopeId:    editForm.scope || undefined,
         phaseActivityId: editForm.activity || undefined,
         unitModel:       editForm.unitModel || undefined,
         unitType:        (editForm.unitType as "BEG" | "MID" | "END" | "SHOP") || undefined,
@@ -386,8 +391,12 @@ export function SubconRateCards({
                     <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: "1rem", alignItems: "center" }}>
                       <div>
                         <div style={LABEL}>{rc.projectName ?? "—"}</div>
-                        {rc.phaseCategoryName && <div style={{ fontSize: "0.72rem", color: "#6366f1", fontWeight: 600, marginBottom: "0.1rem" }}>{rc.phaseCategoryName} › {rc.phaseScopeName}</div>}
-                        <div style={VALUE}>{rc.phaseActivityCode ? `${rc.phaseActivityCode} – ` : ""}{rc.phaseActivityName ?? "—"}</div>
+                        {(() => {
+                          const catName = rc.phaseCategoryName ?? (() => { const sc = phaseScopes.find(s => s.id === rc.phaseScopeId); return sc ? phaseCategories.find(c => c.id === sc.categoryId)?.name ?? null : null; })();
+                          const scName  = rc.phaseScopeName  ?? phaseScopes.find(s => s.id === rc.phaseScopeId)?.name ?? null;
+                          return catName ? <div style={{ fontSize: "0.72rem", color: "#6366f1", fontWeight: 600, marginBottom: "0.1rem" }}>{catName} › {scName}</div> : null;
+                        })()}
+                        <div style={VALUE}>{rc.phaseActivityCode ? `${rc.phaseActivityCode} – ` : ""}{rc.phaseActivityName ?? (rc.phaseScopeId ? "" : "—")}</div>
                         {(rc.unitModel || rc.unitType) && (
                           <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "0.15rem" }}>
                             {rc.unitModel && <span style={{ marginRight: "0.5rem" }}>Model: {rc.unitModel}</span>}

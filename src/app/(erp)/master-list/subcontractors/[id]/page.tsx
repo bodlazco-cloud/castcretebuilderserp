@@ -41,7 +41,8 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
 
   type RateCardRow = {
     id: string; projectId: string; projectName: string | null;
-    phaseActivityId: string | null; unitModel: string | null; unitType: string | null;
+    phaseScopeId: string | null; phaseActivityId: string | null;
+    unitModel: string | null; unitType: string | null;
     phaseCategoryName: string | null; phaseScopeName: string | null;
     phaseActivityCode: string | null; phaseActivityName: string | null;
     ratePerUnit: string; retentionPct: string; version: number; isActive: boolean;
@@ -62,6 +63,7 @@ export default async function SubconDetailPage({ params }: { params: Promise<{ i
         id:                subcontractorRateCards.id,
         projectId:         subcontractorRateCards.projectId,
         projectName:       projects.name,
+        phaseScopeId:      subcontractorRateCards.phaseScopeId,
         phaseActivityId:   subcontractorRateCards.phaseActivityId,
         unitModel:         subcontractorRateCards.unitModel,
         unitType:          subcontractorRateCards.unitType,

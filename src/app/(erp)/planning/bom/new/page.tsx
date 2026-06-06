@@ -13,7 +13,9 @@ function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   ]);
 }
 
-export default async function NewBomEntryPage() {
+export default async function NewBomEntryPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
+  const activityDefId = typeof sp.activityDefId === "string" ? sp.activityDefId : undefined;
   const [projectRows, scopeRows, activityRows, unitModelRows, materialRows, vendorRows] = await Promise.all([
     safe(
       db
@@ -103,6 +105,7 @@ export default async function NewBomEntryPage() {
             unitModels={unitModelRows}
             materials={materialRows}
             vendors={vendorRows}
+            activityDefId={activityDefId}
           />
         </div>
       </div>

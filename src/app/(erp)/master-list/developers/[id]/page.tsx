@@ -29,7 +29,8 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
 
   let rateCardRows: {
     id: string; projectId: string; projectName: string | null;
-    phaseActivityId: string | null; unitModel: string | null; unitType: string | null;
+    phaseScopeId: string | null; phaseActivityId: string | null;
+    unitModel: string | null; unitType: string | null;
     phaseCategoryName: string | null; phaseScopeName: string | null;
     phaseActivityCode: string | null; phaseActivityName: string | null;
     grossRatePerUnit: string; retentionPct: string; dpRecoupmentPct: string;
@@ -47,6 +48,7 @@ export default async function DeveloperDetailPage({ params }: { params: Promise<
         id:                developerRateCards.id,
         projectId:         developerRateCards.projectId,
         projectName:       projects.name,
+        phaseScopeId:      developerRateCards.phaseScopeId,
         phaseActivityId:   developerRateCards.phaseActivityId,
         unitModel:         developerRateCards.unitModel,
         unitType:          developerRateCards.unitType,
