@@ -5,8 +5,9 @@ import {
   developerRateCards, developerRateCardDeductions,
   subcontractorRateCards, subcontractorRateCardDeductions,
   phaseCategories, phaseScopes, phaseActivities,
+  masterBomEntries, materials,
 } from "@/db/schema";
-import { eq, inArray, isNull, or } from "drizzle-orm";
+import { eq, inArray, isNull, or, and } from "drizzle-orm";
 import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { ApproveProjectButton, AddBlockForm, EditBlockForm, DeleteBlockButton, AddUnitForm, UnitRow, UnitModelManager } from "./ProjectActions";
@@ -191,6 +192,57 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     // schema not yet migrated — page still loads without rate cards
   }
 
+  // Material BOM (from Planning's Master BOM Register) for this project
+  type MaterialBomRow = {
+    id: string;
+    unitModel: string;
+    unitType: string;
+    quantityPerUnit: string;
+    status: string;
+    equipmentType: string | null;
+    scopeCode: string | null;
+    scopeName: string | null;
+    activityCode: string | null;
+    activityName: string | null;
+    matCode: string | null;
+    matName: string | null;
+    matUnit: string | null;
+  };
+  let materialBomRows: MaterialBomRow[] = [];
+  try {
+    materialBomRows = await db
+      .select({
+        id:              masterBomEntries.id,
+        unitModel:       masterBomEntries.unitModel,
+        unitType:        masterBomEntries.unitType,
+        quantityPerUnit: masterBomEntries.quantityPerUnit,
+        status:          masterBomEntries.status,
+        equipmentType:   masterBomEntries.equipmentType,
+        scopeCode:       phaseScopes.code,
+        scopeName:       phaseScopes.name,
+        activityCode:    phaseActivities.code,
+        activityName:    phaseActivities.name,
+        matCode:         materials.code,
+        matName:         materials.name,
+        matUnit:         materials.unit,
+      })
+      .from(masterBomEntries)
+      .leftJoin(phaseScopes, eq(masterBomEntries.phaseScopeId, phaseScopes.id))
+      .leftJoin(phaseActivities, eq(masterBomEntries.phaseActivityId, phaseActivities.id))
+      .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
+      .where(and(eq(masterBomEntries.projectId, id), eq(masterBomEntries.isActive, true)))
+      .orderBy(masterBomEntries.unitModel, masterBomEntries.unitType, phaseScopes.code);
+  } catch {
+    // schema not yet migrated — page still loads without material BOM
+  }
+
+  const BOM_STATUS_BADGE: Record<string, { bg: string; color: string }> = {
+    DRAFT:          { bg: "#f3f4f6", color: "#6b7280" },
+    PENDING_REVIEW: { bg: "#fef9c3", color: "#713f12" },
+    APPROVED:       { bg: "#dcfce7", color: "#166534" },
+    REJECTED:       { bg: "#fef2f2", color: "#b91c1c" },
+  };
+
   const sc = STATUS_STYLE[project.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
   const isApproved = project.status === "ACTIVE" && !!project.bodApprovedAt;
 
@@ -228,10 +280,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               targetUnitsPerMonth: project.targetUnitsPerMonth,
               minOperatingCashBuffer: project.minOperatingCashBuffer,
             }} />
-            <a href="/master-list/sow" style={{
-              padding: "0.5rem 1rem", borderRadius: "6px", background: "#6366f1",
-              color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
-            }}>Scope of Work →</a>
             <a href={`/construction/ntp`} style={{
               padding: "0.5rem 1rem", borderRadius: "6px", background: "#057a55",
               color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
@@ -340,15 +388,59 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
 
-        {/* Scope of Work */}
-        <div style={{ padding: "1rem 1.25rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#374151" }}>Scope of Work</div>
-            <div style={{ fontSize: "0.82rem", color: "#6b7280", marginTop: "0.15rem" }}>Activity definitions are system-wide. Link to BOM entries for cost planning.</div>
+        {/* Material BOM */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+            <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#374151" }}>Material BOM ({materialBomRows.length} lines)</h2>
+            <a href="/planning/bom" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>BOM Register →</a>
           </div>
-          <a href="/master-list/sow" style={{ padding: "0.45rem 0.9rem", borderRadius: "6px", background: "#6366f1", color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none" }}>
-            View Scope of Work →
-          </a>
+          {materialBomRows.length === 0 ? (
+            <div style={{ padding: "1.5rem", background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", textAlign: "center", color: "#9ca3af", fontSize: "0.875rem" }}>
+              No material BOM entries for this project yet. Add them in the{" "}
+              <a href="/planning/bom/new" style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>BOM Register</a>.
+            </div>
+          ) : (
+            <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", minWidth: "760px" }}>
+                  <thead>
+                    <tr style={{ background: "#f9fafb" }}>
+                      {["Unit Model", "Type", "Scope", "Activity", "Material", "Qty / Unit", "Status"].map((h) => (
+                        <th key={h} style={{ padding: "0.6rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb", fontSize: "0.78rem" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {materialBomRows.map((r) => {
+                      const bb = BOM_STATUS_BADGE[r.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
+                      return (
+                        <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                          <td style={{ padding: "0.6rem 1rem", fontWeight: 600, color: "#111827" }}>{r.unitModel}</td>
+                          <td style={{ padding: "0.6rem 1rem" }}>
+                            <span style={{ fontSize: "0.72rem", fontWeight: 600, background: "#eff6ff", color: "#1e40af", padding: "0.15rem 0.4rem", borderRadius: "4px" }}>{r.unitType}</span>
+                          </td>
+                          <td style={{ padding: "0.6rem 1rem", color: "#374151", fontSize: "0.8rem" }}>{r.scopeCode ? `[${r.scopeCode}] ${r.scopeName}` : "—"}</td>
+                          <td style={{ padding: "0.6rem 1rem", color: "#6b7280", fontSize: "0.8rem" }}>{r.activityCode ? `[${r.activityCode}] ${r.activityName}` : "—"}</td>
+                          <td style={{ padding: "0.6rem 1rem", color: "#111827" }}>
+                            {r.matCode && <span style={{ fontFamily: "monospace", fontSize: "0.72rem", color: "#6b7280", marginRight: "0.3rem" }}>{r.matCode}</span>}
+                            {r.matName ?? "—"}
+                          </td>
+                          <td style={{ padding: "0.6rem 1rem", fontFamily: "monospace", fontWeight: 600, color: "#374151" }}>
+                            {Number(r.quantityPerUnit).toFixed(4)} {r.matUnit ?? ""}
+                          </td>
+                          <td style={{ padding: "0.6rem 1rem" }}>
+                            <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: bb.bg, color: bb.color }}>
+                              {r.status.replace("_", " ")}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Bill of Quantities — Developer Rate Cards */}
