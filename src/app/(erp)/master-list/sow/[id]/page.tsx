@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { activityDefinitions, projects, bomStandards, materials, masterBomEntries } from "@/db/schema";
 import { phaseActivities, phaseScopes } from "@/db/schema/phases";
-import { eq } from "drizzle-orm";
+import { eq, or, and } from "drizzle-orm";
 import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { EditSowForm } from "./EditSowForm";
@@ -71,7 +71,17 @@ export default async function SowDetailPage({ params }: { params: Promise<{ id: 
     .leftJoin(phaseActivities, eq(masterBomEntries.phaseActivityId, phaseActivities.id))
     .leftJoin(phaseScopes, eq(masterBomEntries.phaseScopeId, phaseScopes.id))
     .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
-    .where(eq(masterBomEntries.activityDefId, id)),
+    .where(
+      or(
+        eq(masterBomEntries.activityDefId, id),
+        and(
+          eq(phaseScopes.code, activity.scopeCode),
+          activity.activityCode
+            ? eq(phaseActivities.code, activity.activityCode)
+            : undefined,
+        ),
+      ),
+    ),
 
     db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name),
   ]);

@@ -42,6 +42,7 @@ type BomRow = {
   isActive: boolean;
   status: string;
   createdAt: Date;
+  activityDefId: string | null;
   equipmentType: string | null;
   phaseActivityId: string | null;
   activityCode: string | null;
@@ -73,6 +74,7 @@ export default async function BomRegisterPage({
         isActive:        masterBomEntries.isActive,
         status:          masterBomEntries.status,
         createdAt:       masterBomEntries.createdAt,
+        activityDefId:   masterBomEntries.activityDefId,
         equipmentType:   masterBomEntries.equipmentType,
         phaseActivityId: phaseActivities.id,
         activityCode:    phaseActivities.code,
@@ -100,6 +102,7 @@ export default async function BomRegisterPage({
     phaseActivityId: string | null;
     activityCode: string | null;
     activityName: string | null;
+    activityDefId: string | null;
     unitGroups: Map<string, UnitGroup>;
   };
   type ScopeGroup = {
@@ -124,6 +127,7 @@ export default async function BomRegisterPage({
         phaseActivityId: row.phaseActivityId,
         activityCode:    row.activityCode,
         activityName:    row.activityName,
+        activityDefId:   row.activityDefId,
         unitGroups:      new Map(),
       });
     }
@@ -248,6 +252,18 @@ export default async function BomRegisterPage({
                           {act.activityCode}
                         </span>
                         <span style={{ fontSize: "0.82rem", color: "#374151", fontWeight: 500 }}>{act.activityName}</span>
+                        {act.activityDefId && (
+                          <Link href={`/master-list/sow/${act.activityDefId}`} style={{ marginLeft: "auto", fontSize: "0.75rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
+                            View SOW item →
+                          </Link>
+                        )}
+                      </div>
+                    )}
+                    {!act.activityCode && act.activityDefId && (
+                      <div style={{ padding: "0.4rem 1.25rem", background: "#fafafa", borderBottom: "1px solid #f3f4f6", textAlign: "right" }}>
+                        <Link href={`/master-list/sow/${act.activityDefId}`} style={{ fontSize: "0.75rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
+                          View SOW item →
+                        </Link>
                       </div>
                     )}
 

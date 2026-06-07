@@ -10,6 +10,9 @@ import {
   materials,
   purchaseRequisitions,
   purchaseRequisitionItems,
+  activityDefinitions,
+  phaseScopes,
+  phaseActivities,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -60,7 +63,24 @@ export async function saveMasterBomEntries(
     return { success: false, error: "Only Planning, Admin, or BOD may create BOM entries." };
   }
 
-  const { projectId, activityDefId, phaseScopeId, phaseActivityId, unitModel, unitType, items } = parsed.data;
+  const { projectId, phaseScopeId, phaseActivityId, unitModel, unitType, items } = parsed.data;
+  let { activityDefId } = parsed.data;
+
+  // Auto-link to a matching Scope of Work item by code when not explicitly provided
+  // (e.g. entries created from the general BOM form rather than via "+ Add BOM Entry" on a SOW item)
+  if (!activityDefId) {
+    const [scope] = await db.select({ code: phaseScopes.code }).from(phaseScopes).where(eq(phaseScopes.id, phaseScopeId));
+    const activity = phaseActivityId
+      ? (await db.select({ code: phaseActivities.code }).from(phaseActivities).where(eq(phaseActivities.id, phaseActivityId)))[0]
+      : null;
+
+    if (scope) {
+      const conditions = [eq(activityDefinitions.scopeCode, scope.code)];
+      if (activity) conditions.push(eq(activityDefinitions.activityCode, activity.code));
+      const [match] = await db.select({ id: activityDefinitions.id }).from(activityDefinitions).where(and(...conditions)).limit(1);
+      if (match) activityDefId = match.id;
+    }
+  }
 
   // Deactivate existing DRAFT entries for same scope (soft version bump)
   await db
