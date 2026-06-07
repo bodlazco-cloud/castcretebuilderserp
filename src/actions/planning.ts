@@ -174,6 +174,8 @@ export async function addMasterBomLine(
 
 // ─── Delete a Draft / Rejected BOM line ──────────────────────────────────────
 
+export type BomReviewResult = { success: boolean; error?: string };
+
 export async function deleteDraftBomEntry(id: string): Promise<BomReviewResult> {
   const user = await getAuthUser();
   if (!user) return { success: false, error: "Not authenticated." };
