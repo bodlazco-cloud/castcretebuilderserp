@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { submitBomForReview, reviewMasterBom } from "@/actions/planning";
+import { submitBomForReview, reviewMasterBom, withdrawBomSubmission } from "@/actions/planning";
 
 // ── Submit DRAFT entries for BOD approval ─────────────────────────────────────
 
@@ -41,6 +41,44 @@ export function BomSubmitActions({ ids }: { ids: string[] }) {
         <span style={{ fontSize: "0.78rem", color: msg.ok ? "#166534" : "#b91c1c" }}>{msg.text}</span>
       )}
     </div>
+  );
+}
+
+// ── Withdraw a line submitted for BOD review (returns it to DRAFT for editing) ─
+
+export function BomWithdrawAction({ id }: { id: string }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function handleWithdraw() {
+    setError(null);
+    startTransition(async () => {
+      const result = await withdrawBomSubmission(id);
+      if (result.success) {
+        router.refresh();
+      } else {
+        setError(result.error ?? "Failed to withdraw.");
+      }
+    });
+  }
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+      {error && <span style={{ fontSize: "0.72rem", color: "#b91c1c" }}>{error}</span>}
+      <button
+        onClick={handleWithdraw}
+        disabled={isPending}
+        title="Return this line to Draft so it can be edited again"
+        style={{
+          padding: "0.2rem 0.6rem", borderRadius: "4px",
+          background: "#fff", color: "#92400e",
+          border: "1px solid #fde68a", fontSize: "0.72rem",
+          fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer",
+        }}>
+        {isPending ? "…" : "Withdraw"}
+      </button>
+    </span>
   );
 }
 

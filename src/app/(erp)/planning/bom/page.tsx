@@ -2,10 +2,10 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { db } from "@/db";
-import { masterBomEntries, materials } from "@/db/schema";
+import { masterBomEntries, materials, projects } from "@/db/schema";
 import { phaseActivities, phaseScopes } from "@/db/schema/phases";
 import { eq, desc } from "drizzle-orm";
-import { BomSubmitActions, BomReviewActions } from "./BomApprovalActions";
+import { BomSubmitActions, BomReviewActions, BomWithdrawAction } from "./BomApprovalActions";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -35,6 +35,8 @@ function BomStatusBadge({ status }: { status: string }) {
 
 type BomRow = {
   id: string;
+  projectId: string;
+  projectName: string | null;
   unitModel: string;
   unitType: string;
   quantityPerUnit: string;
@@ -67,6 +69,8 @@ export default async function BomRegisterPage({
     db
       .select({
         id:              masterBomEntries.id,
+        projectId:       masterBomEntries.projectId,
+        projectName:     projects.name,
         unitModel:       masterBomEntries.unitModel,
         unitType:        masterBomEntries.unitType,
         quantityPerUnit: masterBomEntries.quantityPerUnit,
@@ -87,57 +91,47 @@ export default async function BomRegisterPage({
         matUnit:         materials.unit,
       })
       .from(masterBomEntries)
+      .leftJoin(projects, eq(masterBomEntries.projectId, projects.id))
       .leftJoin(phaseScopes, eq(masterBomEntries.phaseScopeId, phaseScopes.id))
       .leftJoin(phaseActivities, eq(masterBomEntries.phaseActivityId, phaseActivities.id))
       .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
       .where(eq(masterBomEntries.isActive, true))
-      .orderBy(phaseScopes.code, phaseActivities.code, masterBomEntries.unitModel, desc(masterBomEntries.createdAt)),
+      .orderBy(projects.name, masterBomEntries.unitModel, masterBomEntries.unitType, phaseScopes.code, desc(masterBomEntries.createdAt)),
     [] as BomRow[],
   );
 
   const displayed = filterStatus ? rows.filter((r) => r.status === filterStatus) : rows;
 
-  type UnitGroup = { unitModel: string; unitType: string; lines: BomRow[] };
-  type ActivityGroup = {
-    phaseActivityId: string | null;
-    activityCode: string | null;
-    activityName: string | null;
-    activityDefId: string | null;
-    unitGroups: Map<string, UnitGroup>;
-  };
-  type ScopeGroup = {
-    scopeCode: string;
-    scopeName: string;
-    activities: Map<string, ActivityGroup>;
-  };
+  // Site → Model Type → Unit Type → Scope of Work → Materials
+  type ScopeGroup = { scopeKey: string; scopeCode: string | null; scopeName: string | null; lines: BomRow[] };
+  type UnitTypeGroup = { unitType: string; scopes: Map<string, ScopeGroup> };
+  type ModelGroup = { unitModel: string; unitTypes: Map<string, UnitTypeGroup> };
+  type SiteGroup = { projectId: string; projectName: string; models: Map<string, ModelGroup> };
 
-  const scopeMap = new Map<string, ScopeGroup>();
+  const siteMap = new Map<string, SiteGroup>();
 
   for (const row of displayed) {
-    const sc = row.scopeCode ?? "unknown";
-    if (!scopeMap.has(sc)) {
-      scopeMap.set(sc, { scopeCode: sc, scopeName: row.scopeName ?? sc, activities: new Map() });
+    const siteKey = row.projectId;
+    if (!siteMap.has(siteKey)) {
+      siteMap.set(siteKey, { projectId: row.projectId, projectName: row.projectName ?? "Unassigned", models: new Map() });
     }
-    const scope = scopeMap.get(sc)!;
+    const site = siteMap.get(siteKey)!;
 
-    // Group by activity if present, otherwise use a sentinel key for scope-only entries
-    const aid = row.phaseActivityId ?? "__scope_only__";
-    if (!scope.activities.has(aid)) {
-      scope.activities.set(aid, {
-        phaseActivityId: row.phaseActivityId,
-        activityCode:    row.activityCode,
-        activityName:    row.activityName,
-        activityDefId:   row.activityDefId,
-        unitGroups:      new Map(),
-      });
+    if (!site.models.has(row.unitModel)) {
+      site.models.set(row.unitModel, { unitModel: row.unitModel, unitTypes: new Map() });
     }
-    const act = scope.activities.get(aid)!;
+    const model = site.models.get(row.unitModel)!;
 
-    const ugKey = `${row.unitModel}::${row.unitType}`;
-    if (!act.unitGroups.has(ugKey)) {
-      act.unitGroups.set(ugKey, { unitModel: row.unitModel, unitType: row.unitType, lines: [] });
+    if (!model.unitTypes.has(row.unitType)) {
+      model.unitTypes.set(row.unitType, { unitType: row.unitType, scopes: new Map() });
     }
-    act.unitGroups.get(ugKey)!.lines.push(row);
+    const unitTypeGroup = model.unitTypes.get(row.unitType)!;
+
+    const scopeKey = row.scopeCode ?? "unscoped";
+    if (!unitTypeGroup.scopes.has(scopeKey)) {
+      unitTypeGroup.scopes.set(scopeKey, { scopeKey, scopeCode: row.scopeCode, scopeName: row.scopeName, lines: [] });
+    }
+    unitTypeGroup.scopes.get(scopeKey)!.lines.push(row);
   }
 
   const totalCount    = rows.length;
@@ -157,6 +151,16 @@ export default async function BomRegisterPage({
   const card: React.CSSProperties = {
     background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
   };
+
+  const summaryStyle = (depth: number): React.CSSProperties => ({
+    cursor: "pointer", listStyle: "none", display: "flex", alignItems: "center", gap: "0.6rem",
+    padding: depth === 0 ? "0.85rem 1.25rem" : depth === 1 ? "0.65rem 1.25rem 0.65rem 2rem" : depth === 2 ? "0.55rem 1.25rem 0.55rem 2.75rem" : "0.5rem 1.25rem 0.5rem 3.5rem",
+    background: depth === 0 ? "#f9fafb" : depth === 1 ? "#fff" : depth === 2 ? "#fafafa" : "#fcfcfd",
+    borderBottom: "1px solid #f3f4f6",
+    fontWeight: depth === 0 ? 700 : depth === 1 ? 700 : 600,
+    fontSize: depth === 0 ? "0.95rem" : depth === 1 ? "0.85rem" : "0.8rem",
+    color: "#111827",
+  });
 
   return (
     <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
@@ -212,13 +216,13 @@ export default async function BomRegisterPage({
 
         {/* Workflow callout */}
         <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "0.75rem 1rem", fontSize: "0.8rem", color: "#1e40af", marginBottom: "1.25rem" }}>
-          <strong>Approval workflow:</strong> DRAFT entries are submitted for Planning review, then approved or rejected by Admin / BOD.
-          Approved lines trigger resource forecast generation on NTP issuance. Changes to approved lines require a{" "}
-          <a href="/planning/variance-requests/new" style={{ color: "#1a56db", textDecoration: "underline" }}>Variance Request</a>.
+          <strong>Approval workflow:</strong> Draft entries (new or edited) are submitted by Planning for Admin / BOD review,
+          and may be <strong>withdrawn</strong> back to Draft for further changes before a decision is made.
+          Approved lines trigger resource forecast generation on NTP issuance.
         </div>
 
-        {/* BOM Table */}
-        {scopeMap.size === 0 ? (
+        {/* BOM — collapsible: Site → Model Type → Unit Type → Scope of Work → Materials */}
+        {siteMap.size === 0 ? (
           <div style={{ ...card, padding: "3rem", textAlign: "center" }}>
             <p style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "0.5rem" }}>
               {filterStatus ? `No BOM entries with status "${filterStatus}".` : "No active BOM entries found."}
@@ -229,127 +233,138 @@ export default async function BomRegisterPage({
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {Array.from(scopeMap.values()).map((scope) => (
-              <div key={scope.scopeCode} style={{ ...card, overflow: "hidden" }}>
+            {Array.from(siteMap.values()).map((site) => {
+              const siteLineCount = Array.from(site.models.values())
+                .flatMap((m) => Array.from(m.unitTypes.values()))
+                .flatMap((ut) => Array.from(ut.scopes.values()))
+                .reduce((sum, sg) => sum + sg.lines.length, 0);
 
-                {/* Scope header */}
-                <div style={{ padding: "0.75rem 1.25rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                  <span style={{ fontFamily: "monospace", background: "#eff6ff", color: "#1e40af", padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.78rem", fontWeight: 700 }}>
-                    {scope.scopeCode}
-                  </span>
-                  <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#374151", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                    {scope.scopeName}
-                  </span>
-                </div>
+              return (
+                <details key={site.projectId} style={{ ...card, overflow: "hidden" }} open>
+                  <summary style={summaryStyle(0)}>
+                    <span>📍 {site.projectName}</span>
+                    <span style={{ fontSize: "0.72rem", fontWeight: 500, color: "#9ca3af" }}>
+                      {siteLineCount} material line{siteLineCount !== 1 ? "s" : ""}
+                    </span>
+                    <Link href={`/master-list/projects/${site.projectId}`} style={{ marginLeft: "auto", fontSize: "0.75rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
+                      View Project →
+                    </Link>
+                  </summary>
 
-                {Array.from(scope.activities.values()).map((act) => (
-                  <div key={act.phaseActivityId ?? "__scope_only__"} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                  {Array.from(site.models.values()).map((model) => (
+                    <details key={model.unitModel} style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <summary style={summaryStyle(1)}>
+                        🏠 Model: {model.unitModel}
+                      </summary>
 
-                    {/* Activity sub-header — only shown when an activity is linked */}
-                    {act.activityCode && (
-                      <div style={{ padding: "0.55rem 1.25rem", background: "#fafafa", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <span style={{ fontFamily: "monospace", background: "#f3f4f6", color: "#374151", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 700 }}>
-                          {act.activityCode}
-                        </span>
-                        <span style={{ fontSize: "0.82rem", color: "#374151", fontWeight: 500 }}>{act.activityName}</span>
-                        {act.activityDefId && (
-                          <Link href={`/master-list/sow/${act.activityDefId}`} style={{ marginLeft: "auto", fontSize: "0.75rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
-                            View SOW item →
-                          </Link>
-                        )}
-                      </div>
-                    )}
-                    {!act.activityCode && act.activityDefId && (
-                      <div style={{ padding: "0.4rem 1.25rem", background: "#fafafa", borderBottom: "1px solid #f3f4f6", textAlign: "right" }}>
-                        <Link href={`/master-list/sow/${act.activityDefId}`} style={{ fontSize: "0.75rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
-                          View SOW item →
-                        </Link>
-                      </div>
-                    )}
-
-                    {Array.from(act.unitGroups.values()).map((ug) => {
-                      const draftIds = ug.lines
-                        .filter((l) => l.status === "DRAFT")
-                        .map((l) => l.id);
-
-                      return (
-                        <div key={`${ug.unitModel}::${ug.unitType}`} style={{ padding: "0.85rem 1.25rem", borderBottom: "1px solid #f9fafb" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
-                            <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#111827" }}>{ug.unitModel}</span>
-                            <span style={{ fontSize: "0.72rem", fontWeight: 600, background: "#eff6ff", color: "#1e40af", padding: "0.15rem 0.4rem", borderRadius: "4px" }}>
-                              {ug.unitType}
+                      {Array.from(model.unitTypes.values()).map((ut) => (
+                        <details key={ut.unitType} style={{ borderTop: "1px solid #f3f4f6" }}>
+                          <summary style={summaryStyle(2)}>
+                            <span style={{ fontSize: "0.72rem", fontWeight: 600, background: "#eff6ff", color: "#1e40af", padding: "0.15rem 0.5rem", borderRadius: "4px" }}>
+                              {ut.unitType}
                             </span>
-                            <span style={{ fontSize: "0.72rem", color: "#9ca3af" }}>
-                              {ug.lines.length} material line{ug.lines.length !== 1 ? "s" : ""}
-                            </span>
-                          </div>
+                            <span style={{ fontWeight: 500, color: "#374151" }}>Unit Type</span>
+                          </summary>
 
-                          <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
-                              <thead>
-                                <tr>
-                                  {["Material", "Unit", "Qty / Unit", "Equipment Type", "Ver.", "Status", "Actions"].map((h) => (
-                                    <th key={h} style={{
-                                      paddingBottom: "0.4rem", textAlign: "left", fontWeight: 600,
-                                      color: "#9ca3af", fontSize: "0.72rem", textTransform: "uppercase",
-                                      letterSpacing: "0.05em", paddingRight: "1rem", whiteSpace: "nowrap",
-                                      borderBottom: "1px solid #e5e7eb",
-                                    }}>
-                                      {h}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {ug.lines.map((line) => (
-                                  <tr key={line.id} style={{ borderBottom: "1px solid #f9fafb", opacity: line.status === "REJECTED" ? 0.5 : 1 }}>
-                                    <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#111827", fontWeight: 600 }}>
-                                      {line.matCode && (
-                                        <span style={{ fontFamily: "monospace", color: "#6b7280", marginRight: "0.35rem", fontSize: "0.75rem" }}>{line.matCode}</span>
-                                      )}
-                                      {line.matName ?? <span style={{ color: "#9ca3af" }}>—</span>}
-                                    </td>
-                                    <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#6b7280", fontSize: "0.82rem" }}>{line.matUnit ?? "—"}</td>
-                                    <td style={{ padding: "0.5rem 1rem 0.5rem 0", fontFamily: "monospace", color: "#374151", fontWeight: 600, fontSize: "0.82rem" }}>
-                                      {Number(line.quantityPerUnit).toFixed(4)}
-                                    </td>
-                                    <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#6b7280", fontSize: "0.82rem" }}>
-                                      {line.equipmentType ?? <span style={{ color: "#d1d5db" }}>—</span>}
-                                    </td>
-                                    <td style={{ padding: "0.5rem 1rem 0.5rem 0", fontFamily: "monospace", color: "#9ca3af", fontSize: "0.78rem" }}>v{line.version}</td>
-                                    <td style={{ padding: "0.5rem 1rem 0.5rem 0" }}>
-                                      <BomStatusBadge status={line.status} />
-                                    </td>
-                                    <td style={{ padding: "0.5rem 0", whiteSpace: "nowrap" }}>
-                                      {line.status === "DRAFT" && (
-                                        <Link
-                                          href={`/planning/bom/${line.id}/edit`}
-                                          style={{ fontSize: "0.78rem", fontWeight: 600, color: "#1a56db", textDecoration: "none", padding: "0.2rem 0.55rem", border: "1px solid #bfdbfe", borderRadius: "5px", background: "#eff6ff" }}>
-                                          Edit
-                                        </Link>
-                                      )}
-                                      {line.status === "PENDING_REVIEW" && (
-                                        <BomReviewActions id={line.id} />
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                          {Array.from(ut.scopes.values()).map((sg) => {
+                            const draftIds = sg.lines.filter((l) => l.status === "DRAFT").map((l) => l.id);
+                            const act = sg.lines[0];
+                            return (
+                              <details key={sg.scopeKey} style={{ borderTop: "1px solid #f9fafb" }} open>
+                                <summary style={summaryStyle(3)}>
+                                  {sg.scopeCode ? (
+                                    <span style={{ fontFamily: "monospace", background: "#f3f4f6", color: "#374151", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.72rem", fontWeight: 700 }}>
+                                      {sg.scopeCode}
+                                    </span>
+                                  ) : null}
+                                  <span style={{ fontWeight: 500, color: "#374151" }}>{sg.scopeName ?? "Unscoped"}</span>
+                                  {act?.activityCode && (
+                                    <span style={{ fontSize: "0.72rem", color: "#9ca3af" }}>· Activity [{act.activityCode}] {act.activityName}</span>
+                                  )}
+                                  {act?.activityDefId && (
+                                    <Link href={`/master-list/sow/${act.activityDefId}`} onClick={(e) => e.stopPropagation()} style={{ marginLeft: "auto", fontSize: "0.72rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
+                                      View SOW item →
+                                    </Link>
+                                  )}
+                                </summary>
 
-                          {draftIds.length > 0 && (
-                            <div style={{ marginTop: "0.5rem" }}>
-                              <BomSubmitActions ids={draftIds} />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            ))}
+                                <div style={{ padding: "0.75rem 1.25rem 1rem 3.5rem" }}>
+                                  <div style={{ overflowX: "auto" }}>
+                                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
+                                      <thead>
+                                        <tr>
+                                          {["Material", "Unit", "Qty / Unit", "Equipment Type", "Ver.", "Status", "Actions"].map((h) => (
+                                            <th key={h} style={{
+                                              paddingBottom: "0.4rem", textAlign: "left", fontWeight: 600,
+                                              color: "#9ca3af", fontSize: "0.72rem", textTransform: "uppercase",
+                                              letterSpacing: "0.05em", paddingRight: "1rem", whiteSpace: "nowrap",
+                                              borderBottom: "1px solid #e5e7eb",
+                                            }}>
+                                              {h}
+                                            </th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {sg.lines.map((line) => (
+                                          <tr key={line.id} style={{ borderBottom: "1px solid #f9fafb", opacity: line.status === "REJECTED" ? 0.7 : 1 }}>
+                                            <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#111827", fontWeight: 600 }}>
+                                              {line.matCode && (
+                                                <span style={{ fontFamily: "monospace", color: "#6b7280", marginRight: "0.35rem", fontSize: "0.75rem" }}>{line.matCode}</span>
+                                              )}
+                                              {line.matName ?? <span style={{ color: "#9ca3af" }}>—</span>}
+                                            </td>
+                                            <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#6b7280", fontSize: "0.82rem" }}>{line.matUnit ?? "—"}</td>
+                                            <td style={{ padding: "0.5rem 1rem 0.5rem 0", fontFamily: "monospace", color: "#374151", fontWeight: 600, fontSize: "0.82rem" }}>
+                                              {Number(line.quantityPerUnit).toFixed(4)}
+                                            </td>
+                                            <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#6b7280", fontSize: "0.82rem" }}>
+                                              {line.equipmentType ?? <span style={{ color: "#d1d5db" }}>—</span>}
+                                            </td>
+                                            <td style={{ padding: "0.5rem 1rem 0.5rem 0", fontFamily: "monospace", color: "#9ca3af", fontSize: "0.78rem" }}>v{line.version}</td>
+                                            <td style={{ padding: "0.5rem 1rem 0.5rem 0" }}>
+                                              <BomStatusBadge status={line.status} />
+                                              {line.status === "REJECTED" && (
+                                                <div style={{ marginTop: "0.2rem", fontSize: "0.7rem", color: "#9ca3af" }}>Edit to resubmit</div>
+                                              )}
+                                            </td>
+                                            <td style={{ padding: "0.5rem 0", whiteSpace: "nowrap" }}>
+                                              {(line.status === "DRAFT" || line.status === "REJECTED") && (
+                                                <Link
+                                                  href={`/planning/bom/${line.id}/edit`}
+                                                  style={{ fontSize: "0.78rem", fontWeight: 600, color: "#1a56db", textDecoration: "none", padding: "0.2rem 0.55rem", border: "1px solid #bfdbfe", borderRadius: "5px", background: "#eff6ff" }}>
+                                                  Edit
+                                                </Link>
+                                              )}
+                                              {line.status === "PENDING_REVIEW" && (
+                                                <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                                                  <BomReviewActions id={line.id} />
+                                                  <BomWithdrawAction id={line.id} />
+                                                </span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+
+                                  {draftIds.length > 0 && (
+                                    <div style={{ marginTop: "0.5rem" }}>
+                                      <BomSubmitActions ids={draftIds} />
+                                    </div>
+                                  )}
+                                </div>
+                              </details>
+                            );
+                          })}
+                        </details>
+                      ))}
+                    </details>
+                  ))}
+                </details>
+              );
+            })}
           </div>
         )}
       </div>

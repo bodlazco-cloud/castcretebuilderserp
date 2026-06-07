@@ -346,6 +346,10 @@ export async function reviewVarianceRequest(
 
 const UpdateDraftBomSchema = z.object({
   id:              z.string().uuid(),
+  phaseScopeId:    z.string().uuid(),
+  phaseActivityId: z.string().uuid().optional(),
+  unitModel:       z.string().min(1).max(50),
+  unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
   materialId:      z.string().uuid(),
   quantityPerUnit: z.number().positive(),
   equipmentType:   z.string().max(100).optional(),
@@ -375,14 +379,25 @@ export async function updateDraftBomEntry(
     .where(eq(masterBomEntries.id, parsed.data.id));
 
   if (!existing) return { success: false, error: "BOM entry not found." };
-  if (existing.status !== "DRAFT") return { success: false, error: "Only DRAFT entries can be edited." };
+  if (existing.status !== "DRAFT" && existing.status !== "REJECTED") {
+    return { success: false, error: "Only DRAFT or REJECTED entries can be edited. Pending entries must be withdrawn first." };
+  }
 
   await db
     .update(masterBomEntries)
     .set({
+      phaseScopeId:    parsed.data.phaseScopeId,
+      phaseActivityId: parsed.data.phaseActivityId ?? null,
+      unitModel:       parsed.data.unitModel,
+      unitType:        parsed.data.unitType,
       materialId:      parsed.data.materialId,
       quantityPerUnit: String(parsed.data.quantityPerUnit),
       equipmentType:   parsed.data.equipmentType ?? null,
+      // Edits to a previously reviewed line must go through BOD approval again
+      status:          "DRAFT",
+      reviewedBy:      null,
+      reviewedAt:      null,
+      rejectionReason: null,
       updatedAt:       new Date(),
     })
     .where(eq(masterBomEntries.id, parsed.data.id));
@@ -390,6 +405,37 @@ export async function updateDraftBomEntry(
   revalidatePath("/planning/bom");
   return { success: true };
 }
+
+// ─── Withdraw a Submitted BOM Entry (return PENDING_REVIEW → DRAFT) ───────────
+
+export async function withdrawBomSubmission(id: string): Promise<BomReviewResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may withdraw a submitted BOM entry." };
+  }
+
+  const [existing] = await db
+    .select({ status: masterBomEntries.status })
+    .from(masterBomEntries)
+    .where(eq(masterBomEntries.id, id));
+
+  if (!existing) return { success: false, error: "BOM entry not found." };
+  if (existing.status !== "PENDING_REVIEW") {
+    return { success: false, error: "Only entries pending BOD review can be withdrawn." };
+  }
+
+  await db
+    .update(masterBomEntries)
+    .set({ status: "DRAFT", submittedBy: null, submittedAt: null, updatedAt: new Date() })
+    .where(eq(masterBomEntries.id, id));
+
+  revalidatePath("/planning/bom");
+  return { success: true };
+}
+
 
 // ─── Manpower Logs (kept for resource-forecasting page) ───────────────────────
 
