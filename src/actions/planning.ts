@@ -117,7 +117,88 @@ export async function saveMasterBomEntries(
   return { success: true, inserted: items.length };
 }
 
-export type BomReviewResult = { success: boolean; error?: string };
+// ─── Add a single Material line to an existing BOM group ─────────────────────
+
+const AddBomLineSchema = z.object({
+  projectId:       z.string().uuid(),
+  phaseScopeId:    z.string().uuid(),
+  phaseActivityId: z.string().uuid().optional(),
+  activityDefId:   z.string().uuid().optional(),
+  unitModel:       z.string().min(1).max(50),
+  unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
+  materialId:      z.string().uuid(),
+  quantityPerUnit: z.number().positive(),
+  equipmentType:   z.string().max(100).optional(),
+});
+
+export type AddBomLineResult =
+  | { success: true; id: string }
+  | { success: false; error: string };
+
+export async function addMasterBomLine(
+  input: z.infer<typeof AddBomLineSchema>,
+): Promise<AddBomLineResult> {
+  const parsed = AddBomLineSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may add BOM material lines." };
+  }
+
+  const d = parsed.data;
+
+  const [row] = await db
+    .insert(masterBomEntries)
+    .values({
+      projectId:       d.projectId,
+      activityDefId:   d.activityDefId   ?? null,
+      phaseScopeId:    d.phaseScopeId,
+      phaseActivityId: d.phaseActivityId ?? null,
+      unitModel:       d.unitModel,
+      unitType:        d.unitType,
+      materialId:      d.materialId,
+      quantityPerUnit: String(d.quantityPerUnit),
+      equipmentType:   d.equipmentType ?? null,
+      status:          "DRAFT" as const,
+      createdBy:       user.id,
+    })
+    .returning({ id: masterBomEntries.id });
+
+  revalidatePath("/planning/bom");
+  return { success: true, id: row.id };
+}
+
+// ─── Delete a Draft / Rejected BOM line ──────────────────────────────────────
+
+export async function deleteDraftBomEntry(id: string): Promise<BomReviewResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may delete BOM material lines." };
+  }
+
+  const [existing] = await db
+    .select({ status: masterBomEntries.status })
+    .from(masterBomEntries)
+    .where(eq(masterBomEntries.id, id));
+
+  if (!existing) return { success: false, error: "BOM entry not found." };
+  if (existing.status !== "DRAFT" && existing.status !== "REJECTED") {
+    return { success: false, error: "Only Draft or Rejected lines can be deleted. Pending entries must be withdrawn first." };
+  }
+
+  await db.delete(masterBomEntries).where(eq(masterBomEntries.id, id));
+
+  revalidatePath("/planning/bom");
+  return { success: true };
+}
+
 
 export async function submitBomForReview(ids: string[]): Promise<BomReviewResult> {
   if (ids.length === 0) return { success: false, error: "No entries selected." };
