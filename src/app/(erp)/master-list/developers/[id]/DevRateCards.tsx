@@ -101,7 +101,7 @@ function AddDeductionForm({ rateCardId, onAdded }: { rateCardId: string; onAdded
 const BLANK_EDIT = { project: "", category: "", scope: "", activity: "", unitModel: "", unitType: "", grossRate: "", retentionPct: "10", dpRecoupmentPct: "10", taxPct: "0" };
 
 export function DevRateCards({
-  devProjects, rateCards, deductions, phaseCategories, phaseScopes, phaseActivities, unitModelOptions, isAdmin,
+  devProjects, rateCards, deductions, phaseCategories, phaseScopes, phaseActivities, unitModelOptions, isAdmin, title,
 }: {
   devProjects: Project[];
   rateCards: RateCard[];
@@ -111,6 +111,7 @@ export function DevRateCards({
   phaseActivities: PhaseActivity[];
   unitModelOptions: UnitModelOption[];
   isAdmin: boolean;
+  title?: string;
 }) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
@@ -231,7 +232,7 @@ export function DevRateCards({
     <div style={{ marginTop: "2rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
         <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#374151" }}>
-          Rate Cards ({rateCards.length})
+          {title ?? "Rate Cards"} ({rateCards.length})
         </h2>
         {isAdmin && (
           <button

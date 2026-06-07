@@ -100,7 +100,7 @@ type UnitModelOption = { projectId: string; unitModel: string };
 const BLANK_EDIT = { project: "", category: "", scope: "", activity: "", unitModel: "", unitType: "", ratePerUnit: "", retentionPct: "10" };
 
 export function SubconRateCards({
-  rateCards, deductions, projects, phaseCategories, phaseScopes, phaseActivities, unitModelOptions, isAdmin,
+  rateCards, deductions, projects, phaseCategories, phaseScopes, phaseActivities, unitModelOptions, isAdmin, title,
 }: {
   rateCards: RateCard[];
   deductions: Deduction[];
@@ -110,6 +110,7 @@ export function SubconRateCards({
   phaseActivities: PhaseActivity[];
   unitModelOptions: UnitModelOption[];
   isAdmin: boolean;
+  title?: string;
 }) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
@@ -224,7 +225,7 @@ export function SubconRateCards({
     <div style={{ marginTop: "2rem" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.35rem" }}>
         <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#374151" }}>
-          Labor Rate Schedule ({rateCards.length})
+          {title ?? "Labor Rate Schedule"} ({rateCards.length})
         </h2>
         {isAdmin && (
           <button
