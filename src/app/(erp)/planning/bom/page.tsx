@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { masterBomEntries, materials, projects } from "@/db/schema";
 import { phaseActivities, phaseScopes } from "@/db/schema/phases";
 import { eq, desc } from "drizzle-orm";
-import { BomSubmitActions, BomReviewActions, BomWithdrawAction } from "./BomApprovalActions";
+import { BomSubmitActions, BomReviewActions, BomWithdrawAction, BomAddMaterialAction, BomDeleteLineAction } from "./BomApprovalActions";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -98,6 +98,21 @@ export default async function BomRegisterPage({
       .where(eq(masterBomEntries.isActive, true))
       .orderBy(projects.name, masterBomEntries.unitModel, masterBomEntries.unitType, phaseScopes.code, desc(masterBomEntries.createdAt)),
     [] as BomRow[],
+  );
+
+  const materialRows = await safe(
+    db
+      .select({
+        id:         materials.id,
+        code:       materials.code,
+        name:       materials.name,
+        unit:       materials.unit,
+        adminPrice: materials.adminPrice,
+      })
+      .from(materials)
+      .where(eq(materials.isActive, true))
+      .orderBy(materials.code),
+    [] as { id: string; code: string; name: string; unit: string; adminPrice: string | null }[],
   );
 
   const displayed = filterStatus ? rows.filter((r) => r.status === filterStatus) : rows;
@@ -330,11 +345,14 @@ export default async function BomRegisterPage({
                                             </td>
                                             <td style={{ padding: "0.5rem 0", whiteSpace: "nowrap" }}>
                                               {(line.status === "DRAFT" || line.status === "REJECTED") && (
-                                                <Link
-                                                  href={`/planning/bom/${line.id}/edit`}
-                                                  style={{ fontSize: "0.78rem", fontWeight: 600, color: "#1a56db", textDecoration: "none", padding: "0.2rem 0.55rem", border: "1px solid #bfdbfe", borderRadius: "5px", background: "#eff6ff" }}>
-                                                  Edit
-                                                </Link>
+                                                <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                                                  <Link
+                                                    href={`/planning/bom/${line.id}/edit`}
+                                                    style={{ fontSize: "0.78rem", fontWeight: 600, color: "#1a56db", textDecoration: "none", padding: "0.2rem 0.55rem", border: "1px solid #bfdbfe", borderRadius: "5px", background: "#eff6ff" }}>
+                                                    Edit
+                                                  </Link>
+                                                  <BomDeleteLineAction id={line.id} />
+                                                </span>
                                               )}
                                               {line.status === "PENDING_REVIEW" && (
                                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
@@ -347,6 +365,18 @@ export default async function BomRegisterPage({
                                         ))}
                                       </tbody>
                                     </table>
+                                  </div>
+
+                                  <div style={{ marginTop: "0.75rem" }}>
+                                    <BomAddMaterialAction
+                                      projectId={site.projectId}
+                                      phaseScopeId={sg.lines[0]?.scopeId ?? ""}
+                                      phaseActivityId={act?.phaseActivityId ?? null}
+                                      activityDefId={act?.activityDefId ?? null}
+                                      unitModel={model.unitModel}
+                                      unitType={ut.unitType}
+                                      materials={materialRows}
+                                    />
                                   </div>
 
                                   {draftIds.length > 0 && (

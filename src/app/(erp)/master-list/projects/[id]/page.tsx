@@ -200,6 +200,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     quantityPerUnit: string;
     status: string;
     equipmentType: string | null;
+    categoryName: string | null;
     scopeCode: string | null;
     scopeName: string | null;
     activityCode: string | null;
@@ -218,6 +219,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
         quantityPerUnit: masterBomEntries.quantityPerUnit,
         status:          masterBomEntries.status,
         equipmentType:   masterBomEntries.equipmentType,
+        categoryName:    phaseCategories.name,
         scopeCode:       phaseScopes.code,
         scopeName:       phaseScopes.name,
         activityCode:    phaseActivities.code,
@@ -228,10 +230,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
       })
       .from(masterBomEntries)
       .leftJoin(phaseScopes, eq(masterBomEntries.phaseScopeId, phaseScopes.id))
+      .leftJoin(phaseCategories, eq(phaseScopes.categoryId, phaseCategories.id))
       .leftJoin(phaseActivities, eq(masterBomEntries.phaseActivityId, phaseActivities.id))
       .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
       .where(and(eq(masterBomEntries.projectId, id), eq(masterBomEntries.isActive, true)))
-      .orderBy(masterBomEntries.unitModel, masterBomEntries.unitType, phaseScopes.code);
+      .orderBy(masterBomEntries.unitModel, masterBomEntries.unitType, phaseCategories.sequenceOrder, phaseScopes.code);
   } catch {
     // schema not yet migrated — page still loads without material BOM
   }
@@ -242,6 +245,53 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
     APPROVED:       { bg: "#dcfce7", color: "#166534" },
     REJECTED:       { bg: "#fef2f2", color: "#b91c1c" },
   };
+
+  // Material BOM — collapsible: Model Type → Unit Type → Category → Scope of Work → Materials
+  type BomScopeGroup = { scopeKey: string; scopeCode: string | null; scopeName: string | null; activityCode: string | null; activityName: string | null; lines: MaterialBomRow[] };
+  type BomCategoryGroup = { categoryName: string; scopes: Map<string, BomScopeGroup> };
+  type BomUnitTypeGroup = { unitType: string; categories: Map<string, BomCategoryGroup> };
+  type BomModelGroup = { unitModel: string; unitTypes: Map<string, BomUnitTypeGroup> };
+
+  const bomModelMap = new Map<string, BomModelGroup>();
+  for (const row of materialBomRows) {
+    if (!bomModelMap.has(row.unitModel)) bomModelMap.set(row.unitModel, { unitModel: row.unitModel, unitTypes: new Map() });
+    const modelGroup = bomModelMap.get(row.unitModel)!;
+
+    if (!modelGroup.unitTypes.has(row.unitType)) modelGroup.unitTypes.set(row.unitType, { unitType: row.unitType, categories: new Map() });
+    const unitTypeGroup = modelGroup.unitTypes.get(row.unitType)!;
+
+    const catKey = row.categoryName ?? "Uncategorized";
+    if (!unitTypeGroup.categories.has(catKey)) unitTypeGroup.categories.set(catKey, { categoryName: catKey, scopes: new Map() });
+    const categoryGroup = unitTypeGroup.categories.get(catKey)!;
+
+    const scopeKey = row.scopeCode ?? "unscoped";
+    if (!categoryGroup.scopes.has(scopeKey)) {
+      categoryGroup.scopes.set(scopeKey, { scopeKey, scopeCode: row.scopeCode, scopeName: row.scopeName, activityCode: row.activityCode, activityName: row.activityName, lines: [] });
+    }
+    categoryGroup.scopes.get(scopeKey)!.lines.push(row);
+  }
+
+  const bomSummaryStyle = (depth: number): React.CSSProperties => ({
+    cursor: "pointer", listStyle: "none", display: "flex", alignItems: "center", gap: "0.6rem",
+    padding: depth === 0 ? "0.7rem 1.1rem" : depth === 1 ? "0.55rem 1.1rem 0.55rem 1.85rem" : depth === 2 ? "0.5rem 1.1rem 0.5rem 2.6rem" : "0.45rem 1.1rem 0.45rem 3.35rem",
+    background: depth === 0 ? "#f9fafb" : depth === 1 ? "#fff" : depth === 2 ? "#fafafa" : "#fcfcfd",
+    borderBottom: "1px solid #f3f4f6",
+    fontWeight: depth <= 1 ? 700 : 600,
+    fontSize: depth === 0 ? "0.88rem" : depth === 1 ? "0.82rem" : "0.78rem",
+    color: "#111827",
+  });
+
+  // Blocks & Units — group units within each block by unit model
+  type BlockModelGroup = { unitModel: string; units: typeof unitRows };
+  function groupUnitsByModel(units: typeof unitRows): BlockModelGroup[] {
+    const map = new Map<string, BlockModelGroup>();
+    for (const u of units) {
+      const key = u.unitModel ?? "Unassigned";
+      if (!map.has(key)) map.set(key, { unitModel: key, units: [] });
+      map.get(key)!.units.push(u);
+    }
+    return Array.from(map.values());
+  }
 
   const sc = STATUS_STYLE[project.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
   const isApproved = project.status === "ACTIVE" && !!project.bodApprovedAt;
@@ -345,43 +395,54 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {blockRows.map((block) => {
                 const blockUnits = unitRows.filter((u) => u.blockId === block.id);
+                const modelGroups = groupUnitsByModel(blockUnits);
                 return (
-                  <div key={block.id} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                    <div style={{ padding: "0.75rem 1rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <details key={block.id} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }} open>
+                    <summary style={{ cursor: "pointer", listStyle: "none", padding: "0.75rem 1rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                       <div>
                         <span style={{ fontWeight: 700, color: "#111827", fontSize: "0.9rem" }}>{block.blockName}</span>
                         <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#6b7280" }}>{blockUnits.length}/{block.totalLots} lots</span>
                       </div>
-                      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
                         <EditBlockForm blockId={block.id} initialName={block.blockName} initialLots={block.totalLots} />
                         <DeleteBlockButton blockId={block.id} />
                       </div>
-                    </div>
-                    {blockUnits.length > 0 && (
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-                        <thead>
-                          <tr>
-                            {["Lot #", "Unit Code", "Model", "Type", "Status", ""].map((h, i) => (
-                              <th key={i} style={{ padding: "0.5rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #f3f4f6", fontSize: "0.78rem" }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {blockUnits.map((u) => (
-                            <UnitRow
-                              key={u.id}
-                              unit={{ id: u.id, blockId: u.blockId ?? "", lotNumber: u.lotNumber, unitCode: u.unitCode, unitModel: u.unitModel, unitType: u.unitType ?? "MID", status: u.status, contractPrice: u.contractPrice }}
-                              blockOptions={blockRows.map((b) => ({ id: b.id, blockName: b.blockName }))}
-                              unitModelOptions={unitModelNames}
-                            />
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                    </summary>
+
+                    {modelGroups.map((mg) => (
+                      <details key={mg.unitModel} style={{ borderTop: "1px solid #f3f4f6" }} open>
+                        <summary style={{ cursor: "pointer", listStyle: "none", padding: "0.55rem 1.1rem 0.55rem 1.85rem", background: "#fff", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, fontSize: "0.82rem", color: "#111827" }}>
+                          🏠 {mg.unitModel}
+                          <span style={{ fontSize: "0.72rem", fontWeight: 500, color: "#9ca3af" }}>{mg.units.length} unit{mg.units.length !== 1 ? "s" : ""}</span>
+                        </summary>
+                        <div style={{ paddingLeft: "0.95rem" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                            <thead>
+                              <tr>
+                                {["Lot #", "Unit Code", "Model", "Type", "Status", ""].map((h, i) => (
+                                  <th key={i} style={{ padding: "0.5rem 0.9rem", textAlign: "left", fontWeight: 600, color: "#6b7280", borderBottom: "1px solid #f3f4f6", fontSize: "0.78rem" }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {mg.units.map((u) => (
+                                <UnitRow
+                                  key={u.id}
+                                  unit={{ id: u.id, blockId: u.blockId ?? "", lotNumber: u.lotNumber, unitCode: u.unitCode, unitModel: u.unitModel, unitType: u.unitType ?? "MID", status: u.status, contractPrice: u.contractPrice }}
+                                  blockOptions={blockRows.map((b) => ({ id: b.id, blockName: b.blockName }))}
+                                  unitModelOptions={unitModelNames}
+                                />
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    ))}
+
                     <div style={{ padding: "0.75rem 1rem", borderTop: blockUnits.length > 0 ? "1px solid #f3f4f6" : undefined }}>
                       <AddUnitForm projectId={id} blockOptions={blockRows.map((b) => ({ id: b.id, blockName: b.blockName }))} unitModelOptions={unitModelNames} />
                     </div>
-                  </div>
+                  </details>
                 );
               })}
             </div>
@@ -400,45 +461,84 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
               <a href="/planning/bom/new" style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>BOM Register</a>.
             </div>
           ) : (
-            <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", minWidth: "760px" }}>
-                  <thead>
-                    <tr style={{ background: "#f9fafb" }}>
-                      {["Unit Model", "Type", "Scope", "Activity", "Material", "Qty / Unit", "Status"].map((h) => (
-                        <th key={h} style={{ padding: "0.6rem 1rem", textAlign: "left", fontWeight: 600, color: "#374151", borderBottom: "1px solid #e5e7eb", fontSize: "0.78rem" }}>{h}</th>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {Array.from(bomModelMap.values()).map((modelGroup) => (
+                <details key={modelGroup.unitModel} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }} open>
+                  <summary style={bomSummaryStyle(0)}>
+                    🏠 Model: {modelGroup.unitModel}
+                  </summary>
+
+                  {Array.from(modelGroup.unitTypes.values()).map((utGroup) => (
+                    <details key={utGroup.unitType} style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <summary style={bomSummaryStyle(1)}>
+                        <span style={{ fontSize: "0.72rem", fontWeight: 600, background: "#eff6ff", color: "#1e40af", padding: "0.15rem 0.5rem", borderRadius: "4px" }}>
+                          {utGroup.unitType}
+                        </span>
+                        <span style={{ fontWeight: 500, color: "#374151" }}>Unit Type</span>
+                      </summary>
+
+                      {Array.from(utGroup.categories.values()).map((catGroup) => (
+                        <details key={catGroup.categoryName} style={{ borderTop: "1px solid #f3f4f6" }}>
+                          <summary style={bomSummaryStyle(2)}>
+                            📂 {catGroup.categoryName}
+                          </summary>
+
+                          {Array.from(catGroup.scopes.values()).map((sg) => (
+                            <details key={sg.scopeKey} style={{ borderTop: "1px solid #f9fafb" }} open>
+                              <summary style={bomSummaryStyle(3)}>
+                                {sg.scopeCode ? (
+                                  <span style={{ fontFamily: "monospace", background: "#f3f4f6", color: "#374151", padding: "0.1rem 0.4rem", borderRadius: "4px", fontSize: "0.72rem", fontWeight: 700 }}>
+                                    {sg.scopeCode}
+                                  </span>
+                                ) : null}
+                                <span style={{ fontWeight: 500, color: "#374151" }}>{sg.scopeName ?? "Unscoped"}</span>
+                                {sg.activityCode && (
+                                  <span style={{ fontSize: "0.72rem", color: "#9ca3af" }}>· Activity [{sg.activityCode}] {sg.activityName}</span>
+                                )}
+                              </summary>
+
+                              <div style={{ padding: "0.5rem 1.1rem 0.85rem 3.35rem", overflowX: "auto" }}>
+                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
+                                  <thead>
+                                    <tr>
+                                      {["Material", "Unit", "Qty / Unit", "Equipment Type", "Status"].map((h) => (
+                                        <th key={h} style={{ padding: "0.45rem 1rem 0.45rem 0", textAlign: "left", fontWeight: 600, color: "#9ca3af", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid #e5e7eb", whiteSpace: "nowrap" }}>{h}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {sg.lines.map((r) => {
+                                      const bb = BOM_STATUS_BADGE[r.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
+                                      return (
+                                        <tr key={r.id} style={{ borderBottom: "1px solid #f9fafb" }}>
+                                          <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#111827", fontWeight: 600 }}>
+                                            {r.matCode && <span style={{ fontFamily: "monospace", fontSize: "0.72rem", color: "#6b7280", marginRight: "0.3rem" }}>{r.matCode}</span>}
+                                            {r.matName ?? "—"}
+                                          </td>
+                                          <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#6b7280", fontSize: "0.82rem" }}>{r.matUnit ?? "—"}</td>
+                                          <td style={{ padding: "0.5rem 1rem 0.5rem 0", fontFamily: "monospace", fontWeight: 600, color: "#374151" }}>
+                                            {Number(r.quantityPerUnit).toFixed(4)}
+                                          </td>
+                                          <td style={{ padding: "0.5rem 1rem 0.5rem 0", color: "#6b7280", fontSize: "0.82rem" }}>{r.equipmentType ?? <span style={{ color: "#d1d5db" }}>—</span>}</td>
+                                          <td style={{ padding: "0.5rem 1rem 0.5rem 0" }}>
+                                            <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: bb.bg, color: bb.color }}>
+                                              {r.status.replace("_", " ")}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          ))}
+                        </details>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {materialBomRows.map((r) => {
-                      const bb = BOM_STATUS_BADGE[r.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
-                      return (
-                        <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                          <td style={{ padding: "0.6rem 1rem", fontWeight: 600, color: "#111827" }}>{r.unitModel}</td>
-                          <td style={{ padding: "0.6rem 1rem" }}>
-                            <span style={{ fontSize: "0.72rem", fontWeight: 600, background: "#eff6ff", color: "#1e40af", padding: "0.15rem 0.4rem", borderRadius: "4px" }}>{r.unitType}</span>
-                          </td>
-                          <td style={{ padding: "0.6rem 1rem", color: "#374151", fontSize: "0.8rem" }}>{r.scopeCode ? `[${r.scopeCode}] ${r.scopeName}` : "—"}</td>
-                          <td style={{ padding: "0.6rem 1rem", color: "#6b7280", fontSize: "0.8rem" }}>{r.activityCode ? `[${r.activityCode}] ${r.activityName}` : "—"}</td>
-                          <td style={{ padding: "0.6rem 1rem", color: "#111827" }}>
-                            {r.matCode && <span style={{ fontFamily: "monospace", fontSize: "0.72rem", color: "#6b7280", marginRight: "0.3rem" }}>{r.matCode}</span>}
-                            {r.matName ?? "—"}
-                          </td>
-                          <td style={{ padding: "0.6rem 1rem", fontFamily: "monospace", fontWeight: 600, color: "#374151" }}>
-                            {Number(r.quantityPerUnit).toFixed(4)} {r.matUnit ?? ""}
-                          </td>
-                          <td style={{ padding: "0.6rem 1rem" }}>
-                            <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: bb.bg, color: bb.color }}>
-                              {r.status.replace("_", " ")}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                    </details>
+                  ))}
+                </details>
+              ))}
             </div>
           )}
         </div>
