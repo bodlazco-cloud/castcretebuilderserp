@@ -1,11 +1,18 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { projects, developers, blocks, projectUnits, projectUnitModels } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { getAuthUser } from "@/lib/supabase-server";
+import {
+  projects, developers, blocks, projectUnits, projectUnitModels,
+  developerRateCards, developerRateCardDeductions,
+  subcontractorRateCards, subcontractorRateCardDeductions,
+  phaseCategories, phaseScopes, phaseActivities,
+} from "@/db/schema";
+import { eq, inArray, isNull, or } from "drizzle-orm";
+import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { ApproveProjectButton, AddBlockForm, EditBlockForm, DeleteBlockButton, AddUnitForm, UnitRow, UnitModelManager } from "./ProjectActions";
 import { EditProjectForm } from "./EditProjectForm";
+import { DevRateCards } from "../../developers/[id]/DevRateCards";
+import { SubconRateCards } from "../../subcontractors/[id]/SubconRateCards";
 
 const FIELD: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "0.2rem" };
 const LABEL: React.CSSProperties = { fontSize: "0.78rem", fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" };
@@ -26,6 +33,7 @@ function php(v: string | null) {
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await getAuthUser();
+  const isAdmin = await isAdminOrBod();
   const { id } = await params;
 
   const [project] = await db
@@ -74,6 +82,115 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   ]);
 
   const unitModelNames = unitModelRows.map((m) => m.name);
+
+  // BOQ (Developer Rate Cards) and Labor BOM (Subcontractor Rate Cards) for this project
+  type DevRateCardRow = {
+    id: string; projectId: string; projectName: string | null;
+    phaseScopeId: string | null; phaseActivityId: string | null;
+    unitModel: string | null; unitType: string | null;
+    phaseCategoryName: string | null; phaseScopeName: string | null;
+    phaseActivityCode: string | null; phaseActivityName: string | null;
+    grossRatePerUnit: string; retentionPct: string; dpRecoupmentPct: string;
+    taxPct: string; version: number; isActive: boolean;
+  };
+  type SubconRateCardRow = {
+    id: string; projectId: string; projectName: string | null;
+    phaseScopeId: string | null; phaseActivityId: string | null;
+    unitModel: string | null; unitType: string | null;
+    phaseCategoryName: string | null; phaseScopeName: string | null;
+    phaseActivityCode: string | null; phaseActivityName: string | null;
+    ratePerUnit: string; retentionPct: string; version: number; isActive: boolean;
+  };
+  type Deduction = { id: string; rateCardId: string; name: string; deductionPct: string; isActive: boolean };
+
+  let devRateCards: DevRateCardRow[] = [];
+  let devDeductions: Deduction[] = [];
+  let subconRateCards: SubconRateCardRow[] = [];
+  let subconDeductions: Deduction[] = [];
+  let phaseCategoryList: { id: string; name: string }[] = [];
+  let phaseScopeList: { id: string; categoryId: string; name: string }[] = [];
+  let phaseActivityList: { id: string; scopeId: string; code: string; name: string }[] = [];
+  let devUnitModelOptions: { projectId: string; projectName: string; unitModel: string; unitType: string }[] = [];
+  let subconUnitModelOptions: { projectId: string; unitModel: string }[] = [];
+
+  try {
+    [devRateCards, subconRateCards, phaseCategoryList, phaseScopeList, phaseActivityList] = await Promise.all([
+      db.select({
+        id:                developerRateCards.id,
+        projectId:         developerRateCards.projectId,
+        projectName:       projects.name,
+        phaseScopeId:      developerRateCards.phaseScopeId,
+        phaseActivityId:   developerRateCards.phaseActivityId,
+        unitModel:         developerRateCards.unitModel,
+        unitType:          developerRateCards.unitType,
+        phaseCategoryName: phaseCategories.name,
+        phaseScopeName:    phaseScopes.name,
+        phaseActivityCode: phaseActivities.code,
+        phaseActivityName: phaseActivities.name,
+        grossRatePerUnit:  developerRateCards.grossRatePerUnit,
+        retentionPct:      developerRateCards.retentionPct,
+        dpRecoupmentPct:   developerRateCards.dpRecoupmentPct,
+        taxPct:            developerRateCards.taxPct,
+        version:           developerRateCards.version,
+        isActive:          developerRateCards.isActive,
+      })
+      .from(developerRateCards)
+      .leftJoin(projects,        eq(developerRateCards.projectId,       projects.id))
+      .leftJoin(phaseActivities, eq(developerRateCards.phaseActivityId, phaseActivities.id))
+      .leftJoin(phaseScopes,     eq(phaseActivities.scopeId,            phaseScopes.id))
+      .leftJoin(phaseCategories, eq(phaseScopes.categoryId,             phaseCategories.id))
+      .where(eq(developerRateCards.projectId, id))
+      .orderBy(developerRateCards.createdAt),
+
+      db.select({
+        id:                subcontractorRateCards.id,
+        projectId:         subcontractorRateCards.projectId,
+        projectName:       projects.name,
+        phaseScopeId:      subcontractorRateCards.phaseScopeId,
+        phaseActivityId:   subcontractorRateCards.phaseActivityId,
+        unitModel:         subcontractorRateCards.unitModel,
+        unitType:          subcontractorRateCards.unitType,
+        phaseCategoryName: phaseCategories.name,
+        phaseScopeName:    phaseScopes.name,
+        phaseActivityCode: phaseActivities.code,
+        phaseActivityName: phaseActivities.name,
+        ratePerUnit:       subcontractorRateCards.ratePerUnit,
+        retentionPct:      subcontractorRateCards.retentionPct,
+        version:           subcontractorRateCards.version,
+        isActive:          subcontractorRateCards.isActive,
+      })
+      .from(subcontractorRateCards)
+      .leftJoin(projects,        eq(subcontractorRateCards.projectId,       projects.id))
+      .leftJoin(phaseActivities, eq(subcontractorRateCards.phaseActivityId, phaseActivities.id))
+      .leftJoin(phaseScopes,     eq(phaseActivities.scopeId,                phaseScopes.id))
+      .leftJoin(phaseCategories, eq(phaseScopes.categoryId,                 phaseCategories.id))
+      .where(or(eq(subcontractorRateCards.projectId, id), isNull(subcontractorRateCards.projectId)))
+      .orderBy(subcontractorRateCards.createdAt),
+
+      db.select({ id: phaseCategories.id, name: phaseCategories.name }).from(phaseCategories).where(eq(phaseCategories.isActive, true)).orderBy(phaseCategories.sequenceOrder),
+      db.select({ id: phaseScopes.id, categoryId: phaseScopes.categoryId, name: phaseScopes.name }).from(phaseScopes).where(eq(phaseScopes.isActive, true)).orderBy(phaseScopes.sequenceOrder),
+      db.select({ id: phaseActivities.id, scopeId: phaseActivities.scopeId, code: phaseActivities.code, name: phaseActivities.name }).from(phaseActivities).where(eq(phaseActivities.isActive, true)).orderBy(phaseActivities.sequenceOrder),
+    ]);
+
+    devUnitModelOptions = unitModelRows.map((m) => ({ projectId: id, projectName: project.name, unitModel: m.name, unitType: "" }));
+    subconUnitModelOptions = unitModelRows.map((m) => ({ projectId: id, unitModel: m.name }));
+
+    if (devRateCards.length > 0) {
+      devDeductions = await db
+        .select({ id: developerRateCardDeductions.id, rateCardId: developerRateCardDeductions.rateCardId, name: developerRateCardDeductions.name, deductionPct: developerRateCardDeductions.deductionPct, isActive: developerRateCardDeductions.isActive })
+        .from(developerRateCardDeductions)
+        .where(inArray(developerRateCardDeductions.rateCardId, devRateCards.map((r) => r.id)));
+    }
+    if (subconRateCards.length > 0) {
+      subconDeductions = await db
+        .select({ id: subcontractorRateCardDeductions.id, rateCardId: subcontractorRateCardDeductions.rateCardId, name: subcontractorRateCardDeductions.name, deductionPct: subcontractorRateCardDeductions.deductionPct, isActive: subcontractorRateCardDeductions.isActive })
+        .from(subcontractorRateCardDeductions)
+        .where(inArray(subcontractorRateCardDeductions.rateCardId, subconRateCards.map((r) => r.id)));
+    }
+  } catch {
+    // schema not yet migrated — page still loads without rate cards
+  }
+
   const sc = STATUS_STYLE[project.status] ?? { bg: "#f3f4f6", color: "#6b7280" };
   const isApproved = project.status === "ACTIVE" && !!project.bodApprovedAt;
 
@@ -233,6 +350,32 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             View Scope of Work →
           </a>
         </div>
+
+        {/* Bill of Quantities — Developer Rate Cards */}
+        <DevRateCards
+          title="Bill of Quantities (BOQ)"
+          devProjects={[{ id: project.id, name: project.name }]}
+          rateCards={devRateCards}
+          deductions={devDeductions}
+          phaseCategories={phaseCategoryList}
+          phaseScopes={phaseScopeList}
+          phaseActivities={phaseActivityList}
+          unitModelOptions={devUnitModelOptions}
+          isAdmin={isAdmin}
+        />
+
+        {/* Labor BOM — Subcontractor Rate Cards */}
+        <SubconRateCards
+          title="Labor BOM"
+          rateCards={subconRateCards}
+          deductions={subconDeductions}
+          projects={[{ id: project.id, name: project.name }]}
+          phaseCategories={phaseCategoryList}
+          phaseScopes={phaseScopeList}
+          phaseActivities={phaseActivityList}
+          unitModelOptions={subconUnitModelOptions}
+          isAdmin={isAdmin}
+        />
       </div>
     </main>
   );
