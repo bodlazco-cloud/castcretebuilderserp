@@ -404,7 +404,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
                         <span style={{ fontWeight: 700, color: "#111827", fontSize: "0.9rem" }}>{block.blockName}</span>
                         <span style={{ marginLeft: "0.5rem", fontSize: "0.8rem", color: "#6b7280" }}>{blockUnits.length}/{block.totalLots} lots</span>
                       </div>
-                      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+                      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
                         <EditBlockForm blockId={block.id} initialName={block.blockName} initialLots={block.totalLots} />
                         <DeleteBlockButton blockId={block.id} />
                       </div>
