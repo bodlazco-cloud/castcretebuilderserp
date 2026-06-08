@@ -282,8 +282,9 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   });
 
   // Blocks & Units — group units within each block by unit model
-  type BlockModelGroup = { unitModel: string; units: typeof unitRows };
-  function groupUnitsByModel(units: typeof unitRows): BlockModelGroup[] {
+  type ProjectUnitRow = (typeof unitRows)[number];
+  type BlockModelGroup = { unitModel: string; units: ProjectUnitRow[] };
+  function groupUnitsByModel(units: ProjectUnitRow[]): BlockModelGroup[] {
     const map = new Map<string, BlockModelGroup>();
     for (const u of units) {
       const key = u.unitModel ?? "Unassigned";
