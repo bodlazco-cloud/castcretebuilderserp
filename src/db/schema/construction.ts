@@ -6,6 +6,7 @@ import { users } from "./core";
 import { projects } from "./projects";
 import { projectUnits, unitMilestones, unitActivities } from "./units";
 import { subcontractors } from "./subcontractors";
+import { phaseScopes, phaseActivities } from "./phases";
 import { workCategoryEnum, tradeTypeEnum, delayReasonEnum, milestoneDocTypeEnum, approvalStatusEnum, deptCodeEnum } from "./enums";
 
 export const taskAssignments = pgTable("task_assignments", {
@@ -15,6 +16,7 @@ export const taskAssignments = pgTable("task_assignments", {
   subconId:             uuid("subcon_id").notNull().references(() => subcontractors.id),
   category:             workCategoryEnum("category").notNull(),
   workType:             tradeTypeEnum("work_type").notNull(),
+  phaseScopeId:         uuid("phase_scope_id").references(() => phaseScopes.id),
   startDate:            date("start_date").notNull(),
   endDate:              date("end_date").notNull(),
   status:               varchar("status", { length: 30 }).notNull().default("DRAFT"),
@@ -23,6 +25,11 @@ export const taskAssignments = pgTable("task_assignments", {
   capacityCheckedBy:    uuid("capacity_checked_by").references(() => users.id),
   issuedBy:             uuid("issued_by").notNull().references(() => users.id),
   issuedAt:             timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  submittedAt:          timestamp("submitted_at", { withTimezone: true }),
+  submittedBy:          uuid("submitted_by").references(() => users.id),
+  bodApprovedAt:        timestamp("bod_approved_at", { withTimezone: true }),
+  bodApprovedBy:        uuid("bod_approved_by").references(() => users.id),
+  rejectionReason:      text("rejection_reason"),
   createdAt:            timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -31,7 +38,8 @@ export const dailyProgressEntries = pgTable("daily_progress_entries", {
   projectId:          uuid("project_id").notNull().references(() => projects.id),
   unitId:             uuid("unit_id").notNull().references(() => projectUnits.id),
   taskAssignmentId:   uuid("task_assignment_id").notNull().references(() => taskAssignments.id),
-  unitActivityId:     uuid("unit_activity_id").notNull().references(() => unitActivities.id),
+  unitActivityId:     uuid("unit_activity_id").references(() => unitActivities.id),
+  phaseActivityId:    uuid("phase_activity_id").references(() => phaseActivities.id),
   entryDate:          date("entry_date").notNull(),
   status:             varchar("status", { length: 20 }).notNull().default("STARTED"),
   subconId:           uuid("subcon_id").notNull().references(() => subcontractors.id),
@@ -40,8 +48,12 @@ export const dailyProgressEntries = pgTable("daily_progress_entries", {
   delayType:          delayReasonEnum("delay_type"),
   issuesDetails:      text("issues_details"),
   docGapFlagged:      boolean("doc_gap_flagged").notNull().default(false),
-  fileAttachments:    jsonb("file_attachments"),  // [{url, type, uploaded_at}]
+  fileAttachments:    jsonb("file_attachments"),
   enteredBy:          uuid("entered_by").notNull().references(() => users.id),
+  approvalStatus:     varchar("approval_status", { length: 30 }).notNull().default("PENDING_REVIEW"),
+  approvedBy:         uuid("approved_by").references(() => users.id),
+  approvedAt:         timestamp("approved_at", { withTimezone: true }),
+  rejectionReason:    text("rejection_reason"),
   createdAt:          timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
