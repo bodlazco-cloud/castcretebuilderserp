@@ -70,7 +70,7 @@ export const ntpStatusEnum = pgEnum("ntp_status", [
 
 // Resource forecast lifecycle driven by the Chain of Necessity
 export const resourceForecastStatusEnum = pgEnum("resource_forecast_status", [
-  "PENDING_PR", "PR_CREATED", "PO_ISSUED", "ISSUED",
+  "PENDING_APPROVAL", "PENDING_PR", "PR_CREATED", "PO_ISSUED", "ISSUED",
 ]);
 
 // Explicit payment flow for Finance module (DRAFT → PREPARED → RELEASED)
