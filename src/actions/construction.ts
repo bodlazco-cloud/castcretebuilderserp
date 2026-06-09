@@ -402,7 +402,7 @@ export async function submitNtpForApproval(
   return { success: true };
 }
 
-/// Step 1: Manager reviews → forwards to BOD
+// Step 1: Manager reviews → forwards to BOD
 export async function reviewNtp(
   ntpId: string,
   reviewedBy: string,
@@ -434,7 +434,7 @@ export async function reviewNtp(
   return { success: true };
 }
 
-/// Step 2: BOD/Admin approves → ACTIVE
+// Step 2: BOD/Admin approves → ACTIVE
 export async function approveNtp(
   ntpId: string,
   approvedBy: string,
