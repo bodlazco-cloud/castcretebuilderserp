@@ -450,6 +450,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
 
+        {/* Bill of Quantities — Developer Rate Cards */}
+        <DevRateCards
+          title="Bill of Quantities (BOQ)"
+          devProjects={[{ id: project.id, name: project.name }]}
+          rateCards={devRateCards}
+          deductions={devDeductions}
+          phaseCategories={phaseCategoryList}
+          phaseScopes={phaseScopeList}
+          phaseActivities={phaseActivityList}
+          unitModelOptions={devUnitModelOptions}
+          isAdmin={isAdmin}
+        />
+
         {/* Material BOM */}
         <div style={{ marginBottom: "1.5rem" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -543,19 +556,6 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             </div>
           )}
         </div>
-
-        {/* Bill of Quantities — Developer Rate Cards */}
-        <DevRateCards
-          title="Bill of Quantities (BOQ)"
-          devProjects={[{ id: project.id, name: project.name }]}
-          rateCards={devRateCards}
-          deductions={devDeductions}
-          phaseCategories={phaseCategoryList}
-          phaseScopes={phaseScopeList}
-          phaseActivities={phaseActivityList}
-          unitModelOptions={devUnitModelOptions}
-          isAdmin={isAdmin}
-        />
 
         {/* Labor BOM — Subcontractor Rate Cards */}
         <SubconRateCards
