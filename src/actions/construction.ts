@@ -402,7 +402,7 @@ export async function submitNtpForApproval(
   return { success: true };
 }
 
-// Step 1: Manager reviews → forwards to BOD
+/// Step 1: Manager reviews → forwards to BOD
 export async function reviewNtp(
   ntpId: string,
   reviewedBy: string,
@@ -416,16 +416,25 @@ export async function reviewNtp(
   if (!ntp) return { success: false, error: "NTP not found." };
   if (ntp.status !== "PENDING_REVIEW")
     return { success: false, error: `NTP must be PENDING_REVIEW to review (current: ${ntp.status}).` };
-  await db
-    .update(taskAssignments)
-    .set({ status: "PENDING_BOD", reviewedAt: new Date(), reviewedBy })
-    .where(eq(taskAssignments.id, ntpId));
+  // Try with reviewed_at/reviewed_by (requires migration 037).
+  // Fall back to status-only update if columns don't exist yet.
+  try {
+    await db
+      .update(taskAssignments)
+      .set({ status: "PENDING_BOD", reviewedAt: new Date(), reviewedBy })
+      .where(eq(taskAssignments.id, ntpId));
+  } catch {
+    await db
+      .update(taskAssignments)
+      .set({ status: "PENDING_BOD" })
+      .where(eq(taskAssignments.id, ntpId));
+  }
   revalidatePath("/construction/ntp");
   revalidatePath(`/construction/ntp/${ntpId}`);
   return { success: true };
 }
 
-// Step 2: BOD/Admin approves → ACTIVE
+/// Step 2: BOD/Admin approves → ACTIVE
 export async function approveNtp(
   ntpId: string,
   approvedBy: string,
