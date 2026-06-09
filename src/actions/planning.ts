@@ -256,7 +256,7 @@ export type ForecastUpdateResult = { success: boolean; error?: string };
 
 export async function updateForecastStatus(
   forecastId: string,
-  newStatus: "PENDING_PR" | "PR_CREATED" | "PO_ISSUED" | "ISSUED",
+  newStatus: "PENDING_APPROVAL" | "PENDING_PR" | "PR_CREATED" | "PO_ISSUED" | "ISSUED",
   prId?: string,
 ): Promise<ForecastUpdateResult> {
   const user = await getAuthUser();
@@ -613,28 +613,27 @@ export async function generateResourceForecastsForUnit(
 
   if (toCreate.length === 0) return;
 
+  // Skip EQUIPMENT forecasts — motorpool is handled as monthly rental
+  const nonEquipment = toCreate.filter((b) => !b.equipmentType);
+  if (nonEquipment.length === 0) return;
+
   await db.insert(resourceForecasts).values(
-    toCreate.map((b) => ({
+    nonEquipment.map((b) => ({
       projectId,
       unitId,
       masterBomEntryId: b.id,
       forecastType: (
-        b.equipmentType
-          ? "EQUIPMENT"
-          : b.matCategory === "CONCRETE"
-          ? "CONCRETE"
-          : "MATERIAL"
-      ) as "MATERIAL" | "CONCRETE" | "EQUIPMENT",
+        b.matCategory === "CONCRETE" ? "CONCRETE" : "MATERIAL"
+      ) as "MATERIAL" | "CONCRETE",
       grossQuantity:    b.quantityPerUnit,
       quantityConsumed: "0",
-      status:           "PENDING_PR" as const,
-      equipmentType:    b.equipmentType ?? null,
+      status:           "PENDING_APPROVAL" as const,
+      equipmentType:    null,
     })),
   );
 
   revalidatePath("/planning/mrp-queue");
   revalidatePath("/planning/batching-forecast");
-  revalidatePath("/planning/motorpool-needs");
   revalidatePath("/planning");
 }
 
@@ -643,6 +642,37 @@ export async function generateResourceForecastsForUnit(
 export type RaiseMrpPrResult =
   | { success: true; prId: string }
   | { success: false; error: string };
+
+export async function approveForecast(
+  forecastId: string,
+): Promise<ForecastUpdateResult> {
+  try {
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+      return { success: false, error: "Only Planning, Admin, or BOD may approve forecasts." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (forecast.status !== "PENDING_APPROVAL") {
+      return { success: false, error: `Forecast must be PENDING_APPROVAL to approve (current: ${forecast.status}).` };
+    }
+    await db.update(resourceForecasts)
+      .set({ status: "PENDING_PR" })
+      .where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    revalidatePath("/planning/batching-forecast");
+    revalidatePath("/planning");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
 
 export async function raiseMrpPurchaseRequisition(
   forecastId: string,

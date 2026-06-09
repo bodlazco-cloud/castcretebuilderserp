@@ -4,7 +4,7 @@ import { db } from "@/db";
 import {
   projects, taskAssignments, subcontractors,
   subcontractorCapacityMatrix, workAccomplishedReports,
-  milestoneDocuments, unitMilestones, dailyProgressEntries,
+  milestoneDocuments, unitMilestones, dailyProgressEntries, materialTransfers,
 } from "@/db/schema";
 import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -236,12 +236,35 @@ export type LogProgressResult =
   | { success: true; entryId: string }
   | { success: false; error: string };
 
+async function checkMaterialsTransferred(taskAssignmentId: string, unitId: string): Promise<boolean> {
+  try {
+    const [transfer] = await db
+      .select({ id: materialTransfers.id })
+      .from(materialTransfers)
+      .where(
+        and(
+          eq(materialTransfers.unitId, unitId),
+          inArray(materialTransfers.status, ["RECEIVED", "TRANSFERRED"]),
+        ),
+      )
+      .limit(1);
+    return !!transfer;
+  } catch {
+    return false;
+  }
+}
+
 export async function logDailyProgress(
   input: z.infer<typeof LogProgressSchema>,
 ): Promise<LogProgressResult> {
   const parsed = LogProgressSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Invalid input." };
   const d = parsed.data;
+
+  const materialsReady = await checkMaterialsTransferred(d.taskAssignmentId, d.unitId);
+  if (!materialsReady) {
+    return { success: false, error: "Materials have not been transferred to the subcontractor for this unit. Complete material transfer in Procurement before logging progress." };
+  }
 
   const docGapFlagged = !!d.delayType || !!d.issuesDetails;
 
@@ -301,6 +324,14 @@ export async function logDailyProgressBulk(
   const parsed = LogProgressBulkSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Invalid input." };
   const d = parsed.data;
+
+  // Check materials transferred for at least one of the units
+  const transferChecks = await Promise.all(
+    d.unitIds.map((uid) => checkMaterialsTransferred(d.taskAssignmentId, uid)),
+  );
+  if (!transferChecks.some(Boolean)) {
+    return { success: false, error: "Materials have not been transferred to the subcontractor. Complete material transfer in Procurement before logging progress." };
+  }
 
   const docGapFlagged = !!d.delayType || !!d.issuesDetails;
 
