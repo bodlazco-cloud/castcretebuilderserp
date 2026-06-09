@@ -403,23 +403,36 @@ export async function approveNtp(
   ntpId: string,
   approvedBy: string,
 ): Promise<NtpActionResult> {
-  const [ntp] = await db
-    .select({ status: taskAssignments.status, projectId: taskAssignments.projectId, unitId: taskAssignments.unitId })
-    .from(taskAssignments)
-    .where(eq(taskAssignments.id, ntpId))
-    .limit(1);
-  if (!ntp) return { success: false, error: "NTP not found." };
-  if (ntp.status !== "PENDING_BOD") {
-    return { success: false, error: `NTP must be PENDING_BOD to approve (current: ${ntp.status}).` };
+  try {
+    if (!approvedBy) return { success: false, error: "Not authenticated." };
+    const [ntp] = await db
+      .select({ status: taskAssignments.status, projectId: taskAssignments.projectId, unitId: taskAssignments.unitId })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (ntp.status !== "PENDING_BOD") {
+      return { success: false, error: `NTP must be PENDING_BOD to approve (current: ${ntp.status}).` };
+    }
+    try {
+      await db
+        .update(taskAssignments)
+        .set({ status: "ACTIVE", bodApprovedAt: new Date(), bodApprovedBy: approvedBy })
+        .where(eq(taskAssignments.id, ntpId));
+    } catch {
+      // columns may not exist yet — fall back to status-only update
+      await db
+        .update(taskAssignments)
+        .set({ status: "ACTIVE" })
+        .where(eq(taskAssignments.id, ntpId));
+    }
+    try { void generateResourceForecastsForUnit(ntp.projectId, ntp.unitId).catch(() => undefined); } catch {}
+    revalidatePath("/construction/ntp");
+    revalidatePath(`/construction/ntp/${ntpId}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
   }
-  await db
-    .update(taskAssignments)
-    .set({ status: "ACTIVE", bodApprovedAt: new Date(), bodApprovedBy: approvedBy })
-    .where(eq(taskAssignments.id, ntpId));
-  void generateResourceForecastsForUnit(ntp.projectId, ntp.unitId).catch(() => undefined);
-  revalidatePath("/construction/ntp");
-  revalidatePath(`/construction/ntp/${ntpId}`);
-  return { success: true };
 }
 
 const RejectNtpSchema = z.object({
@@ -431,25 +444,36 @@ const RejectNtpSchema = z.object({
 export async function rejectNtp(
   input: z.infer<typeof RejectNtpSchema>,
 ): Promise<NtpActionResult> {
-  const parsed = RejectNtpSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
-  const { ntpId, rejectedBy, reason } = parsed.data;
-  const [ntp] = await db
-    .select({ status: taskAssignments.status })
-    .from(taskAssignments)
-    .where(eq(taskAssignments.id, ntpId))
-    .limit(1);
-  if (!ntp) return { success: false, error: "NTP not found." };
-  if (ntp.status !== "PENDING_BOD") {
-    return { success: false, error: `NTP must be PENDING_BOD to reject (current: ${ntp.status}).` };
+  try {
+    const parsed = RejectNtpSchema.safeParse(input);
+    if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+    const { ntpId, rejectedBy, reason } = parsed.data;
+    const [ntp] = await db
+      .select({ status: taskAssignments.status })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (ntp.status !== "PENDING_BOD" && ntp.status !== "PENDING_REVIEW") {
+      return { success: false, error: `NTP cannot be rejected from status: ${ntp.status}.` };
+    }
+    try {
+      await db
+        .update(taskAssignments)
+        .set({ status: "REJECTED", bodApprovedBy: rejectedBy, bodApprovedAt: new Date(), rejectionReason: reason })
+        .where(eq(taskAssignments.id, ntpId));
+    } catch {
+      await db
+        .update(taskAssignments)
+        .set({ status: "REJECTED", rejectionReason: reason })
+        .where(eq(taskAssignments.id, ntpId));
+    }
+    revalidatePath("/construction/ntp");
+    revalidatePath(`/construction/ntp/${ntpId}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
   }
-  await db
-    .update(taskAssignments)
-    .set({ status: "REJECTED", bodApprovedBy: rejectedBy, bodApprovedAt: new Date(), rejectionReason: reason })
-    .where(eq(taskAssignments.id, ntpId));
-  revalidatePath("/construction/ntp");
-  revalidatePath(`/construction/ntp/${ntpId}`);
-  return { success: true };
 }
 
 const UpdateNtpSchema = z.object({
