@@ -49,7 +49,7 @@ export const resourceForecasts = pgTable("resource_forecasts", {
   grossQuantity:        numeric("gross_quantity", { precision: 15, scale: 4 }).notNull(),
   quantityConsumed:     numeric("quantity_consumed", { precision: 15, scale: 4 }).notNull().default("0"),
   // quantity_remaining is a generated column in the DB — read-only from ORM
-  status:               forecastStatusEnum("status").notNull().default("PENDING_PR"),
+  status:               forecastStatusEnum("status").notNull().default("PENDING_APPROVAL"),
   purchaseRequisitionId: uuid("purchase_requisition_id").references(() => purchaseRequisitions.id),
   equipmentType:        varchar("equipment_type", { length: 100 }),
   createdAt:            timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
