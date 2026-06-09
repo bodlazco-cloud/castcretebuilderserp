@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { dailyProgressEntries, projectUnits, subcontractors, projects, taskAssignments } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
+import { getAuthUser, canApproveProgressEntries } from "@/lib/supabase-server";
 import { DpeBulkApprove } from "./DpeBulkApprove";
 
 const ACCENT = "#057a55";
@@ -15,7 +15,7 @@ const AP_STYLE: Record<string, { bg: string; color: string }> = {
 
 export default async function DailyProgressPage() {
   const user = await getAuthUser();
-  const canApprove = await isAdminOrBod();
+  const canApprove = await canApproveProgressEntries();
   const userId = user?.id ?? "";
 
   const rows = await db

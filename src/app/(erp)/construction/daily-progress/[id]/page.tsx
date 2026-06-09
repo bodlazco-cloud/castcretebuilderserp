@@ -6,7 +6,7 @@ import {
 } from "@/db/schema";
 import { phaseActivities } from "@/db/schema/phases";
 import { eq } from "drizzle-orm";
-import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
+import { getAuthUser, canApproveProgressEntries } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { DpeApprovalPanel } from "./DpeApprovalPanel";
 
@@ -26,7 +26,7 @@ const DELAY_LABELS: Record<string, string> = {
 
 export default async function DailyProgressDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser();
-  const canApprove = await isAdminOrBod();
+  const canApprove = await canApproveProgressEntries();
   const { id } = await params;
 
   const [entry] = await db

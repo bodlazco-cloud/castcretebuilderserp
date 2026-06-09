@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, departments } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 /**
@@ -51,6 +51,28 @@ export async function isAdminOrBod(): Promise<boolean> {
       .where(eq(users.email, authUser.email));
     if (!dbUser) return false;
     return dbUser.role === "ADMIN" || dbUser.role === "BOD";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns true if the user can approve daily progress entries:
+ * - ADMIN or BOD (always), OR
+ * - role = MANAGER in the CONSTRUCTION department
+ */
+export async function canApproveProgressEntries(): Promise<boolean> {
+  const authUser = await getAuthUser();
+  if (!authUser?.email) return false;
+  try {
+    const [row] = await db
+      .select({ role: users.role, deptCode: departments.code })
+      .from(users)
+      .leftJoin(departments, eq(users.deptId, departments.id))
+      .where(eq(users.email, authUser.email));
+    if (!row) return false;
+    if (row.role === "ADMIN" || row.role === "BOD") return true;
+    return row.role === "MANAGER" && row.deptCode === "CONSTRUCTION";
   } catch {
     return false;
   }
