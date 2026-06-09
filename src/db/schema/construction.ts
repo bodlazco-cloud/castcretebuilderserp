@@ -6,6 +6,7 @@ import { users } from "./core";
 import { projects } from "./projects";
 import { projectUnits, unitMilestones, unitActivities } from "./units";
 import { subcontractors } from "./subcontractors";
+import { phaseScopes, phaseActivities } from "./phases";
 import { workCategoryEnum, tradeTypeEnum, delayReasonEnum, milestoneDocTypeEnum, approvalStatusEnum, deptCodeEnum } from "./enums";
 
 export const taskAssignments = pgTable("task_assignments", {
@@ -15,6 +16,7 @@ export const taskAssignments = pgTable("task_assignments", {
   subconId:             uuid("subcon_id").notNull().references(() => subcontractors.id),
   category:             workCategoryEnum("category").notNull(),
   workType:             tradeTypeEnum("work_type").notNull(),
+  phaseScopeId:         uuid("phase_scope_id").references(() => phaseScopes.id),
   startDate:            date("start_date").notNull(),
   endDate:              date("end_date").notNull(),
   status:               varchar("status", { length: 30 }).notNull().default("DRAFT"),
@@ -31,7 +33,8 @@ export const dailyProgressEntries = pgTable("daily_progress_entries", {
   projectId:          uuid("project_id").notNull().references(() => projects.id),
   unitId:             uuid("unit_id").notNull().references(() => projectUnits.id),
   taskAssignmentId:   uuid("task_assignment_id").notNull().references(() => taskAssignments.id),
-  unitActivityId:     uuid("unit_activity_id").notNull().references(() => unitActivities.id),
+  unitActivityId:     uuid("unit_activity_id").references(() => unitActivities.id),
+  phaseActivityId:    uuid("phase_activity_id").references(() => phaseActivities.id),
   entryDate:          date("entry_date").notNull(),
   status:             varchar("status", { length: 20 }).notNull().default("STARTED"),
   subconId:           uuid("subcon_id").notNull().references(() => subcontractors.id),

@@ -19,14 +19,15 @@ import { generateResourceForecastsForUnit } from "@/actions/planning";
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const IssueNtpSchema = z.object({
-  projectId:   z.string().uuid(),
-  unitId:      z.string().uuid(),
-  subconId:    z.string().uuid(),
-  category:    z.enum(["STRUCTURAL", "ARCHITECTURAL", "TURNOVER"]),
-  workType:    z.enum(["STRUCTURAL", "ARCHITECTURAL", "BOTH"]),
-  startDate:   z.string().date(),
-  endDate:     z.string().date(),
-  issuedBy:    z.string().uuid(),
+  projectId:    z.string().uuid(),
+  unitId:       z.string().uuid(),
+  subconId:     z.string().uuid(),
+  category:     z.enum(["SLAB","STRUCTURAL","SPECIALTY_WORKS","MEPF","ARCHITECTURAL","TURNOVER"]),
+  workType:     z.enum(["STRUCTURAL", "ARCHITECTURAL", "BOTH"]),
+  phaseScopeId: z.string().uuid().optional(),
+  startDate:    z.string().date(),
+  endDate:      z.string().date(),
+  issuedBy:     z.string().uuid(),
 });
 
 export type IssueNtpResult =
@@ -39,7 +40,7 @@ export async function issueTaskAssignment(
   const parsed = IssueNtpSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Invalid input." };
 
-  const { projectId, unitId, subconId, category, workType, startDate, endDate, issuedBy } =
+  const { projectId, unitId, subconId, category, workType, phaseScopeId, startDate, endDate, issuedBy } =
     parsed.data;
 
   // ── Gate 1: BOD must have approved the project ────────────────────────────
@@ -122,6 +123,7 @@ export async function issueTaskAssignment(
       subconId,
       category: category as any,
       workType: workType as any,
+      phaseScopeId: phaseScopeId ?? null,
       startDate,
       endDate,
       status: "ACTIVE",
@@ -221,7 +223,7 @@ const LogProgressSchema = z.object({
   projectId:        z.string().uuid(),
   unitId:           z.string().uuid(),
   taskAssignmentId: z.string().uuid(),
-  unitActivityId:   z.string().uuid(),
+  unitActivityId:   z.string().uuid().optional(),
   entryDate:        z.string().date(),
   subconId:         z.string().uuid(),
   actualManpower:   z.number().int().min(0),
@@ -249,7 +251,7 @@ export async function logDailyProgress(
       projectId:       d.projectId,
       unitId:          d.unitId,
       taskAssignmentId: d.taskAssignmentId,
-      unitActivityId:  d.unitActivityId,
+      unitActivityId:  d.unitActivityId ?? null,
       entryDate:       d.entryDate,
       status:          "STARTED",
       subconId:        d.subconId,
@@ -263,6 +265,66 @@ export async function logDailyProgress(
 
   revalidatePath("/construction");
   return { success: true, entryId: entry.id };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOG DAILY PROGRESS — PHASE-ACTIVITY BASED (new workflow)
+// Accepts multiple activities (checklist) and creates one entry per activity.
+// Requires migration 035 to be applied (phase_activity_id column + nullable unit_activity_id).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const ActivityEntrySchema = z.object({
+  phaseActivityId: z.string().uuid(),
+  status:          z.enum(["STARTED","ONGOING","COMPLETED"]).default("STARTED"),
+});
+
+const LogProgressBulkSchema = z.object({
+  projectId:        z.string().uuid(),
+  unitIds:          z.array(z.string().uuid()).min(1),
+  taskAssignmentId: z.string().uuid(),
+  subconId:         z.string().uuid(),
+  activities:       z.array(ActivityEntrySchema).min(1),
+  entryDate:        z.string().date(),
+  actualManpower:   z.number().int().min(0),
+  delayType:        z.enum(["WEATHER","MATERIAL_DELAY","MANPOWER_SHORTAGE","EQUIPMENT_BREAKDOWN","DESIGN_CHANGE","OTHER"]).optional(),
+  issuesDetails:    z.string().optional(),
+  enteredBy:        z.string().uuid(),
+});
+
+export type LogProgressBulkResult =
+  | { success: true; count: number }
+  | { success: false; error: string };
+
+export async function logDailyProgressBulk(
+  input: z.infer<typeof LogProgressBulkSchema>,
+): Promise<LogProgressBulkResult> {
+  const parsed = LogProgressBulkSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const d = parsed.data;
+
+  const docGapFlagged = !!d.delayType || !!d.issuesDetails;
+
+  const rows = d.unitIds.flatMap((unitId: string) =>
+    d.activities.map((act: { phaseActivityId: string; status: string }) => ({
+      projectId:        d.projectId,
+      unitId,
+      taskAssignmentId: d.taskAssignmentId,
+      unitActivityId:   null,
+      phaseActivityId:  act.phaseActivityId,
+      entryDate:        d.entryDate,
+      status:           act.status,
+      subconId:         d.subconId,
+      actualManpower:   d.actualManpower,
+      delayType:        (d.delayType as any) ?? null,
+      issuesDetails:    d.issuesDetails ?? null,
+      docGapFlagged,
+      enteredBy:        d.enteredBy,
+    })),
+  );
+
+  await db.insert(dailyProgressEntries).values(rows);
+  revalidatePath("/construction");
+  return { success: true, count: rows.length };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

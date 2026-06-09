@@ -3,6 +3,7 @@ import { getAuthUser } from "@/lib/supabase-server";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { phaseCategories, phaseScopes } from "@/db/schema/phases";
 import { IssueNtpForm } from "./IssueNtpForm";
 
 const ACCENT = "#057a55";
@@ -10,7 +11,7 @@ const ACCENT = "#057a55";
 export default async function IssueNtpPage() {
   const user = await getAuthUser();
 
-  const [projects, units, subcontractors] = await Promise.all([
+  const [projectsList, units, subcontractors, categories, scopes] = await Promise.all([
     db.select({ id: schema.projects.id, name: schema.projects.name, status: schema.projects.status })
       .from(schema.projects).orderBy(schema.projects.name),
     db.select({
@@ -24,11 +25,17 @@ export default async function IssueNtpPage() {
       code: schema.subcontractors.code, tradeTypes: schema.subcontractors.tradeTypes,
     }).from(schema.subcontractors).where(eq(schema.subcontractors.isActive, true))
       .orderBy(schema.subcontractors.name),
+    db.select({ id: phaseCategories.id, code: phaseCategories.code, name: phaseCategories.name, sequenceOrder: phaseCategories.sequenceOrder })
+      .from(phaseCategories).where(eq(phaseCategories.isActive, true))
+      .orderBy(phaseCategories.sequenceOrder),
+    db.select({ id: phaseScopes.id, name: phaseScopes.name, code: phaseScopes.code, categoryId: phaseScopes.categoryId, sequenceOrder: phaseScopes.sequenceOrder })
+      .from(phaseScopes).where(eq(phaseScopes.isActive, true))
+      .orderBy(phaseScopes.sequenceOrder),
   ]);
 
   return (
     <main style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ padding: "2rem", maxWidth: "720px", margin: "0 auto" }}>
+      <div style={{ padding: "2rem", maxWidth: "760px", margin: "0 auto" }}>
         <div style={{ marginBottom: "1.5rem" }}>
           <a href="/construction" style={{ fontSize: "0.85rem", color: ACCENT, textDecoration: "none" }}>
             ← Back to Construction
@@ -43,9 +50,11 @@ export default async function IssueNtpPage() {
           </div>
           <div style={{ padding: "1.5rem" }}>
             <IssueNtpForm
-              projects={projects}
+              projects={projectsList}
               units={units.map((u) => ({ ...u, unitType: u.unitType ?? "MID" }))}
               subcontractors={subcontractors.map((s) => ({ ...s, tradeTypes: s.tradeTypes ?? [] }))}
+              categories={categories}
+              scopes={scopes}
               userId={user?.id ?? ""}
             />
           </div>
