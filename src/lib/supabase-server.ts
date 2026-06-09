@@ -77,3 +77,12 @@ export async function canApproveProgressEntries(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Returns true if the user can review NTPs (forward to BOD):
+ * - ADMIN or BOD (always), OR
+ * - role = MANAGER in the CONSTRUCTION department
+ */
+export async function canReviewNtp(): Promise<boolean> {
+  return canApproveProgressEntries();
+}

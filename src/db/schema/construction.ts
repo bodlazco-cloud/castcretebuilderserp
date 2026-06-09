@@ -27,6 +27,8 @@ export const taskAssignments = pgTable("task_assignments", {
   issuedAt:             timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
   submittedAt:          timestamp("submitted_at", { withTimezone: true }),
   submittedBy:          uuid("submitted_by").references(() => users.id),
+  reviewedAt:           timestamp("reviewed_at", { withTimezone: true }),
+  reviewedBy:           uuid("reviewed_by").references(() => users.id),
   bodApprovedAt:        timestamp("bod_approved_at", { withTimezone: true }),
   bodApprovedBy:        uuid("bod_approved_by").references(() => users.id),
   rejectionReason:      text("rejection_reason"),
