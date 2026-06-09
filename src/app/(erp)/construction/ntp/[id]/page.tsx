@@ -6,7 +6,7 @@ import {
 } from "@/db/schema";
 import { phaseScopes } from "@/db/schema/phases";
 import { eq, desc } from "drizzle-orm";
-import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
+import { getAuthUser, isAdminOrBod, canReviewNtp } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { NtpApprovalPanel } from "./NtpApprovalPanel";
 
@@ -32,7 +32,7 @@ const AP_STATUS: Record<string, { bg: string; color: string }> = {
 
 export default async function NtpDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser();
-  const canApprove = await isAdminOrBod();
+  const [canApprove, canReview] = await Promise.all([isAdminOrBod(), canReviewNtp()]);
   const { id } = await params;
 
   const [ntp] = await db
@@ -46,6 +46,7 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
       capacityCheckPassed: taskAssignments.capacityCheckPassed,
       issuedAt:        taskAssignments.issuedAt,
       submittedAt:     taskAssignments.submittedAt,
+      reviewedAt:      taskAssignments.reviewedAt,
       bodApprovedAt:   taskAssignments.bodApprovedAt,
       rejectionReason: taskAssignments.rejectionReason,
       unitCode:        projectUnits.unitCode,
@@ -149,9 +150,11 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
           ntpId={ntp.id}
           status={ntp.status}
           userId={user?.id ?? ""}
+          canReview={canReview}
           canApprove={canApprove}
           rejectionReason={ntp.rejectionReason}
           submittedAt={ntp.submittedAt?.toISOString() ?? null}
+          reviewedAt={ntp.reviewedAt?.toISOString() ?? null}
           bodApprovedAt={ntp.bodApprovedAt?.toISOString() ?? null}
         />
 
