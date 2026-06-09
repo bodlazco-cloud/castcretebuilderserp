@@ -20,7 +20,10 @@ const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
 
 export default async function NtpRegisterPage() {
   const user = await getAuthUser();
-  const [canApprove, canReview] = await Promise.all([isAdminOrBod(), canReviewNtp()]);
+  const [canApprove, canReview] = await Promise.all([
+    isAdminOrBod().catch(() => false),
+    canReviewNtp().catch(() => false),
+  ]);
   const userId = user?.id ?? "";
 
   const rows = await db
