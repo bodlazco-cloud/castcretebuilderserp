@@ -21,8 +21,6 @@ const labelStyle: React.CSSProperties = {
   color: "#374151", marginBottom: "0.35rem",
 };
 
-const WORK_TYPES = ["STRUCTURAL", "ARCHITECTURAL", "BOTH"] as const;
-
 // Map phaseCategory code → workCategoryEnum value
 const categoryCodeMap: Record<string, string> = {
   SLAB:             "SLAB",
@@ -112,7 +110,7 @@ export function IssueNtpForm({
           unitId,
           subconId:     fd.get("subconId") as string,
           category:     categoryValue,
-          workType:     fd.get("workType") as "STRUCTURAL" | "ARCHITECTURAL" | "BOTH",
+          workType:     "STRUCTURAL",
           phaseScopeId: selectedScope || undefined,
           startDate:    fd.get("startDate") as string,
           endDate:      fd.get("endDate") as string,
@@ -253,17 +251,6 @@ export function IssueNtpForm({
             <option key={s.id} value={s.id}>{s.code} — {s.name} ({s.tradeTypes.join(", ")})</option>
           ))}
         </select>
-      </label>
-
-      {/* Work Type (for capacity check) */}
-      <label>
-        <span style={labelStyle}>Work Type <span style={{ color: "#e02424" }}>*</span></span>
-        <select name="workType" required style={inputStyle}>
-          {WORK_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
-        </select>
-        <span style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: "0.25rem", display: "block" }}>
-          Used for subcontractor capacity check
-        </span>
       </label>
 
       {/* Dates */}

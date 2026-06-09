@@ -65,7 +65,6 @@ export default async function EditNtpPage({ params }: { params: Promise<{ id: st
               ntpId={id}
               initial={{
                 subconId:     ntp.subconId,
-                workType:     ntp.workType as any,
                 startDate:    ntp.startDate,
                 endDate:      ntp.endDate,
                 phaseScopeId: ntp.phaseScopeId ?? "",
