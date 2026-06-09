@@ -5,6 +5,7 @@ import { resourceForecasts, masterBomEntries, materials, projectUnits, projects 
 import { eq, count } from "drizzle-orm";
 import { ApproveForecastButton } from "./ApproveForecastButton";
 import { RaisePrButton } from "./RaisePrButton";
+import { canReviewForecast, isAdminOrBod } from "@/lib/supabase-server";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -14,8 +15,9 @@ function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
 }
 
 const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  PENDING_APPROVAL: { bg: "#fef9c3", color: "#713f12",  label: "Pending Approval" },
-  PENDING_PR:       { bg: "#fef2f2", color: "#b91c1c",  label: "Pending PR" },
+  PENDING_APPROVAL:     { bg: "#fef9c3", color: "#713f12",  label: "Pending Mgr Review" },
+  PENDING_BOD_APPROVAL: { bg: "#eff6ff", color: "#1e40af",  label: "Pending BOD" },
+  PENDING_PR:           { bg: "#fef2f2", color: "#b91c1c",  label: "Pending PR" },
   PR_CREATED:       { bg: "#eff6ff", color: "#1e40af",  label: "PR Created" },
   PO_ISSUED:        { bg: "#dbeafe", color: "#1e40af",  label: "PO Issued" },
   ISSUED:           { bg: "#dcfce7", color: "#166534",  label: "Issued" },
@@ -50,6 +52,11 @@ type MrpRow = {
 };
 
 export default async function MrpQueuePage() {
+  const [canReview, canBodApprove] = await Promise.all([
+    canReviewForecast().catch(() => false),
+    isAdminOrBod().catch(() => false),
+  ]);
+
   const [rows, statusCounts] = await Promise.all([
     safe(
       db
@@ -88,10 +95,11 @@ export default async function MrpQueuePage() {
   ]);
 
   const statusMap = Object.fromEntries(statusCounts.map((r) => [r.status, Number(r.cnt)]));
-  const pendingApproval = statusMap["PENDING_APPROVAL"] ?? 0;
-  const pendingPr  = statusMap["PENDING_PR"]  ?? 0;
-  const prCreated  = statusMap["PR_CREATED"]  ?? 0;
-  const issued     = statusMap["ISSUED"]      ?? 0;
+  const pendingApproval    = statusMap["PENDING_APPROVAL"]     ?? 0;
+  const pendingBodApproval = statusMap["PENDING_BOD_APPROVAL"] ?? 0;
+  const pendingPr          = statusMap["PENDING_PR"]           ?? 0;
+  const prCreated          = statusMap["PR_CREATED"]           ?? 0;
+  const issued             = statusMap["ISSUED"]               ?? 0;
 
   type ProjectGroup = { projId: string; projName: string; rows: MrpRow[] };
   const projectMap = new Map<string, ProjectGroup>();
@@ -104,10 +112,10 @@ export default async function MrpQueuePage() {
   }
 
   const kpis = [
-    { label: "Pending Approval", value: pendingApproval, accent: "#e3a008" },
-    { label: "Pending PR",       value: pendingPr,       accent: "#dc2626" },
-    { label: "PR Created",       value: prCreated,       accent: "#1a56db" },
-    { label: "Issued",           value: issued,          accent: "#057a55" },
+    { label: "Pending Mgr Review", value: pendingApproval,    accent: "#e3a008" },
+    { label: "Pending BOD",        value: pendingBodApproval, accent: "#1a56db" },
+    { label: "Pending PR",         value: pendingPr,          accent: "#dc2626" },
+    { label: "Issued",             value: issued,             accent: "#057a55" },
   ];
 
   const card: React.CSSProperties = {
@@ -131,9 +139,11 @@ export default async function MrpQueuePage() {
           </p>
         </div>
 
-        {pendingApproval > 0 && (
+        {(pendingApproval > 0 || pendingBodApproval > 0) && (
           <div style={{ marginBottom: "1.25rem", padding: "0.75rem 1rem", background: "#fef9c3", border: "1px solid #fde047", borderRadius: "8px", fontSize: "0.82rem", color: "#713f12", fontWeight: 600 }}>
-            ⚠ {pendingApproval} forecast line{pendingApproval !== 1 ? "s" : ""} pending Planning approval before PR can be raised.
+            ⚠ {pendingApproval > 0 && `${pendingApproval} line${pendingApproval !== 1 ? "s" : ""} awaiting Planning Manager review`}
+            {pendingApproval > 0 && pendingBodApproval > 0 && " · "}
+            {pendingBodApproval > 0 && `${pendingBodApproval} line${pendingBodApproval !== 1 ? "s" : ""} awaiting BOD approval`}
           </div>
         )}
 
@@ -237,8 +247,8 @@ export default async function MrpQueuePage() {
                                 <ForecastStatusBadge status={row.status} />
                               </td>
                               <td style={{ padding: "0.65rem 1rem", fontSize: "0.82rem", minWidth: "120px" }}>
-                                {row.status === "PENDING_APPROVAL" && (
-                                  <ApproveForecastButton forecastId={row.id} />
+                                {(row.status === "PENDING_APPROVAL" || row.status === "PENDING_BOD_APPROVAL") && (
+                                  <ApproveForecastButton forecastId={row.id} status={row.status} canReview={canReview} canBodApprove={canBodApprove} />
                                 )}
                                 {row.status === "PENDING_PR" && (
                                   <RaisePrButton forecastId={row.id} />

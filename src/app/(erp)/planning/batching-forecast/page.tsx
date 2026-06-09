@@ -5,6 +5,7 @@ import {
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { ApproveForecastButton } from "./ApproveForecastButton";
+import { canReviewForecast, isAdminOrBod } from "@/lib/supabase-server";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -14,7 +15,8 @@ function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
 }
 
 const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
-  PENDING_APPROVAL: { bg: "#fef9c3", color: "#713f12",  label: "Pending Approval" },
+  PENDING_APPROVAL:     { bg: "#fef9c3", color: "#713f12",  label: "Pending Mgr Review" },
+  PENDING_BOD_APPROVAL: { bg: "#eff6ff", color: "#1e40af",  label: "Pending BOD" },
   PENDING_PR:       { bg: "#fef2f2", color: "#b91c1c",  label: "Pending PR" },
   PR_CREATED:       { bg: "#eff6ff", color: "#1e40af",  label: "PR Created" },
   PO_ISSUED:        { bg: "#dbeafe", color: "#1e40af",  label: "PO Issued" },
@@ -22,6 +24,11 @@ const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }>
 };
 
 export default async function BatchingForecastPage() {
+  const [canReview, canBodApprove] = await Promise.all([
+    canReviewForecast().catch(() => false),
+    isAdminOrBod().catch(() => false),
+  ]);
+
   const rows = await safe(
     db.select({
       id:           resourceForecasts.id,
@@ -49,8 +56,9 @@ export default async function BatchingForecastPage() {
 
   const totalGross          = rows.reduce((a, r) => a + Number(r.grossQty), 0);
   const totalIssued         = rows.filter((r) => r.status === "ISSUED").reduce((a, r) => a + Number(r.grossQty), 0);
-  const totalPendingApproval = rows.filter((r) => r.status === "PENDING_APPROVAL").length;
-  const totalPendingPr      = rows.filter((r) => r.status === "PENDING_PR").length;
+  const totalPendingApproval    = rows.filter((r) => r.status === "PENDING_APPROVAL").length;
+  const totalPendingBodApproval = rows.filter((r) => r.status === "PENDING_BOD_APPROVAL").length;
+  const totalPendingPr          = rows.filter((r) => r.status === "PENDING_PR").length;
 
   const card: React.CSSProperties = {
     background: "#fff", borderRadius: "10px", padding: "1.25rem 1.5rem",
@@ -58,8 +66,8 @@ export default async function BatchingForecastPage() {
   };
 
   const kpis = [
-    { label: "Pending Approval", value: totalPendingApproval,                                                                     sub: "awaiting Planning review", accent: "#e3a008" },
-    { label: "Pending PR",       value: totalPendingPr,                                                                            sub: "awaiting procurement",     accent: "#dc2626" },
+    { label: "Pending Mgr Review", value: totalPendingApproval,    sub: "awaiting Planning Mgr", accent: "#e3a008" },
+    { label: "Pending BOD",        value: totalPendingBodApproval, sub: "awaiting BOD approval", accent: "#1a56db" },
     { label: "Total Volume",     value: totalGross.toLocaleString("en-PH", { maximumFractionDigits: 2 }),                          sub: "gross m³",                 accent: "#0694a2" },
     { label: "Issued Volume",    value: totalIssued.toLocaleString("en-PH", { maximumFractionDigits: 2 }),                         sub: "m³ issued",                accent: "#057a55" },
   ];
@@ -146,10 +154,10 @@ export default async function BatchingForecastPage() {
                           </span>
                         </td>
                         <td style={{ padding: "0.65rem 1rem", minWidth: "100px" }}>
-                          {row.status === "PENDING_APPROVAL" && (
-                            <ApproveForecastButton forecastId={row.id} />
+                          {(row.status === "PENDING_APPROVAL" || row.status === "PENDING_BOD_APPROVAL") && (
+                            <ApproveForecastButton forecastId={row.id} status={row.status} canReview={canReview} canBodApprove={canBodApprove} />
                           )}
-                          {!["PENDING_APPROVAL"].includes(row.status) && (
+                          {!["PENDING_APPROVAL", "PENDING_BOD_APPROVAL"].includes(row.status) && (
                             <span style={{ color: "#d1d5db", fontSize: "0.78rem" }}>—</span>
                           )}
                         </td>
