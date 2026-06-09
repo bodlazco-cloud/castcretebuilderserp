@@ -371,7 +371,7 @@ export async function submitWorkAccomplishedReport(
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NTP APPROVAL WORKFLOW
-// DRAFT → PENDING_BOD → ACTIVE   (or REJECTED → edit → DRAFT → PENDING_BOD)
+// DRAFT → PENDING_REVIEW (manager) → PENDING_BOD (BOD) → ACTIVE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export type NtpActionResult =
@@ -382,21 +382,62 @@ export async function submitNtpForApproval(
   ntpId: string,
   submittedBy: string,
 ): Promise<NtpActionResult> {
-  const [ntp] = await db
-    .select({ status: taskAssignments.status })
-    .from(taskAssignments)
-    .where(eq(taskAssignments.id, ntpId))
-    .limit(1);
-  if (!ntp) return { success: false, error: "NTP not found." };
-  if (!["DRAFT", "REJECTED"].includes(ntp.status)) {
-    return { success: false, error: `Cannot submit NTP in status '${ntp.status}'.` };
+  try {
+    const [ntp] = await db
+      .select({ status: taskAssignments.status })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (!["DRAFT", "REJECTED"].includes(ntp.status)) {
+      return { success: false, error: `Cannot submit NTP in status '${ntp.status}'.` };
+    }
+    await db.execute(sql`
+      UPDATE task_assignments
+      SET status = 'PENDING_REVIEW', submitted_at = NOW(), submitted_by = ${submittedBy}::uuid, rejection_reason = NULL
+      WHERE id = ${ntpId}
+    `);
+    revalidatePath("/construction/ntp");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
   }
-  await db
-    .update(taskAssignments)
-    .set({ status: "PENDING_BOD", submittedAt: new Date(), submittedBy, rejectionReason: null })
-    .where(eq(taskAssignments.id, ntpId));
-  revalidatePath("/construction/ntp");
-  return { success: true };
+}
+
+export async function reviewNtp(
+  ntpId: string,
+  reviewedBy: string,
+): Promise<NtpActionResult> {
+  try {
+    if (!reviewedBy) return { success: false, error: "Not authenticated." };
+    const [ntp] = await db
+      .select({ status: taskAssignments.status })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (ntp.status !== "PENDING_REVIEW") {
+      return { success: false, error: `NTP must be PENDING_REVIEW to forward to BOD (current: ${ntp.status}).` };
+    }
+    await db.execute(sql`
+      UPDATE task_assignments
+      SET status = 'PENDING_BOD'
+      WHERE id = ${ntpId}
+    `);
+    // Best-effort: stamp reviewer metadata if columns exist
+    try {
+      await db.execute(sql`
+        UPDATE task_assignments
+        SET reviewed_at = NOW(), reviewed_by = ${reviewedBy}::uuid
+        WHERE id = ${ntpId}
+      `);
+    } catch { /* columns not yet migrated — non-critical */ }
+    revalidatePath("/construction/ntp");
+    revalidatePath(`/construction/ntp/${ntpId}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
 }
 
 export async function approveNtp(
@@ -414,18 +455,21 @@ export async function approveNtp(
     if (ntp.status !== "PENDING_BOD") {
       return { success: false, error: `NTP must be PENDING_BOD to approve (current: ${ntp.status}).` };
     }
+    // Use raw SQL so the update succeeds even if bod_approved_at/by columns
+    // haven't been created by migration 036 yet.
+    await db.execute(sql`
+      UPDATE task_assignments
+      SET status = 'ACTIVE'
+      WHERE id = ${ntpId}
+    `);
+    // Best-effort: stamp the approval metadata if columns exist
     try {
-      await db
-        .update(taskAssignments)
-        .set({ status: "ACTIVE", bodApprovedAt: new Date(), bodApprovedBy: approvedBy })
-        .where(eq(taskAssignments.id, ntpId));
-    } catch {
-      // columns may not exist yet — fall back to status-only update
-      await db
-        .update(taskAssignments)
-        .set({ status: "ACTIVE" })
-        .where(eq(taskAssignments.id, ntpId));
-    }
+      await db.execute(sql`
+        UPDATE task_assignments
+        SET bod_approved_at = NOW(), bod_approved_by = ${approvedBy}::uuid
+        WHERE id = ${ntpId}
+      `);
+    } catch { /* columns not yet migrated — non-critical */ }
     try { void generateResourceForecastsForUnit(ntp.projectId, ntp.unitId).catch(() => undefined); } catch {}
     revalidatePath("/construction/ntp");
     revalidatePath(`/construction/ntp/${ntpId}`);
@@ -457,17 +501,11 @@ export async function rejectNtp(
     if (ntp.status !== "PENDING_BOD" && ntp.status !== "PENDING_REVIEW") {
       return { success: false, error: `NTP cannot be rejected from status: ${ntp.status}.` };
     }
-    try {
-      await db
-        .update(taskAssignments)
-        .set({ status: "REJECTED", bodApprovedBy: rejectedBy, bodApprovedAt: new Date(), rejectionReason: reason })
-        .where(eq(taskAssignments.id, ntpId));
-    } catch {
-      await db
-        .update(taskAssignments)
-        .set({ status: "REJECTED", rejectionReason: reason })
-        .where(eq(taskAssignments.id, ntpId));
-    }
+    await db.execute(sql`
+      UPDATE task_assignments
+      SET status = 'REJECTED', rejection_reason = ${reason}
+      WHERE id = ${ntpId}
+    `);
     revalidatePath("/construction/ntp");
     revalidatePath(`/construction/ntp/${ntpId}`);
     return { success: true };
