@@ -5,7 +5,7 @@ import {
   dailyProgressEntries, workAccomplishedReports,
 } from "@/db/schema";
 import { phaseScopes } from "@/db/schema/phases";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { getAuthUser, isAdminOrBod, canReviewNtp } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { NtpApprovalPanel } from "./NtpApprovalPanel";
@@ -46,7 +46,6 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
       capacityCheckPassed: taskAssignments.capacityCheckPassed,
       issuedAt:        taskAssignments.issuedAt,
       submittedAt:     taskAssignments.submittedAt,
-      reviewedAt:      taskAssignments.reviewedAt,
       bodApprovedAt:   taskAssignments.bodApprovedAt,
       rejectionReason: taskAssignments.rejectionReason,
       unitCode:        projectUnits.unitCode,
@@ -154,7 +153,7 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
           canApprove={canApprove}
           rejectionReason={ntp.rejectionReason}
           submittedAt={ntp.submittedAt?.toISOString() ?? null}
-          reviewedAt={ntp.reviewedAt?.toISOString() ?? null}
+          reviewedAt={null}
           bodApprovedAt={ntp.bodApprovedAt?.toISOString() ?? null}
         />
 
