@@ -86,3 +86,21 @@ export async function canApproveProgressEntries(): Promise<boolean> {
 export async function canReviewNtp(): Promise<boolean> {
   return canApproveProgressEntries();
 }
+
+/** Planning Manager (or Admin/BOD) can do tier-1 forecast review. */
+export async function canReviewForecast(): Promise<boolean> {
+  const authUser = await getAuthUser();
+  if (!authUser?.email) return false;
+  try {
+    const [row] = await db
+      .select({ role: users.role, deptCode: departments.code })
+      .from(users)
+      .leftJoin(departments, eq(users.deptId, departments.id))
+      .where(eq(users.email, authUser.email));
+    if (!row) return false;
+    if (row.role === "ADMIN" || row.role === "BOD") return true;
+    return row.role === "MANAGER" && row.deptCode === "PLANNING";
+  } catch {
+    return false;
+  }
+}

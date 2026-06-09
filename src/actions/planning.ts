@@ -643,7 +643,8 @@ export type RaiseMrpPrResult =
   | { success: true; prId: string }
   | { success: false; error: string };
 
-export async function approveForecast(
+/** Tier 1: Planning Manager reviews → forwards to BOD */
+export async function reviewForecastAsManager(
   forecastId: string,
 ): Promise<ForecastUpdateResult> {
   try {
@@ -651,7 +652,7 @@ export async function approveForecast(
     if (!user) return { success: false, error: "Not authenticated." };
     const dept = user.user_metadata?.dept_code as DeptCode;
     if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
-      return { success: false, error: "Only Planning, Admin, or BOD may approve forecasts." };
+      return { success: false, error: "Only Planning, Admin, or BOD may review forecasts." };
     }
     const [forecast] = await db
       .select({ status: resourceForecasts.status })
@@ -660,7 +661,39 @@ export async function approveForecast(
       .limit(1);
     if (!forecast) return { success: false, error: "Forecast not found." };
     if (forecast.status !== "PENDING_APPROVAL") {
-      return { success: false, error: `Forecast must be PENDING_APPROVAL to approve (current: ${forecast.status}).` };
+      return { success: false, error: `Forecast must be PENDING_APPROVAL (current: ${forecast.status}).` };
+    }
+    await db.update(resourceForecasts)
+      .set({ status: "PENDING_BOD_APPROVAL" })
+      .where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    revalidatePath("/planning/batching-forecast");
+    revalidatePath("/planning");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+/** Tier 2: BOD final approval → PENDING_PR (PR can now be raised) */
+export async function approveForecastAsBod(
+  forecastId: string,
+): Promise<ForecastUpdateResult> {
+  try {
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["ADMIN", "BOD"])) {
+      return { success: false, error: "Only Admin or BOD may give final forecast approval." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (forecast.status !== "PENDING_BOD_APPROVAL") {
+      return { success: false, error: `Forecast must be PENDING_BOD_APPROVAL (current: ${forecast.status}).` };
     }
     await db.update(resourceForecasts)
       .set({ status: "PENDING_PR" })
@@ -668,6 +701,26 @@ export async function approveForecast(
     revalidatePath("/planning/mrp-queue");
     revalidatePath("/planning/batching-forecast");
     revalidatePath("/planning");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+/** Retroactive: generate forecasts for an already-ACTIVE NTP that has none */
+export async function regenerateForecastsForNtp(
+  ntpId: string,
+): Promise<ForecastUpdateResult> {
+  try {
+    const { taskAssignments } = await import("@/db/schema");
+    const [ntp] = await db
+      .select({ projectId: taskAssignments.projectId, unitId: taskAssignments.unitId, status: taskAssignments.status })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (ntp.status !== "ACTIVE") return { success: false, error: "NTP must be ACTIVE." };
+    await generateResourceForecastsForUnit(ntp.projectId, ntp.unitId);
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };

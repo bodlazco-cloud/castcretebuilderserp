@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { getAuthUser } from "@/lib/supabase-server";
 import { db } from "@/db";
-import * as schema from "@/db/schema";
+import { taskAssignments, subcontractors, projects, projectUnits, blocks } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { phaseActivities, phaseScopes } from "@/db/schema/phases";
 import { LogProgressForm } from "./LogProgressForm";
@@ -11,50 +11,66 @@ const ACCENT = "#057a55";
 export default async function LogProgressPage() {
   const user = await getAuthUser();
 
-  const [projectsList, blocks, units, assignments, allSubcons, activities] = await Promise.all([
-    db.select({ id: schema.projects.id, name: schema.projects.name })
-      .from(schema.projects).orderBy(schema.projects.name),
-    db.select({
-      id: schema.blocks.id, blockName: schema.blocks.blockName,
-      projectId: schema.blocks.projectId,
-    }).from(schema.blocks).orderBy(schema.blocks.blockName),
-    db.select({
-      id: schema.projectUnits.id,
-      unitCode: schema.projectUnits.unitCode,
-      projectId: schema.projectUnits.projectId,
-      blockId: schema.projectUnits.blockId,
-      unitModel: schema.projectUnits.unitModel,
-      unitType: schema.projectUnits.unitType,
-    }).from(schema.projectUnits).orderBy(schema.projectUnits.unitCode),
-    db.select({
-      id:             schema.taskAssignments.id,
-      unitId:         schema.taskAssignments.unitId,
-      subconId:       schema.taskAssignments.subconId,
-      subconName:     schema.subcontractors.name,
-      category:       schema.taskAssignments.category,
-      phaseScopeId:   schema.taskAssignments.phaseScopeId,
-      scopeName:      phaseScopes.name,
+  // Load all ACTIVE NTPs with full context
+  const ntps = await db
+    .select({
+      id:           taskAssignments.id,
+      projectId:    taskAssignments.projectId,
+      unitId:       taskAssignments.unitId,
+      subconId:     taskAssignments.subconId,
+      category:     taskAssignments.category,
+      phaseScopeId: taskAssignments.phaseScopeId,
+      subconName:   subcontractors.name,
+      subconCode:   subcontractors.code,
+      projName:     projects.name,
+      unitCode:     projectUnits.unitCode,
+      unitModel:    projectUnits.unitModel,
+      unitType:     projectUnits.unitType,
+      blockId:      projectUnits.blockId,
+      scopeName:    phaseScopes.name,
     })
-      .from(schema.taskAssignments)
-      .leftJoin(schema.subcontractors, eq(schema.taskAssignments.subconId, schema.subcontractors.id))
-      .leftJoin(phaseScopes, eq(schema.taskAssignments.phaseScopeId, phaseScopes.id))
-      .where(eq(schema.taskAssignments.status, "ACTIVE")),
-    db.select({ id: schema.subcontractors.id, name: schema.subcontractors.name, code: schema.subcontractors.code })
-      .from(schema.subcontractors)
-      .where(eq(schema.subcontractors.isActive, true))
-      .orderBy(schema.subcontractors.name),
-    db.select({
-      id:       phaseActivities.id,
-      code:     phaseActivities.code,
-      name:     phaseActivities.name,
-      scopeId:  phaseActivities.scopeId,
-      weight:   phaseActivities.weightInScopePct,
-      order:    phaseActivities.sequenceOrder,
+    .from(taskAssignments)
+    .leftJoin(subcontractors, eq(taskAssignments.subconId,     subcontractors.id))
+    .leftJoin(projects,       eq(taskAssignments.projectId,    projects.id))
+    .leftJoin(projectUnits,   eq(taskAssignments.unitId,       projectUnits.id))
+    .leftJoin(phaseScopes,    eq(taskAssignments.phaseScopeId, phaseScopes.id))
+    .where(eq(taskAssignments.status, "ACTIVE"))
+    .orderBy(projects.name, projectUnits.unitCode);
+
+  // Load all units for the projects that have ACTIVE NTPs (for multi-unit logging)
+  const projectIds = [...new Set(ntps.map((n) => n.projectId))];
+  const allUnits = projectIds.length > 0
+    ? await db
+        .select({
+          id:        projectUnits.id,
+          unitCode:  projectUnits.unitCode,
+          unitModel: projectUnits.unitModel,
+          unitType:  projectUnits.unitType,
+          projectId: projectUnits.projectId,
+          blockId:   projectUnits.blockId,
+        })
+        .from(projectUnits)
+        .orderBy(projectUnits.unitCode)
+    : [];
+
+  const allBlocks = await db
+    .select({ id: blocks.id, blockName: blocks.blockName, projectId: blocks.projectId })
+    .from(blocks)
+    .orderBy(blocks.blockName);
+
+  // Activities indexed by scopeId
+  const activities = await db
+    .select({
+      id:      phaseActivities.id,
+      code:    phaseActivities.code,
+      name:    phaseActivities.name,
+      scopeId: phaseActivities.scopeId,
+      weight:  phaseActivities.weightInScopePct,
+      order:   phaseActivities.sequenceOrder,
     })
-      .from(phaseActivities)
-      .where(eq(phaseActivities.isActive, true))
-      .orderBy(phaseActivities.sequenceOrder),
-  ]);
+    .from(phaseActivities)
+    .where(eq(phaseActivities.isActive, true))
+    .orderBy(phaseActivities.sequenceOrder);
 
   return (
     <main style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui, sans-serif" }}>
@@ -68,22 +84,36 @@ export default async function LogProgressPage() {
           <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid #e5e7eb", borderTop: `4px solid ${ACCENT}` }}>
             <h1 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700 }}>Log Daily Progress Entry</h1>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: "#6b7280" }}>
-              Record daily site progress. Activities are filtered by the selected NTP's scope.
+              Select an NTP first — units, scope, and activities will populate automatically.
             </p>
           </div>
           <div style={{ padding: "1.5rem" }}>
             <LogProgressForm
-              projects={projectsList}
-              blocks={blocks}
-              units={units.map((u) => ({ ...u, blockId: u.blockId ?? "" }))}
-              assignments={assignments.map((a) => ({
-                ...a,
-                subconName:   a.subconName ?? "—",
-                category:     a.category ?? "",
-                phaseScopeId: a.phaseScopeId ?? null,
-                scopeName:    a.scopeName ?? null,
+              ntps={ntps.map((n) => ({
+                id:           n.id,
+                projectId:    n.projectId,
+                unitId:       n.unitId,
+                subconId:     n.subconId,
+                category:     n.category ?? "",
+                phaseScopeId: n.phaseScopeId ?? null,
+                subconName:   n.subconName ?? "—",
+                subconCode:   n.subconCode ?? "",
+                projName:     n.projName ?? "—",
+                unitCode:     n.unitCode ?? "—",
+                unitModel:    n.unitModel ?? "",
+                unitType:     n.unitType ?? "",
+                blockId:      n.blockId ?? "",
+                scopeName:    n.scopeName ?? null,
               }))}
-              allSubcons={allSubcons}
+              allUnits={allUnits.map((u) => ({
+                id:        u.id,
+                unitCode:  u.unitCode,
+                unitModel: u.unitModel ?? "",
+                unitType:  u.unitType ?? "",
+                projectId: u.projectId,
+                blockId:   u.blockId ?? "",
+              }))}
+              allBlocks={allBlocks}
               activities={activities.map((a) => ({ ...a, weight: String(a.weight) }))}
               userId={user?.id ?? ""}
             />
