@@ -92,7 +92,7 @@ export const forecastTypeEnum = pgEnum("forecast_type", [
 ]);
 
 export const forecastStatusEnum = pgEnum("forecast_status", [
-  "PENDING_PR", "PR_CREATED", "PO_ISSUED", "ISSUED",
+  "PENDING_APPROVAL", "PENDING_PR", "PR_CREATED", "PO_ISSUED", "ISSUED",
 ]);
 
 export const varianceRequestTypeEnum = pgEnum("variance_request_type", [
