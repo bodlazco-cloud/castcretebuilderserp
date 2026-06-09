@@ -3,23 +3,27 @@ import { db } from "@/db";
 import { taskAssignments, projectUnits, subcontractors, projects } from "@/db/schema";
 import { phaseScopes } from "@/db/schema/phases";
 import { eq, desc } from "drizzle-orm";
-import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
+import { getAuthUser, isAdminOrBod, canReviewNtp } from "@/lib/supabase-server";
 import { NtpRowActions } from "./NtpRowActions";
 
 const ACCENT = "#057a55";
 
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  DRAFT:       { bg: "#f3f4f6", color: "#6b7280" },
-  PENDING_BOD: { bg: "#fef9c3", color: "#713f12" },
-  ACTIVE:      { bg: "#dcfce7", color: "#166534" },
-  REJECTED:    { bg: "#fef2f2", color: "#b91c1c" },
-  COMPLETED:   { bg: "#eff6ff", color: "#1e40af" },
-  CANCELLED:   { bg: "#f3f4f6", color: "#6b7280" },
+  DRAFT:          { bg: "#f3f4f6", color: "#6b7280" },
+  PENDING_REVIEW: { bg: "#eff6ff", color: "#1e40af" },
+  PENDING_BOD:    { bg: "#fef9c3", color: "#713f12" },
+  ACTIVE:         { bg: "#dcfce7", color: "#166534" },
+  REJECTED:       { bg: "#fef2f2", color: "#b91c1c" },
+  COMPLETED:      { bg: "#e0e7ff", color: "#3730a3" },
+  CANCELLED:      { bg: "#f3f4f6", color: "#6b7280" },
 };
 
 export default async function NtpRegisterPage() {
   const user = await getAuthUser();
-  const canApprove = await isAdminOrBod();
+  const [canApprove, canReview] = await Promise.all([
+    isAdminOrBod().catch(() => false),
+    canReviewNtp().catch(() => false),
+  ]);
   const userId = user?.id ?? "";
 
   const rows = await db
@@ -143,6 +147,7 @@ export default async function NtpRegisterPage() {
                             ntpId={r.id}
                             status={r.status}
                             userId={userId}
+                            canReview={canReview}
                             canApprove={canApprove}
                           />
                         </td>

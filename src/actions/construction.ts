@@ -370,56 +370,106 @@ export async function submitWorkAccomplishedReport(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// NTP APPROVAL WORKFLOW
-// DRAFT → PENDING_BOD → ACTIVE   (or REJECTED → edit → DRAFT → PENDING_BOD)
+// NTP APPROVAL WORKFLOW  (2-tier)
+// DRAFT → PENDING_REVIEW (manager reviews) → PENDING_BOD (BOD approves) → ACTIVE
+// At any pending stage BOD/Admin can also reject → REJECTED
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export type NtpActionResult =
   | { success: true }
   | { success: false; error: string };
 
+// Step 0: Issuer submits for manager review
 export async function submitNtpForApproval(
   ntpId: string,
   submittedBy: string,
 ): Promise<NtpActionResult> {
-  const [ntp] = await db
-    .select({ status: taskAssignments.status })
-    .from(taskAssignments)
-    .where(eq(taskAssignments.id, ntpId))
-    .limit(1);
-  if (!ntp) return { success: false, error: "NTP not found." };
-  if (!["DRAFT", "REJECTED"].includes(ntp.status)) {
-    return { success: false, error: `Cannot submit NTP in status '${ntp.status}'.` };
+  try {
+    if (!submittedBy) return { success: false, error: "Not authenticated." };
+    const [ntp] = await db
+      .select({ status: taskAssignments.status })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (!["DRAFT", "REJECTED"].includes(ntp.status))
+      return { success: false, error: `Cannot submit NTP in status '${ntp.status}'.` };
+    await db
+      .update(taskAssignments)
+      .set({ status: "PENDING_REVIEW", submittedAt: new Date(), submittedBy, rejectionReason: null })
+      .where(eq(taskAssignments.id, ntpId));
+    revalidatePath("/construction/ntp");
+    revalidatePath(`/construction/ntp/${ntpId}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
   }
-  await db
-    .update(taskAssignments)
-    .set({ status: "PENDING_BOD", submittedAt: new Date(), submittedBy, rejectionReason: null })
-    .where(eq(taskAssignments.id, ntpId));
-  revalidatePath("/construction/ntp");
-  return { success: true };
 }
 
+// Step 1: Manager reviews → forwards to BOD
+export async function reviewNtp(
+  ntpId: string,
+  reviewedBy: string,
+): Promise<NtpActionResult> {
+  try {
+    if (!reviewedBy) return { success: false, error: "Not authenticated." };
+    const [ntp] = await db
+      .select({ status: taskAssignments.status })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (ntp.status !== "PENDING_REVIEW")
+      return { success: false, error: `NTP must be PENDING_REVIEW to review (current: ${ntp.status}).` };
+    // Try with reviewed_at/reviewed_by (requires migration 037).
+    // Fall back to status-only update if columns don't exist yet.
+    try {
+      await db
+        .update(taskAssignments)
+        .set({ status: "PENDING_BOD", reviewedAt: new Date(), reviewedBy })
+        .where(eq(taskAssignments.id, ntpId));
+    } catch {
+      await db
+        .update(taskAssignments)
+        .set({ status: "PENDING_BOD" })
+        .where(eq(taskAssignments.id, ntpId));
+    }
+    revalidatePath("/construction/ntp");
+    revalidatePath(`/construction/ntp/${ntpId}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+// Step 2: BOD/Admin approves → ACTIVE
 export async function approveNtp(
   ntpId: string,
   approvedBy: string,
 ): Promise<NtpActionResult> {
-  const [ntp] = await db
-    .select({ status: taskAssignments.status, projectId: taskAssignments.projectId, unitId: taskAssignments.unitId })
-    .from(taskAssignments)
-    .where(eq(taskAssignments.id, ntpId))
-    .limit(1);
-  if (!ntp) return { success: false, error: "NTP not found." };
-  if (ntp.status !== "PENDING_BOD") {
-    return { success: false, error: `NTP must be PENDING_BOD to approve (current: ${ntp.status}).` };
+  try {
+    if (!approvedBy) return { success: false, error: "Not authenticated." };
+    const [ntp] = await db
+      .select({ status: taskAssignments.status, projectId: taskAssignments.projectId, unitId: taskAssignments.unitId })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (ntp.status !== "PENDING_BOD")
+      return { success: false, error: `NTP must be PENDING_BOD to approve (current: ${ntp.status}).` };
+    await db
+      .update(taskAssignments)
+      .set({ status: "ACTIVE", bodApprovedAt: new Date(), bodApprovedBy: approvedBy })
+      .where(eq(taskAssignments.id, ntpId));
+    try {
+      await generateResourceForecastsForUnit(ntp.projectId, ntp.unitId);
+    } catch { /* non-critical */ }
+    revalidatePath("/construction/ntp");
+    revalidatePath(`/construction/ntp/${ntpId}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
   }
-  await db
-    .update(taskAssignments)
-    .set({ status: "ACTIVE", bodApprovedAt: new Date(), bodApprovedBy: approvedBy })
-    .where(eq(taskAssignments.id, ntpId));
-  void generateResourceForecastsForUnit(ntp.projectId, ntp.unitId).catch(() => undefined);
-  revalidatePath("/construction/ntp");
-  revalidatePath(`/construction/ntp/${ntpId}`);
-  return { success: true };
 }
 
 const RejectNtpSchema = z.object({
@@ -428,28 +478,32 @@ const RejectNtpSchema = z.object({
   reason:     z.string().min(1, "Rejection reason is required."),
 });
 
+// Reject from either PENDING_REVIEW or PENDING_BOD
 export async function rejectNtp(
   input: z.infer<typeof RejectNtpSchema>,
 ): Promise<NtpActionResult> {
-  const parsed = RejectNtpSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
-  const { ntpId, rejectedBy, reason } = parsed.data;
-  const [ntp] = await db
-    .select({ status: taskAssignments.status })
-    .from(taskAssignments)
-    .where(eq(taskAssignments.id, ntpId))
-    .limit(1);
-  if (!ntp) return { success: false, error: "NTP not found." };
-  if (ntp.status !== "PENDING_BOD") {
-    return { success: false, error: `NTP must be PENDING_BOD to reject (current: ${ntp.status}).` };
+  try {
+    const parsed = RejectNtpSchema.safeParse(input);
+    if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+    const { ntpId, rejectedBy, reason } = parsed.data;
+    const [ntp] = await db
+      .select({ status: taskAssignments.status })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (!["PENDING_REVIEW", "PENDING_BOD"].includes(ntp.status))
+      return { success: false, error: `Cannot reject NTP in status '${ntp.status}'.` };
+    await db
+      .update(taskAssignments)
+      .set({ status: "REJECTED", rejectionReason: reason })
+      .where(eq(taskAssignments.id, ntpId));
+    revalidatePath("/construction/ntp");
+    revalidatePath(`/construction/ntp/${ntpId}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
   }
-  await db
-    .update(taskAssignments)
-    .set({ status: "REJECTED", bodApprovedBy: rejectedBy, bodApprovedAt: new Date(), rejectionReason: reason })
-    .where(eq(taskAssignments.id, ntpId));
-  revalidatePath("/construction/ntp");
-  revalidatePath(`/construction/ntp/${ntpId}`);
-  return { success: true };
 }
 
 const UpdateNtpSchema = z.object({
