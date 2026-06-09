@@ -23,7 +23,7 @@ const IssueNtpSchema = z.object({
   unitId:       z.string().uuid(),
   subconId:     z.string().uuid(),
   category:     z.enum(["SLAB","STRUCTURAL","SPECIALTY_WORKS","MEPF","ARCHITECTURAL","TURNOVER"]),
-  workType:     z.enum(["STRUCTURAL", "ARCHITECTURAL", "BOTH"]),
+  workType:     z.enum(["STRUCTURAL", "ARCHITECTURAL", "BOTH"]).optional().default("STRUCTURAL"),
   phaseScopeId: z.string().uuid().optional(),
   startDate:    z.string().date(),
   endDate:      z.string().date(),
@@ -456,7 +456,7 @@ const UpdateNtpSchema = z.object({
   ntpId:        z.string().uuid(),
   subconId:     z.string().uuid(),
   phaseScopeId: z.string().uuid().optional(),
-  workType:     z.enum(["STRUCTURAL", "ARCHITECTURAL", "BOTH"]),
+  workType:     z.enum(["STRUCTURAL", "ARCHITECTURAL", "BOTH"]).optional().default("STRUCTURAL"),
   startDate:    z.string().date(),
   endDate:      z.string().date(),
 });

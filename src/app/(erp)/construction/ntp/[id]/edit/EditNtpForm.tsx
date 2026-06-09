@@ -19,13 +19,11 @@ const labelStyle: React.CSSProperties = {
   color: "#374151", marginBottom: "0.35rem",
 };
 
-const WORK_TYPES = ["STRUCTURAL", "ARCHITECTURAL", "BOTH"] as const;
-
 export function EditNtpForm({
   ntpId, initial, subcontractors, categories, scopes,
 }: {
   ntpId: string;
-  initial: { subconId: string; workType: string; startDate: string; endDate: string; phaseScopeId: string };
+  initial: { subconId: string; startDate: string; endDate: string; phaseScopeId: string };
   subcontractors: Subcon[];
   categories: Category[];
   scopes: Scope[];
@@ -42,7 +40,6 @@ export function EditNtpForm({
   const [selectedCategory, setSelectedCategory] = useState(currentCategoryId);
   const [selectedScope,    setSelectedScope]    = useState(initial.phaseScopeId);
   const [subconId,  setSubconId]  = useState(initial.subconId);
-  const [workType,  setWorkType]  = useState(initial.workType);
   const [startDate, setStartDate] = useState(initial.startDate);
   const [endDate,   setEndDate]   = useState(initial.endDate);
 
@@ -57,7 +54,7 @@ export function EditNtpForm({
         ntpId,
         subconId,
         phaseScopeId: selectedScope || undefined,
-        workType: workType as "STRUCTURAL" | "ARCHITECTURAL" | "BOTH",
+        workType: "STRUCTURAL",
         startDate,
         endDate,
       });
@@ -114,14 +111,6 @@ export function EditNtpForm({
           {subcontractors.map((s) => (
             <option key={s.id} value={s.id}>{s.code} — {s.name} ({s.tradeTypes.join(", ")})</option>
           ))}
-        </select>
-      </label>
-
-      {/* Work Type */}
-      <label>
-        <span style={labelStyle}>Work Type <span style={{ color: "#e02424" }}>*</span></span>
-        <select value={workType} onChange={(e) => setWorkType(e.target.value)} style={inputStyle} required>
-          {WORK_TYPES.map((w) => <option key={w} value={w}>{w}</option>)}
         </select>
       </label>
 
