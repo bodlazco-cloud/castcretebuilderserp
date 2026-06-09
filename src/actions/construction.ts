@@ -6,7 +6,7 @@ import {
   subcontractorCapacityMatrix, workAccomplishedReports,
   milestoneDocuments, unitMilestones, dailyProgressEntries,
 } from "@/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { notifyWarSubmitted } from "@/lib/notifications";
@@ -114,7 +114,7 @@ export async function issueTaskAssignment(
     };
   }
 
-  // ── All gates passed: create the Task Assignment ──────────────────────────
+  // ── All gates passed: create the Task Assignment as DRAFT ────────────────
   const [newAssignment] = await db
     .insert(taskAssignments)
     .values({
@@ -126,7 +126,7 @@ export async function issueTaskAssignment(
       phaseScopeId: phaseScopeId ?? null,
       startDate,
       endDate,
-      status: "ACTIVE",
+      status: "DRAFT",
       capacityCheckPassed: true,
       capacityCheckedAt: new Date(),
       capacityCheckedBy: issuedBy,
@@ -367,4 +367,193 @@ export async function submitWorkAccomplishedReport(
   revalidatePath("/construction");
   void notifyWarSubmitted(war.id);
   return { success: true, warId: war.id };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NTP APPROVAL WORKFLOW
+// DRAFT → PENDING_BOD → ACTIVE   (or REJECTED → edit → DRAFT → PENDING_BOD)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type NtpActionResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function submitNtpForApproval(
+  ntpId: string,
+  submittedBy: string,
+): Promise<NtpActionResult> {
+  const [ntp] = await db
+    .select({ status: taskAssignments.status })
+    .from(taskAssignments)
+    .where(eq(taskAssignments.id, ntpId))
+    .limit(1);
+  if (!ntp) return { success: false, error: "NTP not found." };
+  if (!["DRAFT", "REJECTED"].includes(ntp.status)) {
+    return { success: false, error: `Cannot submit NTP in status '${ntp.status}'.` };
+  }
+  await db
+    .update(taskAssignments)
+    .set({ status: "PENDING_BOD", submittedAt: new Date(), submittedBy, rejectionReason: null })
+    .where(eq(taskAssignments.id, ntpId));
+  revalidatePath("/construction/ntp");
+  return { success: true };
+}
+
+export async function approveNtp(
+  ntpId: string,
+  approvedBy: string,
+): Promise<NtpActionResult> {
+  const [ntp] = await db
+    .select({ status: taskAssignments.status, projectId: taskAssignments.projectId, unitId: taskAssignments.unitId })
+    .from(taskAssignments)
+    .where(eq(taskAssignments.id, ntpId))
+    .limit(1);
+  if (!ntp) return { success: false, error: "NTP not found." };
+  if (ntp.status !== "PENDING_BOD") {
+    return { success: false, error: `NTP must be PENDING_BOD to approve (current: ${ntp.status}).` };
+  }
+  await db
+    .update(taskAssignments)
+    .set({ status: "ACTIVE", bodApprovedAt: new Date(), bodApprovedBy: approvedBy })
+    .where(eq(taskAssignments.id, ntpId));
+  void generateResourceForecastsForUnit(ntp.projectId, ntp.unitId).catch(() => undefined);
+  revalidatePath("/construction/ntp");
+  revalidatePath(`/construction/ntp/${ntpId}`);
+  return { success: true };
+}
+
+const RejectNtpSchema = z.object({
+  ntpId:      z.string().uuid(),
+  rejectedBy: z.string().uuid(),
+  reason:     z.string().min(1, "Rejection reason is required."),
+});
+
+export async function rejectNtp(
+  input: z.infer<typeof RejectNtpSchema>,
+): Promise<NtpActionResult> {
+  const parsed = RejectNtpSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+  const { ntpId, rejectedBy, reason } = parsed.data;
+  const [ntp] = await db
+    .select({ status: taskAssignments.status })
+    .from(taskAssignments)
+    .where(eq(taskAssignments.id, ntpId))
+    .limit(1);
+  if (!ntp) return { success: false, error: "NTP not found." };
+  if (ntp.status !== "PENDING_BOD") {
+    return { success: false, error: `NTP must be PENDING_BOD to reject (current: ${ntp.status}).` };
+  }
+  await db
+    .update(taskAssignments)
+    .set({ status: "REJECTED", bodApprovedBy: rejectedBy, bodApprovedAt: new Date(), rejectionReason: reason })
+    .where(eq(taskAssignments.id, ntpId));
+  revalidatePath("/construction/ntp");
+  revalidatePath(`/construction/ntp/${ntpId}`);
+  return { success: true };
+}
+
+const UpdateNtpSchema = z.object({
+  ntpId:        z.string().uuid(),
+  subconId:     z.string().uuid(),
+  phaseScopeId: z.string().uuid().optional(),
+  workType:     z.enum(["STRUCTURAL", "ARCHITECTURAL", "BOTH"]),
+  startDate:    z.string().date(),
+  endDate:      z.string().date(),
+});
+
+export async function updateNtp(
+  input: z.infer<typeof UpdateNtpSchema>,
+): Promise<NtpActionResult> {
+  const parsed = UpdateNtpSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+  const { ntpId, subconId, phaseScopeId, workType, startDate, endDate } = parsed.data;
+  const [ntp] = await db
+    .select({ status: taskAssignments.status })
+    .from(taskAssignments)
+    .where(eq(taskAssignments.id, ntpId))
+    .limit(1);
+  if (!ntp) return { success: false, error: "NTP not found." };
+  if (!["DRAFT", "REJECTED"].includes(ntp.status)) {
+    return { success: false, error: "Only DRAFT or REJECTED NTPs can be edited." };
+  }
+  await db
+    .update(taskAssignments)
+    .set({
+      subconId,
+      phaseScopeId: phaseScopeId ?? null,
+      workType: workType as any,
+      startDate,
+      endDate,
+      status: "DRAFT",
+      rejectionReason: null,
+    })
+    .where(eq(taskAssignments.id, ntpId));
+  revalidatePath(`/construction/ntp/${ntpId}`);
+  revalidatePath("/construction/ntp");
+  return { success: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DAILY PROGRESS ENTRY APPROVAL
+// Managers / Admin / BOD approve or reject submitted progress entries.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type DpeApprovalResult =
+  | { success: true }
+  | { success: false; error: string };
+
+export async function approveProgressEntry(
+  entryId: string,
+  approvedBy: string,
+): Promise<DpeApprovalResult> {
+  const [entry] = await db
+    .select({ approvalStatus: dailyProgressEntries.approvalStatus })
+    .from(dailyProgressEntries)
+    .where(eq(dailyProgressEntries.id, entryId))
+    .limit(1);
+  if (!entry) return { success: false, error: "Entry not found." };
+  if (entry.approvalStatus === "APPROVED") {
+    return { success: false, error: "Entry is already approved." };
+  }
+  await db
+    .update(dailyProgressEntries)
+    .set({ approvalStatus: "APPROVED", approvedBy, approvedAt: new Date(), rejectionReason: null })
+    .where(eq(dailyProgressEntries.id, entryId));
+  revalidatePath("/construction/daily-progress");
+  revalidatePath(`/construction/daily-progress/${entryId}`);
+  return { success: true };
+}
+
+const RejectDpeSchema = z.object({
+  entryId:    z.string().uuid(),
+  rejectedBy: z.string().uuid(),
+  reason:     z.string().min(1, "Rejection reason is required."),
+});
+
+export async function rejectProgressEntry(
+  input: z.infer<typeof RejectDpeSchema>,
+): Promise<DpeApprovalResult> {
+  const parsed = RejectDpeSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid." };
+  const { entryId, rejectedBy, reason } = parsed.data;
+  await db
+    .update(dailyProgressEntries)
+    .set({ approvalStatus: "REJECTED", approvedBy: rejectedBy, approvedAt: new Date(), rejectionReason: reason })
+    .where(eq(dailyProgressEntries.id, entryId));
+  revalidatePath("/construction/daily-progress");
+  revalidatePath(`/construction/daily-progress/${entryId}`);
+  return { success: true };
+}
+
+export async function bulkApproveProgressEntries(
+  entryIds: string[],
+  approvedBy: string,
+): Promise<DpeApprovalResult> {
+  if (entryIds.length === 0) return { success: false, error: "No entries selected." };
+  await db
+    .update(dailyProgressEntries)
+    .set({ approvalStatus: "APPROVED", approvedBy, approvedAt: new Date(), rejectionReason: null })
+    .where(inArray(dailyProgressEntries.id, entryIds));
+  revalidatePath("/construction/daily-progress");
+  return { success: true };
 }

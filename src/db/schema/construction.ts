@@ -25,6 +25,11 @@ export const taskAssignments = pgTable("task_assignments", {
   capacityCheckedBy:    uuid("capacity_checked_by").references(() => users.id),
   issuedBy:             uuid("issued_by").notNull().references(() => users.id),
   issuedAt:             timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  submittedAt:          timestamp("submitted_at", { withTimezone: true }),
+  submittedBy:          uuid("submitted_by").references(() => users.id),
+  bodApprovedAt:        timestamp("bod_approved_at", { withTimezone: true }),
+  bodApprovedBy:        uuid("bod_approved_by").references(() => users.id),
+  rejectionReason:      text("rejection_reason"),
   createdAt:            timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -43,8 +48,12 @@ export const dailyProgressEntries = pgTable("daily_progress_entries", {
   delayType:          delayReasonEnum("delay_type"),
   issuesDetails:      text("issues_details"),
   docGapFlagged:      boolean("doc_gap_flagged").notNull().default(false),
-  fileAttachments:    jsonb("file_attachments"),  // [{url, type, uploaded_at}]
+  fileAttachments:    jsonb("file_attachments"),
   enteredBy:          uuid("entered_by").notNull().references(() => users.id),
+  approvalStatus:     varchar("approval_status", { length: 30 }).notNull().default("PENDING_REVIEW"),
+  approvedBy:         uuid("approved_by").references(() => users.id),
+  approvedAt:         timestamp("approved_at", { withTimezone: true }),
+  rejectionReason:    text("rejection_reason"),
   createdAt:          timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
