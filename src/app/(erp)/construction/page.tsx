@@ -129,7 +129,7 @@ export default async function ConstructionPage() {
            AND COUNT(DISTINCT pa.id) = COUNT(DISTINCT dpe.phase_activity_id)
         ORDER BY ta.start_date
         LIMIT 20
-      `) as Promise<{ rows: {
+      `) as unknown as Promise<{ rows: {
         id: string; start_date: string; end_date: string; unit_code: string;
         subcon_name: string; project_name: string; scope_name: string;
         total_activities: number; done_activities: number;
