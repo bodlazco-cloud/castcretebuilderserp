@@ -40,7 +40,7 @@ type MrpRow = {
   id: string;
   grossQuantity: string;
   quantityConsumed: string;
-  status: string;
+  status: "PENDING_APPROVAL" | "PENDING_BOD_APPROVAL" | "PENDING_PR" | "PR_CREATED" | "PO_ISSUED" | "ISSUED";
   purchaseRequisitionId: string | null;
   unitCode: string | null;
   unitModel: string | null;
