@@ -246,16 +246,20 @@ export default async function BatchingForecastPage() {
           )}
         </div>
 
-        {aggregatedRawMaterials.length > 0 && (
-          <div style={{ marginTop: "2rem", background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-            <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
-              <p style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#6b7280", margin: 0 }}>
-                Raw Materials Required for Concrete Mixes
-              </p>
-              <p style={{ fontSize: "0.8rem", color: "#6b7280", margin: "0.3rem 0 0", fontWeight: 400 }}>
-                Calculated from mix design specifications for premix materials in active forecasts
-              </p>
+        <div style={{ marginTop: "2rem", background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+          <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
+            <p style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#6b7280", margin: 0 }}>
+              Raw Materials Required for Concrete Mixes
+            </p>
+            <p style={{ fontSize: "0.8rem", color: "#6b7280", margin: "0.3rem 0 0", fontWeight: 400 }}>
+              Calculated from mix design specifications for premix materials in active forecasts
+            </p>
+          </div>
+          {aggregatedRawMaterials.length === 0 ? (
+            <div style={{ padding: "2rem", textAlign: "center", color: "#6b7280", fontSize: "0.875rem" }}>
+              No raw materials to display. Ensure concrete forecasts are linked to premix materials via Batching Plant recipes.
             </div>
+          ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
                 <thead>
@@ -288,8 +292,8 @@ export default async function BatchingForecastPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </main>
   );
