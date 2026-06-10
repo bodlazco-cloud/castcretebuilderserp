@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
 import { resourceForecasts, masterBomEntries, materials, projectUnits, projects } from "@/db/schema";
-import { eq, count } from "drizzle-orm";
+import { inventoryStock, materialTransfers } from "@/db/schema/procurement";
+import { eq, count, sum } from "drizzle-orm";
 import { ApproveForecastButton } from "./ApproveForecastButton";
 import { RaisePrButton } from "./RaisePrButton";
 import { canReviewForecast, isAdminOrBod } from "@/lib/supabase-server";
@@ -49,6 +50,9 @@ type MrpRow = {
   matName: string | null;
   matUnit: string | null;
   matCode: string | null;
+  materialId: string | null;
+  quantityOnHand: string | null;
+  transferredQuantity: string | null;
 };
 
 export default async function MrpQueuePage() {
@@ -57,7 +61,7 @@ export default async function MrpQueuePage() {
     isAdminOrBod().catch(() => false),
   ]);
 
-  const [rows, statusCounts] = await Promise.all([
+  const [rows, statusCounts, inventoryData, transferData] = await Promise.all([
     safe(
       db
         .select({
@@ -74,6 +78,7 @@ export default async function MrpQueuePage() {
           matName:               materials.name,
           matUnit:               materials.unit,
           matCode:               materials.code,
+          materialId:            materials.id,
         })
         .from(resourceForecasts)
         .leftJoin(masterBomEntries, eq(resourceForecasts.masterBomEntryId, masterBomEntries.id))
@@ -92,6 +97,27 @@ export default async function MrpQueuePage() {
         .groupBy(resourceForecasts.status),
       [] as { status: string; cnt: number }[],
     ),
+    safe(
+      db
+        .select({
+          projectId: inventoryStock.projectId,
+          materialId: inventoryStock.materialId,
+          quantityOnHand: inventoryStock.quantityOnHand,
+        })
+        .from(inventoryStock),
+      [] as { projectId: string; materialId: string; quantityOnHand: string }[],
+    ),
+    safe(
+      db
+        .select({
+          projectId: materialTransfers.projectId,
+          materialId: materialTransfers.materialId,
+          totalTransferred: sum(materialTransfers.quantity),
+        })
+        .from(materialTransfers)
+        .groupBy(materialTransfers.projectId, materialTransfers.materialId),
+      [] as { projectId: string; materialId: string; totalTransferred: string | null }[],
+    ),
   ]);
 
   const statusMap = Object.fromEntries(statusCounts.map((r) => [r.status, Number(r.cnt)]));
@@ -100,6 +126,18 @@ export default async function MrpQueuePage() {
   const pendingPr          = statusMap["PENDING_PR"]           ?? 0;
   const prCreated          = statusMap["PR_CREATED"]           ?? 0;
   const issued             = statusMap["ISSUED"]               ?? 0;
+
+  const inventoryMap = new Map<string, string>();
+  for (const inv of inventoryData) {
+    const key = `${inv.projectId}:${inv.materialId}`;
+    inventoryMap.set(key, inv.quantityOnHand);
+  }
+
+  const transferMap = new Map<string, string>();
+  for (const tf of transferData) {
+    const key = `${tf.projectId}:${tf.materialId}`;
+    transferMap.set(key, tf.totalTransferred ?? "0");
+  }
 
   type ProjectGroup = { projId: string; projName: string; rows: MrpRow[] };
   const projectMap = new Map<string, ProjectGroup>();
@@ -191,7 +229,7 @@ export default async function MrpQueuePage() {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
                       <thead>
                         <tr>
-                          {["Unit Code", "Model / Type", "Material", "Unit", "Gross Qty", "Consumed", "Remaining", "Status", "Action"].map((h) => (
+                          {["Unit Code", "Model / Type", "Material", "Unit", "Gross Qty", "Consumed", "Remaining", "Warehouse Stock", "Transferred", "Net to Procure", "Status", "Action"].map((h) => (
                             <th key={h} style={{
                               background: "#f9fafb", borderBottom: "1px solid #e5e7eb",
                               fontSize: "0.75rem", fontWeight: 600, color: "#6b7280",
@@ -207,6 +245,12 @@ export default async function MrpQueuePage() {
                           const consumed  = Number(row.quantityConsumed);
                           const remaining = Math.max(0, gross - consumed);
                           const remainingPct = gross > 0 ? Math.round((remaining / gross) * 100) : 0;
+
+                          const inventoryKey = row.projId && row.materialId ? `${row.projId}:${row.materialId}` : null;
+                          const warehouseStock = inventoryKey ? Number(inventoryMap.get(inventoryKey) ?? "0") : 0;
+                          const transferred = inventoryKey ? Number(transferMap.get(inventoryKey) ?? "0") : 0;
+                          const netToProcure = Math.max(0, remaining - warehouseStock - transferred);
+
                           return (
                             <tr key={row.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
                               <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.78rem", color: "#374151", fontWeight: 600, whiteSpace: "nowrap" }}>
@@ -242,6 +286,21 @@ export default async function MrpQueuePage() {
                                 {gross > 0 && (
                                   <span style={{ color: "#9ca3af", marginLeft: "0.25rem" }}>({remainingPct}%)</span>
                                 )}
+                              </td>
+                              <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", color: "#374151", fontSize: "0.82rem", whiteSpace: "nowrap" }}>
+                                {warehouseStock > 0
+                                  ? warehouseStock.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                                  : <span style={{ color: "#d1d5db" }}>0</span>}
+                              </td>
+                              <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", color: "#374151", fontSize: "0.82rem", whiteSpace: "nowrap" }}>
+                                {transferred > 0
+                                  ? transferred.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+                                  : <span style={{ color: "#d1d5db" }}>0</span>}
+                              </td>
+                              <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.82rem", whiteSpace: "nowrap" }}>
+                                <span style={{ fontWeight: 600, color: netToProcure === 0 ? "#9ca3af" : netToProcure < 10 ? "#b91c1c" : "#166534" }}>
+                                  {netToProcure.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                                </span>
                               </td>
                               <td style={{ padding: "0.65rem 1rem" }}>
                                 <ForecastStatusBadge status={row.status} />
