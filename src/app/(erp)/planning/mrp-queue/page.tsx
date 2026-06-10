@@ -51,8 +51,6 @@ type MrpRow = {
   matUnit: string | null;
   matCode: string | null;
   materialId: string | null;
-  quantityOnHand: string | null;
-  transferredQuantity: string | null;
 };
 
 export default async function MrpQueuePage() {
