@@ -8,7 +8,7 @@ import { eq, desc } from "drizzle-orm";
 import { ApproveForecastButton } from "./ApproveForecastButton";
 import { canReviewForecast, isAdminOrBod } from "@/lib/supabase-server";
 
-function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
+function safe<T>(p: Promise<T>, fallback: T, ms = 10000): Promise<T> {
   return Promise.race([
     p.catch(() => fallback),
     new Promise<T>((r) => setTimeout(() => r(fallback), ms)),
