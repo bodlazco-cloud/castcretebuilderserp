@@ -9,6 +9,9 @@ import { eq, desc } from "drizzle-orm";
 import { getAuthUser, isAdminOrBod, canReviewNtp } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { NtpApprovalPanel } from "./NtpApprovalPanel";
+import { GenerateForecastsButton } from "./GenerateForecastsButton";
+import { resourceForecasts } from "@/db/schema";
+import { count } from "drizzle-orm";
 
 const ACCENT = "#057a55";
 const FIELD: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "0.2rem" };
@@ -67,6 +70,13 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
     .where(eq(taskAssignments.id, id));
 
   if (!ntp) notFound();
+
+  const [forecastCount] = await db
+    .select({ cnt: count() })
+    .from(resourceForecasts)
+    .where(eq(resourceForecasts.unitId, ntp.unitId ?? ""));
+
+  const hasForecast = (forecastCount?.cnt ?? 0) > 0;
 
   const [progressRows, warRows] = await Promise.all([
     db.select({
@@ -143,6 +153,16 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
             )}
           </div>
         </div>
+
+        {/* Generate Forecasts (for ACTIVE NTPs missing forecasts) */}
+        {ntp.status === "ACTIVE" && !hasForecast && (
+          <div style={{ marginBottom: "1.5rem", padding: "1rem 1.25rem", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px" }}>
+            <p style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", fontWeight: 600, color: "#92400e" }}>
+              ⚠ No resource forecasts found for this NTP.
+            </p>
+            <GenerateForecastsButton ntpId={ntp.id} />
+          </div>
+        )}
 
         {/* Approval Panel */}
         <NtpApprovalPanel
