@@ -9,6 +9,7 @@ import {
 } from "@/db/schema";
 import { phaseScopes, phaseActivities } from "@/db/schema/phases";
 import { eq, and, count, sql, inArray } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { notifyWarSubmitted } from "@/lib/notifications";
@@ -22,7 +23,7 @@ import { generateResourceForecastsForUnit } from "@/actions/planning";
 
 const IssueNtpSchema = z.object({
   projectId:    z.string().uuid(),
-  unitId:       z.string().uuid(),
+  unitIds:      z.array(z.string().uuid()).min(1),
   subconId:     z.string().uuid(),
   category:     z.enum(["SLAB","STRUCTURAL","SPECIALTY_WORKS","MEPF","ARCHITECTURAL","TURNOVER"]),
   workType:     z.enum(["STRUCTURAL", "ARCHITECTURAL", "BOTH"]).optional().default("STRUCTURAL"),
@@ -33,7 +34,12 @@ const IssueNtpSchema = z.object({
 });
 
 export type IssueNtpResult =
-  | { success: true; taskAssignmentId: string }
+  | {
+      success: true;
+      ntpGroupId: string;
+      taskAssignmentIds: string[];
+      skipped: { unitId: string; reason: string }[];
+    }
   | { success: false; error: string };
 
 export async function issueTaskAssignment(
@@ -42,7 +48,7 @@ export async function issueTaskAssignment(
   const parsed = IssueNtpSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Invalid input." };
 
-  const { projectId, unitId, subconId, category, workType, phaseScopeId, startDate, endDate, issuedBy } =
+  const { projectId, unitIds, subconId, category, workType, phaseScopeId, startDate, endDate, issuedBy } =
     parsed.data;
 
   // ── Gate 1: BOD must have approved the project ────────────────────────────
@@ -120,52 +126,81 @@ export async function issueTaskAssignment(
   // An NTP can only be issued once per lot/unit for a given scope of work —
   // or for the whole category if no scope is specified — unless the prior
   // NTP for that unit + scope/category was rejected or cancelled.
-  const duplicateConditions = phaseScopeId
-    ? and(eq(taskAssignments.unitId, unitId), eq(taskAssignments.phaseScopeId, phaseScopeId))
-    : and(eq(taskAssignments.unitId, unitId), eq(taskAssignments.category, category as any), sql`${taskAssignments.phaseScopeId} IS NULL`);
+  // Checked per-unit below; units that fail are skipped rather than aborting
+  // the whole batch.
+  const skipped: { unitId: string; reason: string }[] = [];
+  const validUnitIds: string[] = [];
 
-  const [duplicate] = await db
-    .select({ id: taskAssignments.id, status: taskAssignments.status })
-    .from(taskAssignments)
-    .where(and(duplicateConditions, sql`${taskAssignments.status} NOT IN ('REJECTED','CANCELLED')`))
-    .limit(1);
+  for (const unitId of unitIds) {
+    const duplicateConditions = phaseScopeId
+      ? and(eq(taskAssignments.unitId, unitId), eq(taskAssignments.phaseScopeId, phaseScopeId))
+      : and(eq(taskAssignments.unitId, unitId), eq(taskAssignments.category, category as any), sql`${taskAssignments.phaseScopeId} IS NULL`);
 
-  if (duplicate) {
+    const [duplicate] = await db
+      .select({ id: taskAssignments.id, status: taskAssignments.status })
+      .from(taskAssignments)
+      .where(and(duplicateConditions, sql`${taskAssignments.status} NOT IN ('REJECTED','CANCELLED')`))
+      .limit(1);
+
+    if (duplicate) {
+      skipped.push({
+        unitId,
+        reason: phaseScopeId
+          ? "An NTP has already been issued for this unit and scope of work."
+          : "An NTP has already been issued for this unit and category.",
+      });
+      continue;
+    }
+
+    validUnitIds.push(unitId);
+  }
+
+  if (validUnitIds.length === 0) {
     return {
       success: false,
-      error: phaseScopeId
-        ? "An NTP has already been issued for this unit and scope of work."
-        : "An NTP has already been issued for this unit and category.",
+      error: skipped[0]?.reason ?? "No valid units to issue an NTP for.",
     };
   }
 
-  // ── All gates passed: create the Task Assignment as DRAFT ────────────────
-  const [newAssignment] = await db
-    .insert(taskAssignments)
-    .values({
-      projectId,
-      unitId,
-      subconId,
-      category: category as any,
-      workType: workType as any,
-      phaseScopeId: phaseScopeId ?? null,
-      startDate,
-      endDate,
-      status: "DRAFT",
-      capacityCheckPassed: true,
-      capacityCheckedAt: new Date(),
-      capacityCheckedBy: issuedBy,
-      issuedBy,
-    })
-    .returning({ id: taskAssignments.id });
+  // ── All gates passed: create the Task Assignments as DRAFT ───────────────
+  const ntpGroupId = randomUUID();
 
-  // Fire-and-forget: generate resource forecasts for this unit from approved BOM entries.
+  const inserted = await db
+    .insert(taskAssignments)
+    .values(
+      validUnitIds.map((unitId) => ({
+        projectId,
+        unitId,
+        subconId,
+        category: category as any,
+        workType: workType as any,
+        phaseScopeId: phaseScopeId ?? null,
+        startDate,
+        endDate,
+        status: "DRAFT",
+        capacityCheckPassed: true,
+        capacityCheckedAt: new Date(),
+        capacityCheckedBy: issuedBy,
+        issuedBy,
+        ntpGroupId,
+      })),
+    )
+    .returning({ id: taskAssignments.id, unitId: taskAssignments.unitId });
+
+  // Fire-and-forget: generate resource forecasts for each unit from approved BOM entries.
   // NTP issuance succeeds even if forecast generation fails.
-  void generateResourceForecastsForUnit(projectId, unitId).catch(() => undefined);
+  for (const row of inserted) {
+    void generateResourceForecastsForUnit(projectId, row.unitId).catch(() => undefined);
+  }
 
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/planning/mrp-queue");
-  return { success: true, taskAssignmentId: newAssignment.id };
+  return {
+    success: true,
+    ntpGroupId,
+    taskAssignmentIds: inserted.map((r) => r.id),
+    skipped,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

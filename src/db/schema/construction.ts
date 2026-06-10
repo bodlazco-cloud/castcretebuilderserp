@@ -29,6 +29,7 @@ export const taskAssignments = pgTable("task_assignments", {
   submittedBy:          uuid("submitted_by").references(() => users.id),
   reviewedAt:           timestamp("reviewed_at", { withTimezone: true }),
   reviewedBy:           uuid("reviewed_by").references(() => users.id),
+  ntpGroupId:           uuid("ntp_group_id"),
   bodApprovedAt:        timestamp("bod_approved_at", { withTimezone: true }),
   bodApprovedBy:        uuid("bod_approved_by").references(() => users.id),
   rejectionReason:      text("rejection_reason"),

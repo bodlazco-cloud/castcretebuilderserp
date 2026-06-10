@@ -20,6 +20,7 @@ export default async function LogProgressPage() {
       subconId:     taskAssignments.subconId,
       category:     taskAssignments.category,
       phaseScopeId: taskAssignments.phaseScopeId,
+      ntpGroupId:   taskAssignments.ntpGroupId,
       subconName:   subcontractors.name,
       subconCode:   subcontractors.code,
       projName:     projects.name,
@@ -51,6 +52,49 @@ export default async function LogProgressPage() {
     .where(eq(phaseActivities.isActive, true))
     .orderBy(phaseActivities.sequenceOrder);
 
+  // Group NTPs by ntpGroupId (falling back to the row's own id for legacy/ungrouped NTPs)
+  // so Log Progress can present one logical "NTP" with multiple selectable units.
+  type NtpGroup = {
+    groupKey: string;
+    projectId: string;
+    subconId: string;
+    category: string;
+    phaseScopeId: string | null;
+    subconName: string;
+    subconCode: string;
+    projName: string;
+    scopeName: string | null;
+    units: { unitId: string; taskAssignmentId: string; unitCode: string; unitModel: string; unitType: string; blockId: string }[];
+  };
+
+  const groupMap = new Map<string, NtpGroup>();
+  for (const n of ntps) {
+    const groupKey = n.ntpGroupId ?? n.id;
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, {
+        groupKey,
+        projectId:    n.projectId,
+        subconId:     n.subconId,
+        category:     n.category ?? "",
+        phaseScopeId: n.phaseScopeId ?? null,
+        subconName:   n.subconName ?? "—",
+        subconCode:   n.subconCode ?? "",
+        projName:     n.projName ?? "—",
+        scopeName:    n.scopeName ?? null,
+        units: [],
+      });
+    }
+    groupMap.get(groupKey)!.units.push({
+      unitId:           n.unitId,
+      taskAssignmentId: n.id,
+      unitCode:         n.unitCode ?? "—",
+      unitModel:        n.unitModel ?? "",
+      unitType:         n.unitType ?? "",
+      blockId:          n.blockId ?? "",
+    });
+  }
+  const ntpGroups = Array.from(groupMap.values());
+
   return (
     <main style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui, sans-serif" }}>
       <div style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
@@ -63,27 +107,12 @@ export default async function LogProgressPage() {
           <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid #e5e7eb", borderTop: `4px solid ${ACCENT}` }}>
             <h1 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700 }}>Log Daily Progress Entry</h1>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: "#6b7280" }}>
-              Select an NTP first — units, scope, and activities will populate automatically.
+              Select an NTP first — its units, scope, and activities will populate automatically.
             </p>
           </div>
           <div style={{ padding: "1.5rem" }}>
             <LogProgressForm
-              ntps={ntps.map((n) => ({
-                id:           n.id,
-                projectId:    n.projectId,
-                unitId:       n.unitId,
-                subconId:     n.subconId,
-                category:     n.category ?? "",
-                phaseScopeId: n.phaseScopeId ?? null,
-                subconName:   n.subconName ?? "—",
-                subconCode:   n.subconCode ?? "",
-                projName:     n.projName ?? "—",
-                unitCode:     n.unitCode ?? "—",
-                unitModel:    n.unitModel ?? "",
-                unitType:     n.unitType ?? "",
-                blockId:      n.blockId ?? "",
-                scopeName:    n.scopeName ?? null,
-              }))}
+              ntpGroups={ntpGroups}
               activities={activities.map((a) => ({ ...a, weight: String(a.weight) }))}
               userId={user?.id ?? ""}
             />
