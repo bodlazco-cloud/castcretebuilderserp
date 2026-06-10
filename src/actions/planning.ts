@@ -565,17 +565,30 @@ export async function createManpowerLog(
 
 // ─── Generate Resource Forecasts for Unit ─────────────────────────────────────
 
+export type GenerateForecastsDiagnostics = {
+  unitId: string;
+  unitModel?: string;
+  unitType?: string;
+  bomEntriesFound: number;
+  alreadyExisted: number;
+  equipmentSkipped: number;
+  created: number;
+  reason?: string;
+};
+
 export async function generateResourceForecastsForUnit(
   projectId: string,
   unitId: string,
-): Promise<void> {
+): Promise<GenerateForecastsDiagnostics> {
   const [unit] = await db
     .select({ unitModel: projectUnits.unitModel, unitType: projectUnits.unitType })
     .from(projectUnits)
     .where(eq(projectUnits.id, unitId))
     .limit(1);
 
-  if (!unit) return;
+  if (!unit) {
+    return { unitId, bomEntriesFound: 0, alreadyExisted: 0, equipmentSkipped: 0, created: 0, reason: "Unit not found." };
+  }
 
   const bomEntries = await db
     .select({
@@ -596,7 +609,14 @@ export async function generateResourceForecastsForUnit(
       ),
     );
 
-  if (bomEntries.length === 0) return;
+  const base = { unitId, unitModel: unit.unitModel, unitType: unit.unitType ?? undefined };
+
+  if (bomEntries.length === 0) {
+    return {
+      ...base, bomEntriesFound: 0, alreadyExisted: 0, equipmentSkipped: 0, created: 0,
+      reason: `No APPROVED & active BOM entries found for model "${unit.unitModel}" / type "${unit.unitType ?? "—"}".`,
+    };
+  }
 
   const existing = await db
     .select({ masterBomEntryId: resourceForecasts.masterBomEntryId })
@@ -611,11 +631,23 @@ export async function generateResourceForecastsForUnit(
   const existingSet = new Set(existing.map((r) => r.masterBomEntryId));
   const toCreate = bomEntries.filter((b) => !existingSet.has(b.id));
 
-  if (toCreate.length === 0) return;
+  if (toCreate.length === 0) {
+    return {
+      ...base, bomEntriesFound: bomEntries.length, alreadyExisted: bomEntries.length, equipmentSkipped: 0, created: 0,
+      reason: "Resource forecasts already exist for all matching BOM entries.",
+    };
+  }
 
   // Skip EQUIPMENT forecasts — motorpool is handled as monthly rental
   const nonEquipment = toCreate.filter((b) => !b.equipmentType);
-  if (nonEquipment.length === 0) return;
+  const equipmentSkipped = toCreate.length - nonEquipment.length;
+
+  if (nonEquipment.length === 0) {
+    return {
+      ...base, bomEntriesFound: bomEntries.length, alreadyExisted: existingSet.size, equipmentSkipped, created: 0,
+      reason: "All remaining BOM entries are EQUIPMENT type (handled separately as motorpool rentals).",
+    };
+  }
 
   await db.insert(resourceForecasts).values(
     nonEquipment.map((b) => ({
@@ -635,6 +667,11 @@ export async function generateResourceForecastsForUnit(
   revalidatePath("/planning/mrp-queue");
   revalidatePath("/planning/batching-forecast");
   revalidatePath("/planning");
+
+  return {
+    ...base, bomEntriesFound: bomEntries.length, alreadyExisted: existingSet.size,
+    equipmentSkipped, created: nonEquipment.length,
+  };
 }
 
 // ─── Raise MRP Purchase Requisition ──────────────────────────────────────────
@@ -707,21 +744,44 @@ export async function approveForecastAsBod(
   }
 }
 
-/** Retroactive: generate forecasts for an already-ACTIVE NTP that has none */
+export type RegenerateForecastsResult =
+  | { success: true; created: number; diagnostics: GenerateForecastsDiagnostics[] }
+  | { success: false; error: string };
+
+/** Retroactive: generate forecasts for an already-ACTIVE NTP (and any sibling
+ *  units issued in the same NTP group) that have none. */
 export async function regenerateForecastsForNtp(
   ntpId: string,
-): Promise<ForecastUpdateResult> {
+): Promise<RegenerateForecastsResult> {
   try {
     const { taskAssignments } = await import("@/db/schema");
     const [ntp] = await db
-      .select({ projectId: taskAssignments.projectId, unitId: taskAssignments.unitId, status: taskAssignments.status })
+      .select({
+        projectId:  taskAssignments.projectId,
+        unitId:     taskAssignments.unitId,
+        status:     taskAssignments.status,
+        ntpGroupId: taskAssignments.ntpGroupId,
+      })
       .from(taskAssignments)
       .where(eq(taskAssignments.id, ntpId))
       .limit(1);
     if (!ntp) return { success: false, error: "NTP not found." };
     if (ntp.status !== "ACTIVE") return { success: false, error: "NTP must be ACTIVE." };
-    await generateResourceForecastsForUnit(ntp.projectId, ntp.unitId);
-    return { success: true };
+
+    let unitIds = [ntp.unitId];
+    if (ntp.ntpGroupId) {
+      const siblings = await db
+        .select({ unitId: taskAssignments.unitId })
+        .from(taskAssignments)
+        .where(and(eq(taskAssignments.ntpGroupId, ntp.ntpGroupId), eq(taskAssignments.status, "ACTIVE")));
+      unitIds = [...new Set(siblings.map((s) => s.unitId))];
+    }
+
+    const diagnostics = await Promise.all(
+      unitIds.map((unitId) => generateResourceForecastsForUnit(ntp.projectId, unitId)),
+    );
+    const created = diagnostics.reduce((sum, d) => sum + d.created, 0);
+    return { success: true, created, diagnostics };
   } catch (err) {
     return { success: false, error: String(err) };
   }

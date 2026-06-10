@@ -9,9 +9,6 @@ import { eq, desc } from "drizzle-orm";
 import { getAuthUser, isAdminOrBod, canReviewNtp } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { NtpApprovalPanel } from "./NtpApprovalPanel";
-import { GenerateForecastsButton } from "./GenerateForecastsButton";
-import { resourceForecasts } from "@/db/schema";
-import { count } from "drizzle-orm";
 
 const ACCENT = "#057a55";
 const FIELD: React.CSSProperties = { display: "flex", flexDirection: "column", gap: "0.2rem" };
@@ -51,6 +48,7 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
       submittedAt:     taskAssignments.submittedAt,
       bodApprovedAt:   taskAssignments.bodApprovedAt,
       rejectionReason: taskAssignments.rejectionReason,
+      ntpGroupId:      taskAssignments.ntpGroupId,
       unitCode:        projectUnits.unitCode,
       unitModel:       projectUnits.unitModel,
       unitId:          projectUnits.id,
@@ -71,12 +69,18 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
 
   if (!ntp) notFound();
 
-  const [forecastCount] = await db
-    .select({ cnt: count() })
-    .from(resourceForecasts)
-    .where(eq(resourceForecasts.unitId, ntp.unitId ?? ""));
-
-  const hasForecast = (forecastCount?.cnt ?? 0) > 0;
+  const siblingNtps = ntp.ntpGroupId
+    ? await db
+        .select({
+          id:       taskAssignments.id,
+          unitCode: projectUnits.unitCode,
+          status:   taskAssignments.status,
+        })
+        .from(taskAssignments)
+        .leftJoin(projectUnits, eq(taskAssignments.unitId, projectUnits.id))
+        .where(eq(taskAssignments.ntpGroupId, ntp.ntpGroupId))
+    : [];
+  const otherUnitsInGroup = siblingNtps.filter((s) => s.id !== ntp.id);
 
   const [progressRows, warRows] = await Promise.all([
     db.select({
@@ -154,16 +158,6 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </div>
 
-        {/* Generate Forecasts (for ACTIVE NTPs missing forecasts) */}
-        {ntp.status === "ACTIVE" && !hasForecast && (
-          <div style={{ marginBottom: "1.5rem", padding: "1rem 1.25rem", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px" }}>
-            <p style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", fontWeight: 600, color: "#92400e" }}>
-              ⚠ No resource forecasts found for this NTP.
-            </p>
-            <GenerateForecastsButton ntpId={ntp.id} />
-          </div>
-        )}
-
         {/* Approval Panel */}
         <NtpApprovalPanel
           ntpId={ntp.id}
@@ -201,6 +195,22 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
             <div style={FIELD}><div style={LABEL}>End Date</div><div style={VALUE}>{ntp.endDate}</div></div>
             <div style={FIELD}><div style={LABEL}>Issued At</div><div style={VALUE}>{new Date(ntp.issuedAt).toLocaleDateString("en-PH", { dateStyle: "long" })}</div></div>
           </div>
+
+          {otherUnitsInGroup.length > 0 && (
+            <div style={{ marginTop: "1.25rem", paddingTop: "1.25rem", borderTop: "1px solid #f3f4f6" }}>
+              <div style={LABEL}>Issued together with</div>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
+                {otherUnitsInGroup.map((s) => (
+                  <a key={s.id} href={`/construction/ntp/${s.id}`} style={{
+                    padding: "0.2rem 0.6rem", borderRadius: "999px", fontSize: "0.78rem", fontWeight: 600,
+                    background: "#eff6ff", color: "#1e40af", textDecoration: "none",
+                  }}>
+                    {s.unitCode ?? "Unit"} ({s.status})
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Daily Progress */}

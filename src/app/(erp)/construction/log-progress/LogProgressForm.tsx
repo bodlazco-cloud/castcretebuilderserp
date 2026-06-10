@@ -4,11 +4,15 @@ import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { logDailyProgressBulk } from "@/actions/construction";
 
-type Ntp = {
-  id: string; projectId: string; unitId: string; subconId: string;
+type NtpUnit = {
+  unitId: string; taskAssignmentId: string;
+  unitCode: string; unitModel: string; unitType: string; blockId: string;
+};
+type NtpGroup = {
+  groupKey: string; projectId: string; subconId: string;
   category: string; phaseScopeId: string | null; scopeName: string | null;
   subconName: string; subconCode: string; projName: string;
-  unitCode: string; unitModel: string; unitType: string; blockId: string;
+  units: NtpUnit[];
 };
 type Activity = { id: string; code: string; name: string; scopeId: string; weight: string; order: number };
 
@@ -25,8 +29,8 @@ const labelStyle: React.CSSProperties = {
 const ACTIVITY_STATUSES = ["STARTED", "ONGOING", "COMPLETED"] as const;
 type ActivityStatus = typeof ACTIVITY_STATUSES[number];
 
-export function LogProgressForm({ ntps, activities, userId }: {
-  ntps: Ntp[];
+export function LogProgressForm({ ntpGroups, activities, userId }: {
+  ntpGroups: NtpGroup[];
   activities: Activity[];
   userId: string;
 }) {
@@ -35,7 +39,8 @@ export function LogProgressForm({ ntps, activities, userId }: {
   const [error, setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const [selectedNtpId,  setSelectedNtpId]  = useState("");
+  const [selectedGroupKey, setSelectedGroupKey] = useState("");
+  const [selectedUnitIds, setSelectedUnitIds]   = useState<Set<string>>(new Set());
   const [activityChecks, setActivityChecks] = useState<Record<string, ActivityStatus>>({});
   const [skipActivities, setSkipActivities] = useState(false);
   const [entryDate,      setEntryDate]      = useState(new Date().toISOString().slice(0, 10));
@@ -43,15 +48,24 @@ export function LogProgressForm({ ntps, activities, userId }: {
   const [delayType,      setDelayType]      = useState("");
   const [issuesDetails,  setIssuesDetails]  = useState("");
 
-  const selectedNtp   = ntps.find((n) => n.id === selectedNtpId) ?? null;
-  const scopeId       = selectedNtp?.phaseScopeId ?? null;
+  const selectedGroup  = ntpGroups.find((g) => g.groupKey === selectedGroupKey) ?? null;
+  const scopeId        = selectedGroup?.phaseScopeId ?? null;
   const scopeActivities = activities.filter((a) => scopeId ? a.scopeId === scopeId : false);
 
-  // Reset activity selections when NTP changes
+  // Reset unit/activity selections when NTP group changes
   useEffect(() => {
+    setSelectedUnitIds(new Set(selectedGroup?.units.map((u) => u.unitId) ?? []));
     setActivityChecks({});
     setSkipActivities(false);
-  }, [selectedNtpId]);
+  }, [selectedGroupKey]);
+
+  function toggleUnit(unitId: string) {
+    setSelectedUnitIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(unitId)) next.delete(unitId); else next.add(unitId);
+      return next;
+    });
+  }
 
   function toggleActivity(actId: string) {
     setActivityChecks((prev) => {
@@ -72,15 +86,21 @@ export function LogProgressForm({ ntps, activities, userId }: {
 
   const checkedActivityIds = Object.keys(activityChecks);
 
-  // Group NTPs by project for dropdown
-  const ntpsByProject = ntps.reduce<Record<string, Ntp[]>>((acc, n) => {
-    (acc[n.projName] ??= []).push(n);
+  // Group NTP groups by project for dropdown
+  const ntpsByProject = ntpGroups.reduce<Record<string, NtpGroup[]>>((acc, g) => {
+    (acc[g.projName] ??= []).push(g);
     return acc;
   }, {});
 
+  function groupLabel(g: NtpGroup): string {
+    const codes = g.units.map((u) => u.unitCode).join(", ");
+    return `${codes} — ${g.subconName}${g.scopeName ? ` / ${g.scopeName}` : ` / ${g.category}`}`;
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!selectedNtp) { setError("Select a Task Assignment (NTP)."); return; }
+    if (!selectedGroup) { setError("Select a Task Assignment (NTP)."); return; }
+    if (selectedUnitIds.size === 0) { setError("Select at least one unit."); return; }
     if (!skipActivities && checkedActivityIds.length === 0) {
       setError("Select at least one activity, or check \"Log without a specific activity\".");
       return;
@@ -88,23 +108,32 @@ export function LogProgressForm({ ntps, activities, userId }: {
     setError(null);
 
     startTransition(async () => {
-      const result = await logDailyProgressBulk({
-        projectId:        selectedNtp.projectId,
-        unitIds:          [selectedNtp.unitId],
-        taskAssignmentId: selectedNtp.id,
-        subconId:         selectedNtp.subconId,
-        activities:       skipActivities ? [] : checkedActivityIds.map((id) => ({ phaseActivityId: id, status: activityChecks[id] ?? "STARTED" })),
-        entryDate,
-        actualManpower:   manpower,
-        delayType:        (delayType as any) || undefined,
-        issuesDetails:    issuesDetails || undefined,
-        enteredBy:        userId,
-      });
-      if (result.success) {
+      const units = selectedGroup.units.filter((u) => selectedUnitIds.has(u.unitId));
+      let lastError: string | null = null;
+      let totalCount = 0;
+
+      for (const unit of units) {
+        const result = await logDailyProgressBulk({
+          projectId:        selectedGroup.projectId,
+          unitIds:          [unit.unitId],
+          taskAssignmentId: unit.taskAssignmentId,
+          subconId:         selectedGroup.subconId,
+          activities:       skipActivities ? [] : checkedActivityIds.map((id) => ({ phaseActivityId: id, status: activityChecks[id] ?? "STARTED" })),
+          entryDate,
+          actualManpower:   manpower,
+          delayType:        (delayType as any) || undefined,
+          issuesDetails:    issuesDetails || undefined,
+          enteredBy:        userId,
+        });
+        if (result.success) { totalCount += result.count; }
+        else { lastError = result.error; break; }
+      }
+
+      if (lastError) {
+        setError(lastError);
+      } else {
         setSuccess(true);
         setTimeout(() => router.push("/construction"), 1200);
-      } else {
-        setError(result.error);
       }
     });
   }
@@ -132,18 +161,18 @@ export function LogProgressForm({ ntps, activities, userId }: {
         <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af" }}>
           Step 1 — Select Task Assignment (NTP)
         </p>
-        {ntps.length === 0 ? (
+        {ntpGroups.length === 0 ? (
           <p style={{ margin: 0, fontSize: "0.875rem", color: "#9ca3af" }}>No active NTPs found.</p>
         ) : (
           <label>
             <span style={labelStyle}>Active NTP <span style={{ color: "#e02424" }}>*</span></span>
-            <select value={selectedNtpId} onChange={(e) => setSelectedNtpId(e.target.value)} style={inputStyle} required>
+            <select value={selectedGroupKey} onChange={(e) => setSelectedGroupKey(e.target.value)} style={inputStyle} required>
               <option value="">Select NTP…</option>
-              {Object.entries(ntpsByProject).map(([projName, projNtps]) => (
+              {Object.entries(ntpsByProject).map(([projName, projGroups]) => (
                 <optgroup key={projName} label={projName}>
-                  {projNtps.map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.unitCode} — {n.subconName}{n.scopeName ? ` / ${n.scopeName}` : ` / ${n.category}`}
+                  {projGroups.map((g) => (
+                    <option key={g.groupKey} value={g.groupKey}>
+                      {groupLabel(g)}
                     </option>
                   ))}
                 </optgroup>
@@ -152,25 +181,47 @@ export function LogProgressForm({ ntps, activities, userId }: {
           </label>
         )}
 
-        {selectedNtp && (
+        {selectedGroup && (
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <span style={{ padding: "0.2rem 0.55rem", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, color: "#166534" }}>
-              {selectedNtp.projName}
+              {selectedGroup.projName}
             </span>
             <span style={{ padding: "0.2rem 0.55rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, color: "#1e40af" }}>
-              {selectedNtp.subconCode} — {selectedNtp.subconName}
+              {selectedGroup.subconCode} — {selectedGroup.subconName}
             </span>
-            {selectedNtp.scopeName && (
+            {selectedGroup.scopeName && (
               <span style={{ padding: "0.2rem 0.55rem", background: "#fef9c3", border: "1px solid #fde047", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, color: "#713f12" }}>
-                Scope: {selectedNtp.scopeName}
+                Scope: {selectedGroup.scopeName}
               </span>
             )}
+          </div>
+        )}
+
+        {selectedGroup && selectedGroup.units.length > 1 && (
+          <div>
+            <span style={labelStyle}>Units to log <span style={{ color: "#e02424" }}>*</span></span>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              {selectedGroup.units.map((u) => (
+                <label key={u.unitId} style={{
+                  display: "flex", alignItems: "center", gap: "0.6rem",
+                  padding: "0.45rem 0.7rem", borderRadius: "6px", cursor: "pointer",
+                  background: selectedUnitIds.has(u.unitId) ? "#f0fdf4" : "#fff",
+                  border: selectedUnitIds.has(u.unitId) ? `1px solid ${ACCENT}` : "1px solid #e5e7eb",
+                }}>
+                  <input type="checkbox" checked={selectedUnitIds.has(u.unitId)}
+                    onChange={() => toggleUnit(u.unitId)} style={{ cursor: "pointer" }} />
+                  <span style={{ fontWeight: 600, fontSize: "0.85rem", color: "#111827" }}>{u.unitCode}</span>
+                  <span style={{ fontSize: "0.72rem", color: "#6b7280" }}>{u.unitModel}</span>
+                  <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.1rem 0.35rem", borderRadius: "3px", background: "#eff6ff", color: "#1e40af" }}>{u.unitType}</span>
+                </label>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
       {/* ── STEP 2: Activities ── */}
-      {selectedNtp && (
+      {selectedGroup && (
         <div style={sectionCard}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af" }}>
@@ -197,7 +248,7 @@ export function LogProgressForm({ ntps, activities, userId }: {
 
           {!skipActivities && (scopeActivities.length === 0 ? (
             <div style={{ padding: "0.85rem 1rem", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", fontSize: "0.85rem", color: "#92400e" }}>
-              {selectedNtp.phaseScopeId
+              {selectedGroup.phaseScopeId
                 ? "No activities defined for this scope."
                 : "This NTP has no scope assigned — activities cannot be filtered."}
             </div>
@@ -248,7 +299,7 @@ export function LogProgressForm({ ntps, activities, userId }: {
       )}
 
       {/* ── STEP 3: Entry Details ── */}
-      {selectedNtp && (
+      {selectedGroup && (
         <div style={sectionCard}>
           <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af" }}>
             Step 3 — Entry Details
@@ -288,18 +339,18 @@ export function LogProgressForm({ ntps, activities, userId }: {
           Cancel
         </a>
         <button type="submit"
-          disabled={isPending || !selectedNtp || (!skipActivities && checkedActivityIds.length === 0)}
+          disabled={isPending || !selectedGroup || selectedUnitIds.size === 0 || (!skipActivities && checkedActivityIds.length === 0)}
           style={{
             padding: "0.65rem 1.5rem", borderRadius: "6px",
-            background: (!selectedNtp || (!skipActivities && checkedActivityIds.length === 0)) ? "#6ee7b7" : ACCENT,
+            background: (!selectedGroup || selectedUnitIds.size === 0 || (!skipActivities && checkedActivityIds.length === 0)) ? "#6ee7b7" : ACCENT,
             color: "#fff", border: "none", fontSize: "0.9rem", fontWeight: 600,
-            cursor: (!selectedNtp || (!skipActivities && checkedActivityIds.length === 0)) ? "not-allowed" : "pointer",
+            cursor: (!selectedGroup || selectedUnitIds.size === 0 || (!skipActivities && checkedActivityIds.length === 0)) ? "not-allowed" : "pointer",
           }}>
           {isPending
             ? "Saving…"
             : checkedActivityIds.length > 0
-              ? `Log ${checkedActivityIds.length} activit${checkedActivityIds.length > 1 ? "ies" : "y"} for ${selectedNtp?.unitCode ?? "this unit"}`
-              : "Log Progress"}
+              ? `Log ${checkedActivityIds.length} activit${checkedActivityIds.length > 1 ? "ies" : "y"} for ${selectedUnitIds.size} unit${selectedUnitIds.size !== 1 ? "s" : ""}`
+              : `Log Progress for ${selectedUnitIds.size} unit${selectedUnitIds.size !== 1 ? "s" : ""}`}
         </button>
       </div>
     </form>
