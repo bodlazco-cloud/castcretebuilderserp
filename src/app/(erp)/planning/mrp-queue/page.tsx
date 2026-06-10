@@ -44,7 +44,7 @@ type MrpRow = {
   purchaseRequisitionId: string | null;
   unitCode: string | null;
   unitModel: string | null;
-  unitType: string | null;
+  unitType: "BEG" | "MID" | "END" | "SHOP" | null;
   projId: string | null;
   projName: string | null;
   matName: string | null;
