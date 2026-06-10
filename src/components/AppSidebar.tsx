@@ -29,6 +29,7 @@ const NAV: NavSection[] = [
         { label: "Bill of Materials",   href: "/planning/bom" },
       ]},
       { label: "Resource Mapping", isGroup: true, items: [
+        { label: "Generate Forecasts",  href: "/planning/resource-mapping" },
         { label: "MRP Queue",           href: "/planning/mrp-queue" },
         { label: "Batching Forecast",   href: "/planning/batching-forecast" },
         { label: "Motorpool Needs",     href: "/planning/motorpool-needs" },

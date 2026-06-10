@@ -160,10 +160,12 @@ export default async function ConstructionPage() {
   const ntpMap  = Object.fromEntries(ntpByStatus.map((r) => [r.status, Number(r.cnt)]));
   const warMap  = Object.fromEntries(warByStatus.map((r) => [r.status, Number(r.cnt)]));
 
-  const activeNtps      = ntpMap["ACTIVE"]      ?? 0;
-  const draftNtps       = ntpMap["DRAFT"]        ?? 0;
-  const completedNtps   = ntpMap["COMPLETED"]    ?? 0;
-  const totalNtps       = Object.values(ntpMap).reduce((s, v) => s + v, 0);
+  const activeNtps         = ntpMap["ACTIVE"]         ?? 0;
+  const draftNtps          = ntpMap["DRAFT"]           ?? 0;
+  const pendingReviewNtps  = ntpMap["PENDING_REVIEW"]  ?? 0;
+  const pendingBodNtps     = ntpMap["PENDING_BOD"]     ?? 0;
+  const completedNtps      = ntpMap["COMPLETED"]       ?? 0;
+  const totalNtps          = Object.values(ntpMap).reduce((s, v) => s + v, 0);
 
   const warPending      = warMap["PENDING_REVIEW"]     ?? 0;
   const warAudit        = warMap["PENDING_AUDIT"]       ?? 0;
@@ -174,19 +176,21 @@ export default async function ConstructionPage() {
   const warReadyCount   = warReadyNtps.length;
 
   const kpis = [
-    { label: "Active NTPs",         value: activeNtps,    sub: `${totalNtps} total`,            accent: ACCENT },
-    { label: "Units In Progress",   value: unitsInProgress, sub: `${completedNtps} NTPs closed`, accent: "#1a56db" },
-    { label: "WARs Pending Review", value: warPending,    sub: `${warAudit} in audit`,           accent: "#e3a008" },
-    { label: "WAR Ready to Submit", value: warReadyCount, sub: "All activities complete",        accent: "#7e3af2" },
-    { label: "Flagged Entries",     value: flaggedEntries, sub: "Doc gap / delay logged",        accent: "#e02424" },
-    { label: "WARs Approved",       value: warApproved,   sub: `${warReadyApprove} pending BOD`, accent: "#057a55" },
+    { label: "Active NTPs",         value: activeNtps,       sub: `${totalNtps} total`,            accent: ACCENT },
+    { label: "NTPs for Review",     value: pendingReviewNtps, sub: "Awaiting manager review",       accent: "#1d4ed8" },
+    { label: "NTPs Pending BOD",    value: pendingBodNtps,   sub: "Awaiting BOD approval",          accent: "#d97706" },
+    { label: "Units In Progress",   value: unitsInProgress,  sub: `${completedNtps} NTPs closed`,  accent: "#0891b2" },
+    { label: "WAR Ready to Submit", value: warReadyCount,    sub: "All activities complete",        accent: "#7e3af2" },
+    { label: "Flagged Entries",     value: flaggedEntries,   sub: "Doc gap / delay logged",         accent: "#e02424" },
   ];
 
   const ntpPipelineTotal = Math.max(totalNtps, 1);
   const ntpStages = [
-    { label: "Draft",     count: draftNtps,     color: "#d1d5db", text: "#374151" },
-    { label: "Active",    count: activeNtps,     color: "#86efac", text: "#166534" },
-    { label: "Completed", count: completedNtps,  color: "#93c5fd", text: "#1e40af" },
+    { label: "Draft",           count: draftNtps,          color: "#d1d5db", text: "#374151" },
+    { label: "For Review",      count: pendingReviewNtps,  color: "#bfdbfe", text: "#1e40af" },
+    { label: "Pending BOD",     count: pendingBodNtps,     color: "#fde68a", text: "#92400e" },
+    { label: "Active",          count: activeNtps,         color: "#86efac", text: "#166534" },
+    { label: "Completed",       count: completedNtps,      color: "#93c5fd", text: "#1e40af" },
   ];
 
   const warPipelineTotal = Math.max(totalWars, 1);

@@ -4,12 +4,17 @@ import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { logDailyProgressBulk } from "@/actions/construction";
 
-type Project    = { id: string; name: string };
-type Block      = { id: string; blockName: string; projectId: string };
-type Unit       = { id: string; unitCode: string; projectId: string; blockId: string; unitModel: string; unitType: string };
-type Assignment = { id: string; unitId: string; subconId: string; subconName: string; category: string; phaseScopeId: string | null; scopeName: string | null };
-type Subcon     = { id: string; name: string; code: string };
-type Activity   = { id: string; code: string; name: string; scopeId: string; weight: string; order: number };
+type NtpUnit = {
+  unitId: string; taskAssignmentId: string;
+  unitCode: string; unitModel: string; unitType: string; blockId: string;
+};
+type NtpGroup = {
+  groupKey: string; projectId: string; subconId: string;
+  category: string; phaseScopeId: string | null; scopeName: string | null;
+  subconName: string; subconCode: string; projName: string;
+  units: NtpUnit[];
+};
+type Activity = { id: string; code: string; name: string; scopeId: string; weight: string; order: number };
 
 const ACCENT = "#057a55";
 const inputStyle: React.CSSProperties = {
@@ -21,18 +26,11 @@ const labelStyle: React.CSSProperties = {
   display: "block", fontSize: "0.82rem", fontWeight: 600,
   color: "#374151", marginBottom: "0.35rem",
 };
-
 const ACTIVITY_STATUSES = ["STARTED", "ONGOING", "COMPLETED"] as const;
 type ActivityStatus = typeof ACTIVITY_STATUSES[number];
 
-export function LogProgressForm({
-  projects, blocks, units, assignments, allSubcons, activities, userId,
-}: {
-  projects: Project[];
-  blocks: Block[];
-  units: Unit[];
-  assignments: Assignment[];
-  allSubcons: Subcon[];
+export function LogProgressForm({ ntpGroups, activities, userId }: {
+  ntpGroups: NtpGroup[];
   activities: Activity[];
   userId: string;
 }) {
@@ -41,64 +39,37 @@ export function LogProgressForm({
   const [error, setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const [selectedProject,  setSelectedProject]  = useState("");
-  const [selectedBlock,    setSelectedBlock]    = useState("");
-  const [checkedUnits,     setCheckedUnits]     = useState<Set<string>>(new Set());
-  const [selectedNtp,      setSelectedNtp]      = useState("");
-  const [selectedSubcon,   setSelectedSubcon]   = useState("");
-  const [entryDate,        setEntryDate]        = useState(new Date().toISOString().slice(0, 10));
-  const [manpower,         setManpower]         = useState(0);
-  const [delayType,        setDelayType]        = useState("");
-  const [issuesDetails,    setIssuesDetails]    = useState("");
-
-  // Activity checklist: activityId → status
+  const [selectedGroupKey, setSelectedGroupKey] = useState("");
+  const [selectedUnitIds, setSelectedUnitIds]   = useState<Set<string>>(new Set());
   const [activityChecks, setActivityChecks] = useState<Record<string, ActivityStatus>>({});
+  const [skipActivities, setSkipActivities] = useState(false);
+  const [entryDate,      setEntryDate]      = useState(new Date().toISOString().slice(0, 10));
+  const [manpower,       setManpower]       = useState(0);
+  const [delayType,      setDelayType]      = useState("");
+  const [issuesDetails,  setIssuesDetails]  = useState("");
 
-  const projectBlocks   = blocks.filter((b) => b.projectId === selectedProject);
-  const blockUnits      = units.filter((u) => u.projectId === selectedProject && (!selectedBlock || u.blockId === selectedBlock));
-  const unitIds         = [...checkedUnits];
-  const ntpOptions      = assignments.filter((a) => unitIds.includes(a.unitId));
-  const selectedNtpObj  = assignments.find((a) => a.id === selectedNtp);
-  const scopeId         = selectedNtpObj?.phaseScopeId ?? null;
+  const selectedGroup  = ntpGroups.find((g) => g.groupKey === selectedGroupKey) ?? null;
+  const scopeId        = selectedGroup?.phaseScopeId ?? null;
   const scopeActivities = activities.filter((a) => scopeId ? a.scopeId === scopeId : false);
 
-  // Auto-set subcon from NTP
+  // Reset unit/activity selections when NTP group changes
   useEffect(() => {
-    if (selectedNtpObj) setSelectedSubcon(selectedNtpObj.subconId);
-  }, [selectedNtpObj?.id]);
-
-  // Reset activity checks when scope changes
-  useEffect(() => {
+    setSelectedUnitIds(new Set(selectedGroup?.units.map((u) => u.unitId) ?? []));
     setActivityChecks({});
-  }, [scopeId]);
+    setSkipActivities(false);
+  }, [selectedGroupKey]);
 
-  function toggleUnit(id: string) {
-    setCheckedUnits((prev) => {
+  function toggleUnit(unitId: string) {
+    setSelectedUnitIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(unitId)) next.delete(unitId); else next.add(unitId);
       return next;
     });
-    setSelectedNtp("");
-    setActivityChecks({});
-  }
-
-  function toggleAllBlockUnits() {
-    if (checkedUnits.size === blockUnits.length && blockUnits.length > 0) {
-      setCheckedUnits(new Set());
-    } else {
-      setCheckedUnits(new Set(blockUnits.map((u) => u.id)));
-    }
-    setSelectedNtp("");
-    setActivityChecks({});
   }
 
   function toggleActivity(actId: string) {
     setActivityChecks((prev) => {
-      if (prev[actId]) {
-        const next = { ...prev };
-        delete next[actId];
-        return next;
-      }
+      if (prev[actId]) { const next = { ...prev }; delete next[actId]; return next; }
       return { ...prev, [actId]: "STARTED" };
     });
   }
@@ -115,37 +86,54 @@ export function LogProgressForm({
 
   const checkedActivityIds = Object.keys(activityChecks);
 
+  // Group NTP groups by project for dropdown
+  const ntpsByProject = ntpGroups.reduce<Record<string, NtpGroup[]>>((acc, g) => {
+    (acc[g.projName] ??= []).push(g);
+    return acc;
+  }, {});
+
+  function groupLabel(g: NtpGroup): string {
+    const codes = g.units.map((u) => u.unitCode).join(", ");
+    return `${codes} — ${g.subconName}${g.scopeName ? ` / ${g.scopeName}` : ` / ${g.category}`}`;
+  }
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (checkedUnits.size === 0)      { setError("Select at least one unit."); return; }
-    if (!selectedNtp)                 { setError("Select a Task Assignment (NTP)."); return; }
-    if (!selectedSubcon)              { setError("Select a subcontractor."); return; }
-    if (checkedActivityIds.length === 0) { setError("Select at least one activity."); return; }
+    if (!selectedGroup) { setError("Select a Task Assignment (NTP)."); return; }
+    if (selectedUnitIds.size === 0) { setError("Select at least one unit."); return; }
+    if (!skipActivities && checkedActivityIds.length === 0) {
+      setError("Select at least one activity, or check \"Log without a specific activity\".");
+      return;
+    }
     setError(null);
 
-    const activityList = checkedActivityIds.map((id) => ({
-      phaseActivityId: id,
-      status: activityChecks[id] ?? "STARTED",
-    }));
-
     startTransition(async () => {
-      const result = await logDailyProgressBulk({
-        projectId:        selectedProject,
-        unitIds,
-        taskAssignmentId: selectedNtp,
-        subconId:         selectedSubcon,
-        activities:       activityList,
-        entryDate,
-        actualManpower:   manpower,
-        delayType:        (delayType as any) || undefined,
-        issuesDetails:    issuesDetails || undefined,
-        enteredBy:        userId,
-      });
-      if (result.success) {
+      const units = selectedGroup.units.filter((u) => selectedUnitIds.has(u.unitId));
+      let lastError: string | null = null;
+      let totalCount = 0;
+
+      for (const unit of units) {
+        const result = await logDailyProgressBulk({
+          projectId:        selectedGroup.projectId,
+          unitIds:          [unit.unitId],
+          taskAssignmentId: unit.taskAssignmentId,
+          subconId:         selectedGroup.subconId,
+          activities:       skipActivities ? [] : checkedActivityIds.map((id) => ({ phaseActivityId: id, status: activityChecks[id] ?? "STARTED" })),
+          entryDate,
+          actualManpower:   manpower,
+          delayType:        (delayType as any) || undefined,
+          issuesDetails:    issuesDetails || undefined,
+          enteredBy:        userId,
+        });
+        if (result.success) { totalCount += result.count; }
+        else { lastError = result.error; break; }
+      }
+
+      if (lastError) {
+        setError(lastError);
+      } else {
         setSuccess(true);
         setTimeout(() => router.push("/construction"), 1200);
-      } else {
-        setError(result.error);
       }
     });
   }
@@ -168,136 +156,101 @@ export function LogProgressForm({
         </div>
       )}
 
-      {/* ── SECTION 1: Project + Block + Units ── */}
+      {/* ── STEP 1: Select NTP ── */}
       <div style={sectionCard}>
         <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af" }}>
-          Site / Unit Selection
+          Step 1 — Select Task Assignment (NTP)
         </p>
-
-        {/* Project */}
-        <label>
-          <span style={labelStyle}>Project <span style={{ color: "#e02424" }}>*</span></span>
-          <select value={selectedProject} onChange={(e) => {
-            setSelectedProject(e.target.value);
-            setSelectedBlock(""); setCheckedUnits(new Set()); setSelectedNtp(""); setActivityChecks({});
-          }} style={inputStyle} required>
-            <option value="">Select project…</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </label>
-
-        {/* Block dropdown */}
-        {selectedProject && (
+        {ntpGroups.length === 0 ? (
+          <p style={{ margin: 0, fontSize: "0.875rem", color: "#9ca3af" }}>No active NTPs found.</p>
+        ) : (
           <label>
-            <span style={labelStyle}>Block</span>
-            <select value={selectedBlock} onChange={(e) => {
-              setSelectedBlock(e.target.value); setCheckedUnits(new Set()); setSelectedNtp(""); setActivityChecks({});
-            }} style={inputStyle}>
-              <option value="">All Blocks</option>
-              {projectBlocks.map((b) => <option key={b.id} value={b.id}>{b.blockName}</option>)}
+            <span style={labelStyle}>Active NTP <span style={{ color: "#e02424" }}>*</span></span>
+            <select value={selectedGroupKey} onChange={(e) => setSelectedGroupKey(e.target.value)} style={inputStyle} required>
+              <option value="">Select NTP…</option>
+              {Object.entries(ntpsByProject).map(([projName, projGroups]) => (
+                <optgroup key={projName} label={projName}>
+                  {projGroups.map((g) => (
+                    <option key={g.groupKey} value={g.groupKey}>
+                      {groupLabel(g)}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </label>
         )}
 
-        {/* Units checkboxes */}
-        {selectedProject && (
-          <div>
-            <div style={{ ...labelStyle, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span>Units <span style={{ color: "#e02424" }}>*</span></span>
-              <span style={{ fontSize: "0.72rem", color: "#9ca3af", fontWeight: 400 }}>{checkedUnits.size} selected</span>
-            </div>
-            {blockUnits.length === 0 ? (
-              <p style={{ fontSize: "0.85rem", color: "#9ca3af", margin: 0 }}>No units found.</p>
-            ) : (
-              <div style={{ border: "1px solid #d1d5db", borderRadius: "6px", overflow: "hidden" }}>
-                <div style={{ padding: "0.5rem 0.85rem", background: "#f9fafb", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                  <input type="checkbox"
-                    checked={checkedUnits.size === blockUnits.length && blockUnits.length > 0}
-                    onChange={toggleAllBlockUnits} style={{ cursor: "pointer" }} />
-                  <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "#374151" }}>Select All</span>
-                </div>
-                <div style={{ maxHeight: "200px", overflowY: "auto", display: "flex", flexWrap: "wrap", gap: "0.25rem", padding: "0.5rem" }}>
-                  {blockUnits.map((u) => (
-                    <label key={u.id} style={{
-                      display: "inline-flex", alignItems: "center", gap: "0.4rem",
-                      padding: "0.3rem 0.65rem", borderRadius: "6px", cursor: "pointer",
-                      background: checkedUnits.has(u.id) ? "#f0fdf4" : "#f9fafb",
-                      border: checkedUnits.has(u.id) ? `1px solid ${ACCENT}` : "1px solid #e5e7eb",
-                      fontSize: "0.82rem",
-                    }}>
-                      <input type="checkbox" checked={checkedUnits.has(u.id)} onChange={() => toggleUnit(u.id)} style={{ cursor: "pointer" }} />
-                      <span style={{ fontWeight: 600, color: "#111827" }}>{u.unitCode}</span>
-                      <span style={{ fontSize: "0.72rem", color: "#9ca3af" }}>{u.unitType}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+        {selectedGroup && (
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <span style={{ padding: "0.2rem 0.55rem", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, color: "#166534" }}>
+              {selectedGroup.projName}
+            </span>
+            <span style={{ padding: "0.2rem 0.55rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, color: "#1e40af" }}>
+              {selectedGroup.subconCode} — {selectedGroup.subconName}
+            </span>
+            {selectedGroup.scopeName && (
+              <span style={{ padding: "0.2rem 0.55rem", background: "#fef9c3", border: "1px solid #fde047", borderRadius: "4px", fontSize: "0.75rem", fontWeight: 600, color: "#713f12" }}>
+                Scope: {selectedGroup.scopeName}
+              </span>
             )}
+          </div>
+        )}
+
+        {selectedGroup && selectedGroup.units.length > 1 && (
+          <div>
+            <span style={labelStyle}>Units to log <span style={{ color: "#e02424" }}>*</span></span>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              {selectedGroup.units.map((u) => (
+                <label key={u.unitId} style={{
+                  display: "flex", alignItems: "center", gap: "0.6rem",
+                  padding: "0.45rem 0.7rem", borderRadius: "6px", cursor: "pointer",
+                  background: selectedUnitIds.has(u.unitId) ? "#f0fdf4" : "#fff",
+                  border: selectedUnitIds.has(u.unitId) ? `1px solid ${ACCENT}` : "1px solid #e5e7eb",
+                }}>
+                  <input type="checkbox" checked={selectedUnitIds.has(u.unitId)}
+                    onChange={() => toggleUnit(u.unitId)} style={{ cursor: "pointer" }} />
+                  <span style={{ fontWeight: 600, fontSize: "0.85rem", color: "#111827" }}>{u.unitCode}</span>
+                  <span style={{ fontSize: "0.72rem", color: "#6b7280" }}>{u.unitModel}</span>
+                  <span style={{ fontSize: "0.65rem", fontWeight: 700, padding: "0.1rem 0.35rem", borderRadius: "3px", background: "#eff6ff", color: "#1e40af" }}>{u.unitType}</span>
+                </label>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* ── SECTION 2: NTP + Subcontractor ── */}
-      {checkedUnits.size > 0 && (
-        <div style={sectionCard}>
-          <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af" }}>
-            Task Assignment
-          </p>
-
-          <label>
-            <span style={labelStyle}>Task Assignment (NTP) <span style={{ color: "#e02424" }}>*</span></span>
-            {ntpOptions.length === 0 ? (
-              <p style={{ fontSize: "0.85rem", color: "#9ca3af", margin: 0 }}>No active NTPs for selected units.</p>
-            ) : (
-              <select value={selectedNtp} onChange={(e) => { setSelectedNtp(e.target.value); setActivityChecks({}); }} style={inputStyle} required>
-                <option value="">Select NTP…</option>
-                {ntpOptions.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.subconName} — {a.category}{a.scopeName ? ` / ${a.scopeName}` : ""}
-                  </option>
-                ))}
-              </select>
-            )}
-            {selectedNtpObj?.scopeName && (
-              <span style={{ display: "inline-block", marginTop: "0.4rem", padding: "0.2rem 0.5rem", background: "#dcfce7", color: "#166534", borderRadius: "4px", fontSize: "0.72rem", fontWeight: 600 }}>
-                Scope: {selectedNtpObj.scopeName}
-              </span>
-            )}
-          </label>
-
-          <label>
-            <span style={labelStyle}>Subcontractor <span style={{ color: "#e02424" }}>*</span></span>
-            <select value={selectedSubcon} onChange={(e) => setSelectedSubcon(e.target.value)} style={inputStyle} required>
-              <option value="">Select subcontractor…</option>
-              {allSubcons.map((s) => (
-                <option key={s.id} value={s.id}>{s.code} — {s.name}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-      )}
-
-      {/* ── SECTION 3: Activity Checklist ── */}
-      {selectedNtp && (
+      {/* ── STEP 2: Activities ── */}
+      {selectedGroup && (
         <div style={sectionCard}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af" }}>
-              Activities
+              Step 2 — Activities
             </p>
-            {scopeActivities.length > 0 && (
-              <button type="button" onClick={markAllActivities} style={{
-                fontSize: "0.75rem", color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: 0,
-              }}>
+            {scopeActivities.length > 0 && !skipActivities && (
+              <button type="button" onClick={markAllActivities} style={{ fontSize: "0.75rem", color: ACCENT, background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: 0 }}>
                 Check All
               </button>
             )}
           </div>
 
-          {scopeActivities.length === 0 ? (
+          <label style={{
+            display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0.85rem",
+            borderRadius: "6px", cursor: "pointer",
+            background: skipActivities ? "#f0fdf4" : "#f9fafb",
+            border: skipActivities ? `1px solid ${ACCENT}` : "1px solid #e5e7eb",
+          }}>
+            <input type="checkbox" checked={skipActivities} onChange={(e) => setSkipActivities(e.target.checked)} style={{ cursor: "pointer" }} />
+            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#374151" }}>
+              Log without a specific activity (NTP/scope-level entry)
+            </span>
+          </label>
+
+          {!skipActivities && (scopeActivities.length === 0 ? (
             <div style={{ padding: "0.85rem 1rem", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", fontSize: "0.85rem", color: "#92400e" }}>
-              {selectedNtpObj?.phaseScopeId
+              {selectedGroup.phaseScopeId
                 ? "No activities defined for this scope."
-                : "This NTP has no scope assigned. Activities cannot be filtered."}
+                : "This NTP has no scope assigned — activities cannot be filtered."}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
@@ -320,24 +273,19 @@ export function LogProgressForm({
                       </div>
                     </div>
                     {isChecked && (
-                      <select
-                        value={status}
-                        onChange={(e) => setActivityStatus(act.id, e.target.value as ActivityStatus)}
+                      <select value={status} onChange={(e) => setActivityStatus(act.id, e.target.value as ActivityStatus)}
                         onClick={(e) => e.stopPropagation()}
-                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.78rem", border: "1px solid #d1d5db", borderRadius: "5px", background: "#fff", cursor: "pointer" }}
-                      >
-                        {ACTIVITY_STATUSES.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
+                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.78rem", border: "1px solid #d1d5db", borderRadius: "5px", background: "#fff", cursor: "pointer" }}>
+                        {ACTIVITY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     )}
                   </div>
                 );
               })}
             </div>
-          )}
+          ))}
 
-          {checkedActivityIds.length > 0 && (
+          {!skipActivities && checkedActivityIds.length > 0 && (
             <p style={{ margin: 0, fontSize: "0.75rem", color: ACCENT, fontWeight: 600 }}>
               {checkedActivityIds.length} of {scopeActivities.length} activities selected
               {checkedActivityIds.length === scopeActivities.length && scopeActivities.length > 0 && (
@@ -350,26 +298,22 @@ export function LogProgressForm({
         </div>
       )}
 
-      {/* ── SECTION 4: Entry Details ── */}
-      {selectedNtp && (
+      {/* ── STEP 3: Entry Details ── */}
+      {selectedGroup && (
         <div style={sectionCard}>
           <p style={{ margin: 0, fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af" }}>
-            Entry Details
+            Step 3 — Entry Details
           </p>
-
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
             <label>
               <span style={labelStyle}>Entry Date <span style={{ color: "#e02424" }}>*</span></span>
-              <input type="date" required value={entryDate}
-                onChange={(e) => setEntryDate(e.target.value)} style={inputStyle} />
+              <input type="date" required value={entryDate} onChange={(e) => setEntryDate(e.target.value)} style={inputStyle} />
             </label>
             <label>
               <span style={labelStyle}>Manpower Count <span style={{ color: "#e02424" }}>*</span></span>
-              <input type="number" min="0" required value={manpower}
-                onChange={(e) => setManpower(Number(e.target.value))} style={inputStyle} />
+              <input type="number" min="0" required value={manpower} onChange={(e) => setManpower(Number(e.target.value))} style={inputStyle} />
             </label>
           </div>
-
           <label>
             <span style={labelStyle}>Delay Type (if any)</span>
             <select value={delayType} onChange={(e) => setDelayType(e.target.value)} style={inputStyle}>
@@ -382,32 +326,31 @@ export function LogProgressForm({
               <option value="OTHER">Other</option>
             </select>
           </label>
-
           <label>
             <span style={labelStyle}>Issues / Details</span>
             <textarea rows={3} value={issuesDetails} onChange={(e) => setIssuesDetails(e.target.value)}
-              style={{ ...inputStyle, resize: "vertical" }}
-              placeholder="Describe any issues or delays…" />
+              style={{ ...inputStyle, resize: "vertical" }} placeholder="Describe any issues or delays…" />
           </label>
         </div>
       )}
 
       <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
-        <a href="/construction" style={{
-          padding: "0.65rem 1.25rem", borderRadius: "6px", border: "1px solid #d1d5db",
-          color: "#374151", fontSize: "0.9rem", textDecoration: "none", display: "inline-flex", alignItems: "center",
-        }}>Cancel</a>
-        <button type="submit" disabled={isPending || checkedUnits.size === 0 || !selectedNtp || checkedActivityIds.length === 0} style={{
-          padding: "0.65rem 1.5rem", borderRadius: "6px",
-          background: (isPending || checkedUnits.size === 0 || !selectedNtp || checkedActivityIds.length === 0) ? "#6ee7b7" : ACCENT,
-          color: "#fff", border: "none", fontSize: "0.9rem", fontWeight: 600,
-          cursor: (isPending || checkedUnits.size === 0 || !selectedNtp || checkedActivityIds.length === 0) ? "not-allowed" : "pointer",
-        }}>
+        <a href="/construction" style={{ padding: "0.65rem 1.25rem", borderRadius: "6px", border: "1px solid #d1d5db", color: "#374151", fontSize: "0.9rem", textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+          Cancel
+        </a>
+        <button type="submit"
+          disabled={isPending || !selectedGroup || selectedUnitIds.size === 0 || (!skipActivities && checkedActivityIds.length === 0)}
+          style={{
+            padding: "0.65rem 1.5rem", borderRadius: "6px",
+            background: (!selectedGroup || selectedUnitIds.size === 0 || (!skipActivities && checkedActivityIds.length === 0)) ? "#6ee7b7" : ACCENT,
+            color: "#fff", border: "none", fontSize: "0.9rem", fontWeight: 600,
+            cursor: (!selectedGroup || selectedUnitIds.size === 0 || (!skipActivities && checkedActivityIds.length === 0)) ? "not-allowed" : "pointer",
+          }}>
           {isPending
             ? "Saving…"
             : checkedActivityIds.length > 0
-              ? `Log ${checkedActivityIds.length} activit${checkedActivityIds.length > 1 ? "ies" : "y"} for ${checkedUnits.size} unit${checkedUnits.size > 1 ? "s" : ""}`
-              : "Log Progress"}
+              ? `Log ${checkedActivityIds.length} activit${checkedActivityIds.length > 1 ? "ies" : "y"} for ${selectedUnitIds.size} unit${selectedUnitIds.size !== 1 ? "s" : ""}`
+              : `Log Progress for ${selectedUnitIds.size} unit${selectedUnitIds.size !== 1 ? "s" : ""}`}
         </button>
       </div>
     </form>

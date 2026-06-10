@@ -11,15 +11,17 @@ const ACCENT = "#057a55";
 export default async function IssueNtpPage() {
   const user = await getAuthUser();
 
-  const [projectsList, units, subcontractors, categories, scopes] = await Promise.all([
+  const [projectsList, units, blocksList, subcontractors, categories, scopes] = await Promise.all([
     db.select({ id: schema.projects.id, name: schema.projects.name, status: schema.projects.status })
       .from(schema.projects).orderBy(schema.projects.name),
     db.select({
       id: schema.projectUnits.id, unitCode: schema.projectUnits.unitCode,
       projectId: schema.projectUnits.projectId, unitModel: schema.projectUnits.unitModel,
-      unitType: schema.projectUnits.unitType,
+      unitType: schema.projectUnits.unitType, blockId: schema.projectUnits.blockId,
     }).from(schema.projectUnits).where(eq(schema.projectUnits.status, "PENDING"))
       .orderBy(schema.projectUnits.unitCode),
+    db.select({ id: schema.blocks.id, blockName: schema.blocks.blockName, projectId: schema.blocks.projectId })
+      .from(schema.blocks).orderBy(schema.blocks.blockName),
     db.select({
       id: schema.subcontractors.id, name: schema.subcontractors.name,
       code: schema.subcontractors.code, tradeTypes: schema.subcontractors.tradeTypes,
@@ -52,6 +54,7 @@ export default async function IssueNtpPage() {
             <IssueNtpForm
               projects={projectsList}
               units={units.map((u) => ({ ...u, unitType: u.unitType ?? "MID" }))}
+              blocks={blocksList}
               subcontractors={subcontractors.map((s) => ({ ...s, tradeTypes: s.tradeTypes ?? [] }))}
               categories={categories}
               scopes={scopes}
