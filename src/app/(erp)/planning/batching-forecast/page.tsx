@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   resourceForecasts, masterBomEntries, materials, projectUnits, projects,
 } from "@/db/schema";
+import { premixMaterialLinks, mixDesignBom, mixDesigns } from "@/db/schema/batching";
 import { eq, desc } from "drizzle-orm";
 import { ApproveForecastButton } from "./ApproveForecastButton";
 import { canReviewForecast, isAdminOrBod } from "@/lib/supabase-server";
@@ -29,36 +30,111 @@ export default async function BatchingForecastPage() {
     isAdminOrBod().catch(() => false),
   ]);
 
-  const rows = await safe(
-    db.select({
-      id:           resourceForecasts.id,
-      grossQty:     resourceForecasts.grossQuantity,
-      consumed:     resourceForecasts.quantityConsumed,
-      status:       resourceForecasts.status,
-      unitCode:     projectUnits.unitCode,
-      unitModel:    projectUnits.unitModel,
-      matName:      materials.name,
-      matUnit:      materials.unit,
-      projectName:  projects.name,
-    })
-      .from(resourceForecasts)
-      .leftJoin(masterBomEntries, eq(resourceForecasts.masterBomEntryId, masterBomEntries.id))
-      .leftJoin(materials,        eq(masterBomEntries.materialId,        materials.id))
-      .leftJoin(projectUnits,     eq(resourceForecasts.unitId,           projectUnits.id))
-      .leftJoin(projects,         eq(resourceForecasts.projectId,        projects.id))
-      .where(eq(resourceForecasts.forecastType, "CONCRETE"))
-      .orderBy(desc(resourceForecasts.createdAt)),
-    [] as {
-      id: string; grossQty: string; consumed: string; status: string;
-      unitCode: string | null; unitModel: string | null; matName: string | null; matUnit: string | null; projectName: string | null;
-    }[],
-  );
+  const [rows, premixLinks, rawMaterialBom] = await Promise.all([
+    safe(
+      db.select({
+        id:           resourceForecasts.id,
+        grossQty:     resourceForecasts.grossQuantity,
+        consumed:     resourceForecasts.quantityConsumed,
+        status:       resourceForecasts.status,
+        projectId:    resourceForecasts.projectId,
+        unitCode:     projectUnits.unitCode,
+        unitModel:    projectUnits.unitModel,
+        matName:      materials.name,
+        matUnit:      materials.unit,
+        matId:        materials.id,
+        projectName:  projects.name,
+      })
+        .from(resourceForecasts)
+        .leftJoin(masterBomEntries, eq(resourceForecasts.masterBomEntryId, masterBomEntries.id))
+        .leftJoin(materials,        eq(masterBomEntries.materialId,        materials.id))
+        .leftJoin(projectUnits,     eq(resourceForecasts.unitId,           projectUnits.id))
+        .leftJoin(projects,         eq(resourceForecasts.projectId,        projects.id))
+        .where(eq(resourceForecasts.forecastType, "CONCRETE"))
+        .orderBy(desc(resourceForecasts.createdAt)),
+      [] as {
+        id: string; grossQty: string; consumed: string; status: string; projectId: string | null;
+        unitCode: string | null; unitModel: string | null; matName: string | null; matUnit: string | null; matId: string | null; projectName: string | null;
+      }[],
+    ),
+    safe(
+      db.select({
+        materialId: premixMaterialLinks.materialId,
+        mixDesignId: premixMaterialLinks.mixDesignId,
+      }).from(premixMaterialLinks),
+      [] as { materialId: string; mixDesignId: string }[],
+    ),
+    safe(
+      db.select({
+        mixDesignId: mixDesignBom.mixDesignId,
+        materialId: mixDesignBom.materialId,
+        requiredQty: mixDesignBom.requiredQuantity,
+        uom: mixDesignBom.unitOfMeasure,
+        matName: materials.name,
+      })
+        .from(mixDesignBom)
+        .leftJoin(materials, eq(mixDesignBom.materialId, materials.id)),
+      [] as { mixDesignId: string; materialId: string; requiredQty: string; uom: string; matName: string | null }[],
+    ),
+  ]);
 
   const totalGross          = rows.reduce((a, r) => a + Number(r.grossQty), 0);
   const totalIssued         = rows.filter((r) => r.status === "ISSUED").reduce((a, r) => a + Number(r.grossQty), 0);
   const totalPendingApproval    = rows.filter((r) => r.status === "PENDING_APPROVAL").length;
   const totalPendingBodApproval = rows.filter((r) => r.status === "PENDING_BOD_APPROVAL").length;
   const totalPendingPr          = rows.filter((r) => r.status === "PENDING_PR").length;
+
+  const premixLinkMap = new Map<string, string>();
+  for (const link of premixLinks) {
+    premixLinkMap.set(link.materialId, link.mixDesignId);
+  }
+
+  type RawMaterialReq = { projectId: string; mixDesignId: string; materialId: string; matName: string | null; uom: string; requiredQty: number };
+  const rawMaterialReqs: RawMaterialReq[] = [];
+  for (const row of rows) {
+    const concreteMixDesignId = row.matId ? premixLinkMap.get(row.matId) : null;
+    if (!concreteMixDesignId || !row.projectId) continue;
+
+    const relatedBom = rawMaterialBom.filter((b) => b.mixDesignId === concreteMixDesignId);
+    const concreteVolume = Number(row.grossQty);
+
+    for (const bom of relatedBom) {
+      rawMaterialReqs.push({
+        projectId: row.projectId,
+        mixDesignId: concreteMixDesignId,
+        materialId: bom.materialId,
+        matName: bom.matName,
+        uom: bom.uom,
+        requiredQty: Number(bom.requiredQty) * concreteVolume,
+      });
+    }
+  }
+
+  type AggregatedRawMat = { projectId: string; materialId: string; matName: string | null; uom: string; totalRequired: number };
+  const rawMatAggregateMap = new Map<string, AggregatedRawMat>();
+  for (const req of rawMaterialReqs) {
+    const key = `${req.projectId}:${req.materialId}`;
+    if (rawMatAggregateMap.has(key)) {
+      const existing = rawMatAggregateMap.get(key)!;
+      existing.totalRequired += req.requiredQty;
+    } else {
+      rawMatAggregateMap.set(key, {
+        projectId: req.projectId,
+        materialId: req.materialId,
+        matName: req.matName,
+        uom: req.uom,
+        totalRequired: req.requiredQty,
+      });
+    }
+  }
+  const aggregatedRawMaterials = Array.from(rawMatAggregateMap.values());
+
+  const projectToRawMats = new Map<string, AggregatedRawMat[]>();
+  for (const mat of aggregatedRawMaterials) {
+    const projList = projectToRawMats.get(mat.projectId) ?? [];
+    projList.push(mat);
+    projectToRawMats.set(mat.projectId, projList);
+  }
 
   const card: React.CSSProperties = {
     background: "#fff", borderRadius: "10px", padding: "1.25rem 1.5rem",
@@ -169,6 +245,51 @@ export default async function BatchingForecastPage() {
             </div>
           )}
         </div>
+
+        {aggregatedRawMaterials.length > 0 && (
+          <div style={{ marginTop: "2rem", background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+            <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
+              <p style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#6b7280", margin: 0 }}>
+                Raw Materials Required for Concrete Mixes
+              </p>
+              <p style={{ fontSize: "0.8rem", color: "#6b7280", margin: "0.3rem 0 0", fontWeight: 400 }}>
+                Calculated from mix design specifications for premix materials in active forecasts
+              </p>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+                <thead>
+                  <tr>
+                    {["Project", "Raw Material", "Unit", "Total Required", ""].map((h) => (
+                      <th key={h} style={{
+                        background: "#f9fafb", borderBottom: "1px solid #e5e7eb",
+                        fontSize: "0.75rem", fontWeight: 600, color: "#6b7280",
+                        textTransform: "uppercase", letterSpacing: "0.05em",
+                        padding: "0.75rem 1rem", textAlign: "left", whiteSpace: "nowrap",
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {aggregatedRawMaterials.map((mat, idx) => {
+                    const projName = rows.find((r) => r.projectId === mat.projectId)?.projectName ?? "—";
+                    return (
+                      <tr key={`${mat.projectId}:${mat.materialId}:${idx}`} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "0.65rem 1rem", color: "#374151", fontWeight: 600 }}>{projName}</td>
+                        <td style={{ padding: "0.65rem 1rem", color: "#111827", fontWeight: 600 }}>{mat.matName ?? "—"}</td>
+                        <td style={{ padding: "0.65rem 1rem", color: "#6b7280", fontSize: "0.82rem" }}>{mat.uom}</td>
+                        <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", color: "#374151", fontWeight: 600 }}>
+                          {mat.totalRequired.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                        </td>
+                        <td style={{ padding: "0.65rem 1rem" }} />
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
