@@ -5,7 +5,7 @@ import {
   dailyProgressEntries, workAccomplishedReports,
 } from "@/db/schema";
 import { phaseScopes } from "@/db/schema/phases";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { getAuthUser, isAdminOrBod, canReviewNtp } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { NtpApprovalPanel } from "./NtpApprovalPanel";

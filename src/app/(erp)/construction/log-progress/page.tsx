@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 import { getAuthUser } from "@/lib/supabase-server";
 import { db } from "@/db";
-import { taskAssignments, subcontractors, projects, projectUnits, blocks } from "@/db/schema";
+import { taskAssignments, subcontractors, projects, projectUnits } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { phaseActivities, phaseScopes } from "@/db/schema/phases";
 import { LogProgressForm } from "./LogProgressForm";
@@ -36,27 +36,6 @@ export default async function LogProgressPage() {
     .leftJoin(phaseScopes,    eq(taskAssignments.phaseScopeId, phaseScopes.id))
     .where(eq(taskAssignments.status, "ACTIVE"))
     .orderBy(projects.name, projectUnits.unitCode);
-
-  // Load all units for the projects that have ACTIVE NTPs (for multi-unit logging)
-  const projectIds = [...new Set(ntps.map((n) => n.projectId))];
-  const allUnits = projectIds.length > 0
-    ? await db
-        .select({
-          id:        projectUnits.id,
-          unitCode:  projectUnits.unitCode,
-          unitModel: projectUnits.unitModel,
-          unitType:  projectUnits.unitType,
-          projectId: projectUnits.projectId,
-          blockId:   projectUnits.blockId,
-        })
-        .from(projectUnits)
-        .orderBy(projectUnits.unitCode)
-    : [];
-
-  const allBlocks = await db
-    .select({ id: blocks.id, blockName: blocks.blockName, projectId: blocks.projectId })
-    .from(blocks)
-    .orderBy(blocks.blockName);
 
   // Activities indexed by scopeId
   const activities = await db
@@ -105,15 +84,6 @@ export default async function LogProgressPage() {
                 blockId:      n.blockId ?? "",
                 scopeName:    n.scopeName ?? null,
               }))}
-              allUnits={allUnits.map((u) => ({
-                id:        u.id,
-                unitCode:  u.unitCode,
-                unitModel: u.unitModel ?? "",
-                unitType:  u.unitType ?? "",
-                projectId: u.projectId,
-                blockId:   u.blockId ?? "",
-              }))}
-              allBlocks={allBlocks}
               activities={activities.map((a) => ({ ...a, weight: String(a.weight) }))}
               userId={user?.id ?? ""}
             />

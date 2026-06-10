@@ -5,7 +5,9 @@ import {
   projects, taskAssignments, subcontractors,
   subcontractorCapacityMatrix, workAccomplishedReports,
   milestoneDocuments, unitMilestones, dailyProgressEntries, materialTransfers,
+  milestoneDefinitions,
 } from "@/db/schema";
+import { phaseScopes, phaseActivities } from "@/db/schema/phases";
 import { eq, and, count, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
@@ -111,6 +113,29 @@ export async function issueTaskAssignment(
     return {
       success: false,
       error: `Capacity Gate: Subcontractor is at 100% capacity (${activeUnits}/${ratedCapacity} active units). Select another subcontractor or wait for a unit turnover.`,
+    };
+  }
+
+  // ── Gate 4: One NTP per unit per scope of work (or per category if no scope) ──
+  // An NTP can only be issued once per lot/unit for a given scope of work —
+  // or for the whole category if no scope is specified — unless the prior
+  // NTP for that unit + scope/category was rejected or cancelled.
+  const duplicateConditions = phaseScopeId
+    ? and(eq(taskAssignments.unitId, unitId), eq(taskAssignments.phaseScopeId, phaseScopeId))
+    : and(eq(taskAssignments.unitId, unitId), eq(taskAssignments.category, category as any), sql`${taskAssignments.phaseScopeId} IS NULL`);
+
+  const [duplicate] = await db
+    .select({ id: taskAssignments.id, status: taskAssignments.status })
+    .from(taskAssignments)
+    .where(and(duplicateConditions, sql`${taskAssignments.status} NOT IN ('REJECTED','CANCELLED')`))
+    .limit(1);
+
+  if (duplicate) {
+    return {
+      success: false,
+      error: phaseScopeId
+        ? "An NTP has already been issued for this unit and scope of work."
+        : "An NTP has already been issued for this unit and category.",
     };
   }
 
@@ -306,13 +331,121 @@ const LogProgressBulkSchema = z.object({
   unitIds:          z.array(z.string().uuid()).min(1),
   taskAssignmentId: z.string().uuid(),
   subconId:         z.string().uuid(),
-  activities:       z.array(ActivityEntrySchema).min(1),
+  activities:       z.array(ActivityEntrySchema).default([]),
   entryDate:        z.string().date(),
   actualManpower:   z.number().int().min(0),
   delayType:        z.enum(["WEATHER","MATERIAL_DELAY","MANPOWER_SHORTAGE","EQUIPMENT_BREAKDOWN","DESIGN_CHANGE","OTHER"]).optional(),
   issuesDetails:    z.string().optional(),
   enteredBy:        z.string().uuid(),
 });
+
+// ── Auto-generate a DRAFT WAR when a billing milestone scope is fully completed ──
+async function maybeAutoGenerateWar(
+  projectId: string,
+  unitId: string,
+  taskAssignmentId: string,
+  enteredBy: string,
+): Promise<void> {
+  try {
+    const [ntp] = await db
+      .select({ phaseScopeId: taskAssignments.phaseScopeId })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, taskAssignmentId))
+      .limit(1);
+    if (!ntp?.phaseScopeId) return;
+
+    const [scope] = await db
+      .select({ code: phaseScopes.code, name: phaseScopes.name })
+      .from(phaseScopes)
+      .where(eq(phaseScopes.id, ntp.phaseScopeId))
+      .limit(1);
+    if (!scope) return;
+
+    const scopeActivities = await db
+      .select({ id: phaseActivities.id })
+      .from(phaseActivities)
+      .where(and(eq(phaseActivities.scopeId, ntp.phaseScopeId), eq(phaseActivities.isActive, true)));
+    if (scopeActivities.length === 0) return;
+
+    // Latest status per phase activity for this unit + NTP
+    const entries = await db
+      .select({
+        phaseActivityId: dailyProgressEntries.phaseActivityId,
+        status:          dailyProgressEntries.status,
+        createdAt:       dailyProgressEntries.createdAt,
+      })
+      .from(dailyProgressEntries)
+      .where(and(
+        eq(dailyProgressEntries.taskAssignmentId, taskAssignmentId),
+        eq(dailyProgressEntries.unitId, unitId),
+      ));
+
+    // Latest status per activity, resolved by chronological order
+    const sorted = [...entries].sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
+    const latestStatus = new Map<string, string>();
+    for (const e of sorted) {
+      if (!e.phaseActivityId) continue;
+      latestStatus.set(e.phaseActivityId, e.status);
+    }
+
+    const allCompleted = scopeActivities.every((a) => latestStatus.get(a.id) === "COMPLETED");
+    if (!allCompleted) return;
+
+    // Find billing milestone definitions matching this scope
+    const milestoneDefs = await db
+      .select({ id: milestoneDefinitions.id, weightPct: milestoneDefinitions.weightPct })
+      .from(milestoneDefinitions)
+      .where(and(
+        eq(milestoneDefinitions.projectId, projectId),
+        eq(milestoneDefinitions.triggersBilling, true),
+        eq(milestoneDefinitions.isActive, true),
+        sql`(${milestoneDefinitions.scopeCode} = ${scope.code} OR ${milestoneDefinitions.scopeName} = ${scope.name})`,
+      ));
+
+    for (const def of milestoneDefs) {
+      let [um] = await db
+        .select({ id: unitMilestones.id, status: unitMilestones.status })
+        .from(unitMilestones)
+        .where(and(eq(unitMilestones.unitId, unitId), eq(unitMilestones.milestoneDefId, def.id)))
+        .limit(1);
+
+      if (!um) {
+        [um] = await db
+          .insert(unitMilestones)
+          .values({ unitId, milestoneDefId: def.id, status: "COMPLETED", completedAt: new Date() })
+          .returning({ id: unitMilestones.id, status: unitMilestones.status });
+      } else if (um.status !== "COMPLETED") {
+        await db.update(unitMilestones).set({ status: "COMPLETED", completedAt: new Date() }).where(eq(unitMilestones.id, um.id));
+      }
+
+      const [existingWar] = await db
+        .select({ id: workAccomplishedReports.id })
+        .from(workAccomplishedReports)
+        .where(and(
+          eq(workAccomplishedReports.unitId, unitId),
+          eq(workAccomplishedReports.unitMilestoneId, um.id),
+          eq(workAccomplishedReports.taskAssignmentId, taskAssignmentId),
+        ))
+        .limit(1);
+
+      if (!existingWar) {
+        await db.insert(workAccomplishedReports).values({
+          projectId,
+          unitId,
+          unitMilestoneId: um.id,
+          taskAssignmentId,
+          grossAccomplishment: def.weightPct,
+          status: "DRAFT",
+          submittedBy: enteredBy,
+        });
+        revalidatePath("/construction/war");
+        revalidatePath(`/construction/ntp/${taskAssignmentId}`);
+      }
+    }
+  } catch {
+    // Non-critical — don't block progress logging on auto-WAR generation failure.
+  }
+}
 
 export type LogProgressBulkResult =
   | { success: true; count: number }
@@ -335,25 +468,50 @@ export async function logDailyProgressBulk(
 
   const docGapFlagged = !!d.delayType || !!d.issuesDetails;
 
-  const rows = d.unitIds.flatMap((unitId: string) =>
-    d.activities.map((act: { phaseActivityId: string; status: string }) => ({
-      projectId:        d.projectId,
-      unitId,
-      taskAssignmentId: d.taskAssignmentId,
-      unitActivityId:   null,
-      phaseActivityId:  act.phaseActivityId,
-      entryDate:        d.entryDate,
-      status:           act.status,
-      subconId:         d.subconId,
-      actualManpower:   d.actualManpower,
-      delayType:        (d.delayType as any) ?? null,
-      issuesDetails:    d.issuesDetails ?? null,
-      docGapFlagged,
-      enteredBy:        d.enteredBy,
-    })),
-  );
+  const rows = d.activities.length > 0
+    ? d.unitIds.flatMap((unitId: string) =>
+        d.activities.map((act: { phaseActivityId: string; status: string }) => ({
+          projectId:        d.projectId,
+          unitId,
+          taskAssignmentId: d.taskAssignmentId,
+          unitActivityId:   null,
+          phaseActivityId:  act.phaseActivityId,
+          entryDate:        d.entryDate,
+          status:           act.status,
+          subconId:         d.subconId,
+          actualManpower:   d.actualManpower,
+          delayType:        (d.delayType as any) ?? null,
+          issuesDetails:    d.issuesDetails ?? null,
+          docGapFlagged,
+          enteredBy:        d.enteredBy,
+        })),
+      )
+    // No activity selected — log a single NTP/scope-level entry per unit
+    : d.unitIds.map((unitId: string) => ({
+        projectId:        d.projectId,
+        unitId,
+        taskAssignmentId: d.taskAssignmentId,
+        unitActivityId:   null,
+        phaseActivityId:  null,
+        entryDate:        d.entryDate,
+        status:           "ONGOING",
+        subconId:         d.subconId,
+        actualManpower:   d.actualManpower,
+        delayType:        (d.delayType as any) ?? null,
+        issuesDetails:    d.issuesDetails ?? null,
+        docGapFlagged,
+        enteredBy:        d.enteredBy,
+      }));
 
   await db.insert(dailyProgressEntries).values(rows);
+
+  // Auto-generate a DRAFT WAR if any activity completion finishes a billing milestone scope
+  if (d.activities.some((a) => a.status === "COMPLETED")) {
+    await Promise.all(
+      d.unitIds.map((unitId) => maybeAutoGenerateWar(d.projectId, unitId, d.taskAssignmentId, d.enteredBy)),
+    );
+  }
+
   revalidatePath("/construction");
   return { success: true, count: rows.length };
 }
