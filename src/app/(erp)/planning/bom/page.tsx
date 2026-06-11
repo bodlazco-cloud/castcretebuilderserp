@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { masterBomEntries, materials, projects } from "@/db/schema";
 import { phaseActivities, phaseScopes } from "@/db/schema/phases";
 import { eq, desc } from "drizzle-orm";
+import { isAdminOrBod } from "@/lib/supabase-server";
 import { BomSubmitActions, BomReviewActions, BomWithdrawAction, BomAddMaterialAction, BomDeleteLineAction } from "./BomApprovalActions";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
@@ -64,6 +65,7 @@ export default async function BomRegisterPage({
 }) {
   const sp = await searchParams;
   const filterStatus = typeof sp.status === "string" ? sp.status : "";
+  const canApprove = await isAdminOrBod().catch(() => false);
 
   const rows = await safe(
     db
@@ -358,6 +360,17 @@ export default async function BomRegisterPage({
                                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
                                                   <BomReviewActions id={line.id} />
                                                   <BomWithdrawAction id={line.id} />
+                                                </span>
+                                              )}
+                                              {line.status === "APPROVED" && canApprove && (
+                                                <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+                                                  <Link
+                                                    href={`/planning/bom/${line.id}/edit`}
+                                                    title="Admin/BOD correction"
+                                                    style={{ fontSize: "0.78rem", fontWeight: 600, color: "#1a56db", textDecoration: "none", padding: "0.2rem 0.55rem", border: "1px solid #bfdbfe", borderRadius: "5px", background: "#eff6ff" }}>
+                                                    Edit
+                                                  </Link>
+                                                  <BomDeleteLineAction id={line.id} />
                                                 </span>
                                               )}
                                             </td>
