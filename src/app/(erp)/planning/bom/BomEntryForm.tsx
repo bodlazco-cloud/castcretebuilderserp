@@ -28,21 +28,25 @@ const UNIT_TYPES = [
 
 type LineItem = { materialId: string; qty: string; unitPrice: string; preferredSupplierId: string };
 
-export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModels, materials, vendors }: {
+export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModels, materials, vendors, activityDefId, initialProjectId, initialScopeId, initialActivityId }: {
   projects:        Project[];
   phaseScopes:     PhaseScope[];
   phaseActivities: PhaseActivity[];
   unitModels:      UnitModel[];
   materials:       Material[];
   vendors:         Vendor[];
+  activityDefId?:  string;
+  initialProjectId?:  string;
+  initialScopeId?:    string;
+  initialActivityId?: string;
 }) {
   const [isPending, startTransition] = useTransition();
   const [error,   setError]   = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [selectedProject,  setSelectedProject]  = useState("");
-  const [selectedScope,    setSelectedScope]    = useState("");   // phaseScope id
-  const [selectedActivity, setSelectedActivity] = useState("");   // phaseActivity id (optional)
+  const [selectedProject,  setSelectedProject]  = useState(initialProjectId ?? "");
+  const [selectedScope,    setSelectedScope]    = useState(initialScopeId ?? "");   // phaseScope id
+  const [selectedActivity, setSelectedActivity] = useState(initialActivityId ?? "");   // phaseActivity id (optional)
   const [unitModel,        setUnitModel]        = useState("");
   const [unitType,         setUnitType]         = useState("");
   const [lines, setLines] = useState<LineItem[]>([
@@ -102,6 +106,7 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
     startTransition(async () => {
       const result = await saveMasterBomEntries({
         projectId:       selectedProject,
+        activityDefId:   activityDefId || undefined,
         phaseScopeId:    selectedScope,
         phaseActivityId: selectedActivity || undefined,
         unitModel,
@@ -121,6 +126,11 @@ export function BomEntryForm({ projects, phaseScopes, phaseActivities, unitModel
 
   return (
     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      {activityDefId && (
+        <div style={{ padding: "0.7rem 1rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", color: "#1e40af", fontSize: "0.82rem" }}>
+          Linked to a Scope of Work item — saved entries will appear on its detail page.
+        </div>
+      )}
       {error && (
         <div style={{ padding: "0.85rem 1rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.875rem" }}>
           {error}

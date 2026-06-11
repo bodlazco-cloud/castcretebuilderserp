@@ -108,6 +108,7 @@ const MaterialSchema = z.object({
   code:                z.string().min(1).max(50),
   name:                z.string().min(1).max(150),
   unit:                z.string().min(1).max(30),
+  category:            z.string().max(50).optional(),
   adminPrice:          z.number().min(0),
   minimumQuantity:     z.number().min(0).optional(),
   preferredSupplierId: z.string().uuid().optional(),
@@ -134,7 +135,7 @@ export async function createMaterial(
       code:                d.code,
       name:                d.name,
       unit:                d.unit,
-      category:            "",
+      category:            d.category || null,
       adminPrice:          String(d.adminPrice),
       minimumQuantity:     d.minimumQuantity != null ? String(d.minimumQuantity) : null,
       preferredSupplierId: d.preferredSupplierId || null,
@@ -155,6 +156,7 @@ const UpdateMaterialSchema = z.object({
   id:                  z.string().uuid(),
   name:                z.string().min(1).max(150),
   unit:                z.string().min(1).max(30),
+  category:            z.string().max(50).optional(),
   adminPrice:          z.number().min(0),
   minimumQuantity:     z.number().min(0).optional(),
   preferredSupplierId: z.string().uuid().optional().or(z.literal("")),
@@ -167,6 +169,7 @@ export async function updateMaterial(input: z.infer<typeof UpdateMaterialSchema>
   await db.update(materials).set({
     name:                d.name,
     unit:                d.unit,
+    category:            d.category || null,
     adminPrice:          String(d.adminPrice),
     minimumQuantity:     d.minimumQuantity != null ? String(d.minimumQuantity) : null,
     preferredSupplierId: d.preferredSupplierId || null,
@@ -296,8 +299,8 @@ const ActivityDefSchema = z.object({
   category:             z.enum(["SLAB", "STRUCTURAL", "SPECIALTY_WORKS", "MEPF", "ARCHITECTURAL", "TURNOVER"]),
   scopeCode:            z.string().min(1).max(100),
   scopeName:            z.string().min(1).max(150),
-  activityCode:         z.string().min(1).max(100),
-  activityName:         z.string().min(1).max(150),
+  activityCode:         z.string().max(100).optional().default(""),
+  activityName:         z.string().max(150).optional().default(""),
   standardDurationDays: z.number().int().positive(),
   weightInScopePct:     z.number().min(0).max(100),
   sequenceOrder:        z.number().int().min(1),
@@ -587,6 +590,7 @@ export async function deleteProjectUnit(id: string): Promise<{ success: boolean;
 
 const RateCardSchema = z.object({
   projectId:        z.string().uuid(),
+  phaseScopeId:     z.string().uuid().optional(),
   phaseActivityId:  z.string().uuid().optional(),
   unitModel:        z.string().max(50).optional(),
   unitType:         z.enum(["BEG", "MID", "END", "SHOP"]).optional(),
@@ -602,13 +606,14 @@ export async function createDeveloperRateCard(
   const parsed = RateCardSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
-  const { projectId, phaseActivityId, unitModel, unitType, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
+  const { projectId, phaseScopeId, phaseActivityId, unitModel, unitType, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
 
   try {
     const [row] = await db
       .insert(developerRateCards)
       .values({
         projectId,
+        phaseScopeId:     phaseScopeId ?? null,
         phaseActivityId:  phaseActivityId ?? null,
         unitModel:        unitModel ?? null,
         unitType:         (unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
@@ -632,12 +637,13 @@ export async function updateDeveloperRateCard(
   const parsed = RateCardSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
-  const { projectId, phaseActivityId, unitModel, unitType, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
+  const { projectId, phaseScopeId, phaseActivityId, unitModel, unitType, grossRatePerUnit, retentionPct, dpRecoupmentPct, taxPct } = parsed.data;
 
   await db
     .update(developerRateCards)
     .set({
       projectId,
+      phaseScopeId:     phaseScopeId ?? null,
       phaseActivityId:  phaseActivityId ?? null,
       unitModel:        unitModel ?? null,
       unitType:         (unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
@@ -726,6 +732,7 @@ export async function deleteSupplier(id: string): Promise<{ success: boolean; er
 const SubconRateCardSchema = z.object({
   subconId:        z.string().uuid().optional(),
   projectId:       z.string().uuid(),
+  phaseScopeId:    z.string().uuid().optional(),
   phaseActivityId: z.string().uuid().optional(),
   unitModel:       z.string().max(50).optional(),
   unitType:        z.enum(["BEG", "MID", "END", "SHOP"]).optional(),
@@ -746,6 +753,7 @@ export async function createSubconRateCard(
       .values({
         subconId:        d.subconId ?? null,
         projectId:       d.projectId,
+        phaseScopeId:    d.phaseScopeId ?? null,
         phaseActivityId: d.phaseActivityId ?? null,
         unitModel:       d.unitModel ?? null,
         unitType:        (d.unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,
@@ -772,6 +780,7 @@ export async function updateSubconRateCard(
   await db.update(subcontractorRateCards).set({
     subconId:        d.subconId,
     projectId:       d.projectId,
+    phaseScopeId:    d.phaseScopeId ?? null,
     phaseActivityId: d.phaseActivityId ?? null,
     unitModel:       d.unitModel ?? null,
     unitType:        (d.unitType as "BEG" | "MID" | "END" | "SHOP" | null) ?? null,

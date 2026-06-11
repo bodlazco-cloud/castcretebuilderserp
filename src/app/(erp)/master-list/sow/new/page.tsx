@@ -1,17 +1,18 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { projects } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { projects, phaseCategories, phaseScopes, phaseActivities } from "@/db/schema";
 import { getAuthUser } from "@/lib/supabase-server";
 import { Suspense } from "react";
 import { NewSowForm } from "../NewSowForm";
 
 export default async function NewSowPage() {
   await getAuthUser();
-  const projectOptions = await db
-    .select({ id: projects.id, name: projects.name })
-    .from(projects)
-    .orderBy(projects.name);
+  const [projectOptions, phaseCats, phaseScps, phaseActs] = await Promise.all([
+    db.select({ id: projects.id, name: projects.name }).from(projects).orderBy(projects.name),
+    db.select({ id: phaseCategories.id, code: phaseCategories.code, name: phaseCategories.name }).from(phaseCategories).orderBy(phaseCategories.sequenceOrder),
+    db.select({ id: phaseScopes.id, categoryId: phaseScopes.categoryId, code: phaseScopes.code, name: phaseScopes.name }).from(phaseScopes).orderBy(phaseScopes.sequenceOrder),
+    db.select({ id: phaseActivities.id, scopeId: phaseActivities.scopeId, code: phaseActivities.code, name: phaseActivities.name, standardDurationDays: phaseActivities.standardDurationDays, weightInScopePct: phaseActivities.weightInScopePct, sequenceOrder: phaseActivities.sequenceOrder }).from(phaseActivities).orderBy(phaseActivities.sequenceOrder),
+  ]);
 
   return (
     <main style={{ padding: "2rem", background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
@@ -29,7 +30,12 @@ export default async function NewSowPage() {
         </header>
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.75rem" }}>
           <Suspense>
-            <NewSowForm projects={projectOptions} />
+            <NewSowForm
+              projects={projectOptions}
+              phaseCats={phaseCats}
+              phaseScps={phaseScps}
+              phaseActs={phaseActs}
+            />
           </Suspense>
         </div>
       </div>

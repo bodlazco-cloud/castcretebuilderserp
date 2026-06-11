@@ -398,38 +398,43 @@ export async function createEquipmentAssignment(
   if (!parsed.success) return { success: false, error: "Invalid input." };
   const d = parsed.data;
 
-  const [equip] = await db
-    .select({ status: equipment.status, isLocked: equipment.isLocked })
-    .from(equipment)
-    .where(eq(equipment.id, d.equipmentId))
-    .limit(1);
+  try {
+    const [equip] = await db
+      .select({ status: equipment.status, isLocked: equipment.isLocked })
+      .from(equipment)
+      .where(eq(equipment.id, d.equipmentId))
+      .limit(1);
 
-  if (!equip) return { success: false, error: "Equipment not found." };
-  if (equip.isLocked) return { success: false, error: "Equipment is locked due to a failed checklist. Resolve maintenance first." };
-  if (equip.status !== "AVAILABLE") return { success: false, error: `Equipment is ${equip.status}, not AVAILABLE.` };
+    if (!equip) return { success: false, error: "Equipment not found." };
+    if (equip.isLocked) return { success: false, error: "Equipment is locked due to a failed checklist. Resolve maintenance first." };
+    if (equip.status !== "AVAILABLE") return { success: false, error: `Equipment is ${equip.status}, not AVAILABLE.` };
 
-  const [assignment] = await db
-    .insert(equipmentAssignments)
-    .values({
-      equipmentId:  d.equipmentId,
-      projectId:    d.projectId,
-      unitId:       d.unitId ?? null,
-      costCenterId: d.costCenterId,
-      operatorId:   d.operatorId,
-      assignedDate: d.assignedDate,
-      rateType:     d.rateType,
-      dailyRate:    String(d.dailyRate),
-      status:       "ACTIVE",
-    })
-    .returning({ id: equipmentAssignments.id });
+    const [assignment] = await db
+      .insert(equipmentAssignments)
+      .values({
+        equipmentId:  d.equipmentId,
+        projectId:    d.projectId,
+        unitId:       d.unitId ?? null,
+        costCenterId: d.costCenterId,
+        operatorId:   d.operatorId,
+        assignedDate: d.assignedDate,
+        rateType:     d.rateType,
+        dailyRate:    String(d.dailyRate),
+        status:       "ACTIVE",
+      })
+      .returning({ id: equipmentAssignments.id });
 
-  await db
-    .update(equipment)
-    .set({ status: "DEPLOYED", updatedAt: new Date() })
-    .where(eq(equipment.id, d.equipmentId));
+    await db
+      .update(equipment)
+      .set({ status: "DEPLOYED", updatedAt: new Date() })
+      .where(eq(equipment.id, d.equipmentId));
 
-  revalidatePath("/motorpool");
-  return { success: true, assignmentId: assignment.id };
+    revalidatePath("/motorpool");
+    return { success: true, assignmentId: assignment.id };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: msg };
+  }
 }
 
 // ─── Add Maintenance Record ───────────────────────────────────────────────────

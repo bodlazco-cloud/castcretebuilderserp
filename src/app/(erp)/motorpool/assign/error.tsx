@@ -28,14 +28,9 @@ export default function AssignEquipmentError({
           <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.1rem", fontWeight: 700, color: "#111827" }}>
             Something went wrong loading this page
           </h2>
-          <p style={{ margin: "0 0 1rem", color: "#6b7280", fontSize: "0.9rem" }}>
+          <p style={{ margin: "0 0 1.25rem", color: "#6b7280", fontSize: "0.9rem" }}>
             {error.message || "An unexpected error occurred."}
           </p>
-          {error.digest && (
-            <p style={{ margin: "0 0 1.25rem", fontFamily: "monospace", fontSize: "0.78rem", color: "#9ca3af" }}>
-              Digest: {error.digest}
-            </p>
-          )}
           <button
             onClick={reset}
             style={{

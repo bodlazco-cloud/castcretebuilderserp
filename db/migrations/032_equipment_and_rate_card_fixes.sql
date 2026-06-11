@@ -17,6 +17,10 @@ DO $$ BEGIN
   ALTER TABLE developer_rate_cards ALTER COLUMN milestone_category DROP NOT NULL;
 EXCEPTION WHEN undefined_column THEN NULL;
 END $$;
+DO $$ BEGIN
+  ALTER TABLE developer_rate_cards ALTER COLUMN activity_def_id DROP NOT NULL;
+EXCEPTION WHEN undefined_column THEN NULL;
+END $$;
 
 -- ── Fix 2a: equipment.image_url ───────────────────────────────────────────────
 ALTER TABLE equipment ADD COLUMN IF NOT EXISTS image_url TEXT;
@@ -34,3 +38,25 @@ ALTER TABLE equipment
 ALTER TABLE equipment_assignments
   ADD COLUMN IF NOT EXISTS rate_type VARCHAR(10) NOT NULL DEFAULT 'DAILY'
     CHECK (rate_type IN ('DAILY', 'WEEKLY', 'MONTHLY'));
+
+-- ── Fix 4: equipment_assignments.operator_id FK ───────────────────────────────
+-- Original migration 010 set operator_id REFERENCES users(id) but the assign
+-- form populates operators from the employees table. Change FK to employees.
+DO $$ BEGIN
+  ALTER TABLE equipment_assignments
+    DROP CONSTRAINT equipment_assignments_operator_id_users_id_fk;
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
+DO $$ BEGIN
+  ALTER TABLE equipment_assignments
+    DROP CONSTRAINT equipment_assignments_operator_id_fkey;
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
+ALTER TABLE equipment_assignments
+  ADD CONSTRAINT IF NOT EXISTS equipment_assignments_operator_id_fk
+    FOREIGN KEY (operator_id) REFERENCES employees(id);
+
+-- ── Fix 5: activity_definitions.project_id ───────────────────────────────────
+-- Column exists in Drizzle schema but was missing from the original DB migration.
+ALTER TABLE activity_definitions
+  ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id);

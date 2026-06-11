@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
-import { masterBomEntries, materials, projects, suppliers } from "@/db/schema";
+import { masterBomEntries, materials, projects, suppliers, projectUnits } from "@/db/schema";
 import { phaseScopes, phaseActivities } from "@/db/schema/phases";
 import { eq } from "drizzle-orm";
 import { BomLineEditForm } from "./BomLineEditForm";
@@ -32,6 +32,8 @@ export default async function EditBomEntryPage({
       materialId:      masterBomEntries.materialId,
       quantityPerUnit: masterBomEntries.quantityPerUnit,
       equipmentType:   masterBomEntries.equipmentType,
+      phaseScopeId:    masterBomEntries.phaseScopeId,
+      phaseActivityId: masterBomEntries.phaseActivityId,
       scopeCode:       phaseScopes.code,
       scopeName:       phaseScopes.name,
       activityCode:    phaseActivities.code,
@@ -44,9 +46,9 @@ export default async function EditBomEntryPage({
     .where(eq(masterBomEntries.id, id));
 
   if (!entry) notFound();
-  if (entry.status !== "DRAFT") redirect("/planning/bom");
+  if (entry.status !== "DRAFT" && entry.status !== "REJECTED") redirect("/planning/bom");
 
-  const [materialRows, vendorRows] = await Promise.all([
+  const [materialRows, vendorRows, scopeRows, activityRows, unitModelRows] = await Promise.all([
     safe(
       db
         .select({
@@ -70,6 +72,30 @@ export default async function EditBomEntryPage({
         .orderBy(suppliers.name),
       [] as { id: string; name: string }[],
     ),
+    safe(
+      db
+        .select({ id: phaseScopes.id, code: phaseScopes.code, name: phaseScopes.name, categoryId: phaseScopes.categoryId })
+        .from(phaseScopes)
+        .where(eq(phaseScopes.isActive, true))
+        .orderBy(phaseScopes.sequenceOrder),
+      [] as { id: string; code: string; name: string; categoryId: string }[],
+    ),
+    safe(
+      db
+        .select({ id: phaseActivities.id, scopeId: phaseActivities.scopeId, code: phaseActivities.code, name: phaseActivities.name })
+        .from(phaseActivities)
+        .where(eq(phaseActivities.isActive, true))
+        .orderBy(phaseActivities.sequenceOrder),
+      [] as { id: string; scopeId: string; code: string; name: string }[],
+    ),
+    safe(
+      db
+        .selectDistinct({ unitModel: projectUnits.unitModel })
+        .from(projectUnits)
+        .where(eq(projectUnits.projectId, entry.projectId))
+        .orderBy(projectUnits.unitModel),
+      [] as { unitModel: string }[],
+    ),
   ]);
 
   return (
@@ -91,18 +117,26 @@ export default async function EditBomEntryPage({
         {/* Context card */}
         <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "0.75rem 1rem", fontSize: "0.82rem", color: "#1e40af", marginBottom: "1.25rem", display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
           <span><strong>Project:</strong> {entry.projectName ?? "—"}</span>
-          {entry.scopeCode && <span><strong>Scope:</strong> [{entry.scopeCode}] {entry.scopeName}</span>}
-          {entry.activityCode && <span><strong>Activity:</strong> [{entry.activityCode}] {entry.activityName}</span>}
-          <span><strong>Unit Model:</strong> {entry.unitModel}</span>
-          <span><strong>Unit Type:</strong> {entry.unitType}</span>
+          <span><strong>Status:</strong> {entry.status}</span>
+        </div>
+
+        <div style={{ background: "#fef9c3", border: "1px solid #fde047", borderRadius: "8px", padding: "0.75rem 1rem", fontSize: "0.82rem", color: "#713f12", marginBottom: "1.25rem" }}>
+          Saving will return this line to <strong>Draft</strong> so it can be resubmitted for Admin / BOD approval.
         </div>
 
         <div style={{ background: "#fff", borderRadius: "10px", padding: "1.5rem 2rem", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
           <BomLineEditForm
             id={entry.id}
+            initialScopeId={entry.phaseScopeId ?? ""}
+            initialActivityId={entry.phaseActivityId ?? ""}
+            initialUnitModel={entry.unitModel}
+            initialUnitType={entry.unitType}
             initialMaterialId={entry.materialId}
             initialQty={entry.quantityPerUnit}
             initialEquipmentType={entry.equipmentType ?? ""}
+            phaseScopes={scopeRows}
+            phaseActivities={activityRows}
+            unitModels={unitModelRows.map((u) => u.unitModel)}
             materials={materialRows}
             vendors={vendorRows}
           />

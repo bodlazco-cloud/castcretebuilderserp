@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createMilestoneDefinition } from "@/actions/master-list";
 
 type Project = { id: string; name: string };
-type Scope   = { id: string; projectId: string; scopeCode: string; scopeName: string; category: string };
+type Scope   = { id: string; projectId: string | null; scopeCode: string; scopeName: string; category: string };
 
 const ACCENT = "#dc2626";
 const inputStyle: React.CSSProperties = {

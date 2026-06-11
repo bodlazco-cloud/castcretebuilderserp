@@ -4,7 +4,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./core";
 import { projects } from "./projects";
-import { phaseActivities } from "./phases";
+import { phaseActivities, phaseScopes } from "./phases";
 import { workCategoryEnum, unitTypeEnum } from "./enums";
 
 export const suppliers = pgTable("suppliers", {
@@ -66,7 +66,7 @@ export const bomStandards = pgTable("bom_standards", {
 
 export const activityDefinitions = pgTable("activity_definitions", {
   id:                    uuid("id").primaryKey().defaultRandom(),
-  projectId:             uuid("project_id").notNull().references(() => projects.id),
+  projectId:             uuid("project_id").references(() => projects.id),
   category:              workCategoryEnum("category").notNull(),
   scopeCode:             varchar("scope_code", { length: 100 }).notNull(),
   scopeName:             varchar("scope_name", { length: 150 }).notNull(),
@@ -97,6 +97,7 @@ export const developerRateCards = pgTable("developer_rate_cards", {
   id:               uuid("id").primaryKey().defaultRandom(),
   projectId:        uuid("project_id").notNull().references(() => projects.id),
   activityDefId:    uuid("activity_def_id").references(() => activityDefinitions.id),
+  phaseScopeId:     uuid("phase_scope_id").references(() => phaseScopes.id),
   phaseActivityId:  uuid("phase_activity_id").references(() => phaseActivities.id),
   unitModel:        varchar("unit_model", { length: 50 }),
   unitType:         unitTypeEnum("unit_type"),
