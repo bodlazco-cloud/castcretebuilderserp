@@ -75,8 +75,12 @@ export function NewMaterialForm({ suppliers }: { suppliers: Supplier[] }) {
         </label>
         <label>
           <span style={labelStyle}>Category</span>
-          <input type="text" value={category} onChange={(e) => setCategory(e.target.value)}
-            placeholder="e.g. Concrete, Steel, Cement" style={inputStyle} />
+          <select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+            <option value="">— None —</option>
+            <option value="Raw Materials">Raw Materials</option>
+            <option value="Cement">Cement</option>
+            <option value="Consumables">Consumables</option>
+          </select>
         </label>
         <label>
           <span style={labelStyle}>Admin Price (PHP) *</span>

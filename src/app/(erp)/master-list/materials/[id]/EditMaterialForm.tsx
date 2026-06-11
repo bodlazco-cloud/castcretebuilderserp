@@ -75,7 +75,12 @@ export function EditMaterialForm({ material, suppliers }: { material: Material; 
               </label>
               <label>
                 <span style={labelStyle}>Category</span>
-                <input name="category" defaultValue={material.category ?? ""} style={inputStyle} />
+                <select name="category" defaultValue={material.category ?? ""} style={inputStyle}>
+                  <option value="">— None —</option>
+                  <option value="Raw Materials">Raw Materials</option>
+                  <option value="Cement">Cement</option>
+                  <option value="Consumables">Consumables</option>
+                </select>
               </label>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
