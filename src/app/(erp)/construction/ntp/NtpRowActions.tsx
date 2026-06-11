@@ -2,18 +2,19 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { submitNtpForApproval, reviewNtp, approveNtp, rejectNtp } from "@/actions/construction";
+import { submitNtpForApproval, reviewNtp, approveNtp, rejectNtp, deleteNtp } from "@/actions/construction";
 
 const ACCENT = "#057a55";
 
 export function NtpRowActions({
-  ntpId, status, userId, canReview, canApprove,
+  ntpId, status, userId, canReview, canApprove, canDeleteActive,
 }: {
   ntpId: string;
   status: string;
   userId: string;
   canReview: boolean;
   canApprove: boolean;
+  canDeleteActive: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -28,6 +29,11 @@ export function NtpRowActions({
       if (!result.success) setError(result.error ?? "Error");
       else router.refresh();
     });
+  }
+
+  function handleDelete() {
+    if (!confirm("Delete this NTP? This cannot be undone.")) return;
+    run(() => deleteNtp(ntpId, canDeleteActive));
   }
 
   return (
@@ -48,7 +54,18 @@ export function NtpRowActions({
             style={{ fontSize: "0.78rem", background: "#fef9c3", color: "#713f12", border: "1px solid #fde047", borderRadius: "4px", padding: "0.2rem 0.5rem", cursor: isPending ? "not-allowed" : "pointer", fontWeight: 600 }}>
             {isPending ? "…" : "Submit for Review"}
           </button>
+          <button disabled={isPending} onClick={handleDelete}
+            style={{ fontSize: "0.78rem", background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: "4px", padding: "0.2rem 0.5rem", cursor: isPending ? "not-allowed" : "pointer", fontWeight: 600 }}>
+            {isPending ? "…" : "Delete"}
+          </button>
         </>
+      )}
+
+      {status === "ACTIVE" && canDeleteActive && (
+        <button disabled={isPending} onClick={handleDelete}
+          style={{ fontSize: "0.78rem", background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: "4px", padding: "0.2rem 0.5rem", cursor: isPending ? "not-allowed" : "pointer", fontWeight: 600 }}>
+          {isPending ? "…" : "Delete"}
+        </button>
       )}
 
       {status === "PENDING_REVIEW" && canReview && !showReject && (
