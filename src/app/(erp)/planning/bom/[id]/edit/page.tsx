@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { masterBomEntries, materials, projects, suppliers, projectUnits } from "@/db/schema";
 import { phaseScopes, phaseActivities } from "@/db/schema/phases";
 import { eq } from "drizzle-orm";
+import { isAdminOrBod } from "@/lib/supabase-server";
 import { BomLineEditForm } from "./BomLineEditForm";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
@@ -46,7 +47,13 @@ export default async function EditBomEntryPage({
     .where(eq(masterBomEntries.id, id));
 
   if (!entry) notFound();
-  if (entry.status !== "DRAFT" && entry.status !== "REJECTED") redirect("/planning/bom");
+
+  const canApprove = await isAdminOrBod().catch(() => false);
+  const isAdminEdit = entry.status === "APPROVED" && canApprove;
+
+  if (entry.status !== "DRAFT" && entry.status !== "REJECTED" && !isAdminEdit) {
+    redirect("/planning/bom");
+  }
 
   const [materialRows, vendorRows, scopeRows, activityRows, unitModelRows] = await Promise.all([
     safe(
@@ -121,12 +128,15 @@ export default async function EditBomEntryPage({
         </div>
 
         <div style={{ background: "#fef9c3", border: "1px solid #fde047", borderRadius: "8px", padding: "0.75rem 1rem", fontSize: "0.82rem", color: "#713f12", marginBottom: "1.25rem" }}>
-          Saving will return this line to <strong>Draft</strong> so it can be resubmitted for Admin / BOD approval.
+          {isAdminEdit
+            ? <>Admin/BOD correction — this entry will remain <strong>Approved</strong> after saving.</>
+            : <>Saving will return this line to <strong>Draft</strong> so it can be resubmitted for Admin / BOD approval.</>}
         </div>
 
         <div style={{ background: "#fff", borderRadius: "10px", padding: "1.5rem 2rem", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
           <BomLineEditForm
             id={entry.id}
+            isAdminEdit={isAdminEdit}
             initialScopeId={entry.phaseScopeId ?? ""}
             initialActivityId={entry.phaseActivityId ?? ""}
             initialUnitModel={entry.unitModel}

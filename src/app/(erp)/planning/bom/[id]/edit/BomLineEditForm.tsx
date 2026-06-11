@@ -26,6 +26,7 @@ const UNIT_TYPES = [
 
 export function BomLineEditForm({
   id,
+  isAdminEdit = false,
   initialScopeId,
   initialActivityId,
   initialUnitModel,
@@ -40,6 +41,7 @@ export function BomLineEditForm({
   vendors,
 }: {
   id:                   string;
+  isAdminEdit?:         boolean;
   initialScopeId:       string;
   initialActivityId:    string;
   initialUnitModel:     string;
@@ -238,7 +240,7 @@ export function BomLineEditForm({
           color: "#fff", border: "none", fontSize: "0.9rem", fontWeight: 600,
           cursor: isPending ? "not-allowed" : "pointer",
         }}>
-          {isPending ? "Saving…" : "Save & Resubmit for Approval"}
+          {isPending ? "Saving…" : (isAdminEdit ? "Save Correction" : "Save & Resubmit for Approval")}
         </button>
       </div>
     </form>

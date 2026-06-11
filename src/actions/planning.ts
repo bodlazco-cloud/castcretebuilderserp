@@ -191,11 +191,18 @@ export async function deleteDraftBomEntry(id: string): Promise<BomReviewResult> 
     .where(eq(masterBomEntries.id, id));
 
   if (!existing) return { success: false, error: "BOM entry not found." };
-  if (existing.status !== "DRAFT" && existing.status !== "REJECTED") {
+
+  const isAdminDelete = existing.status === "APPROVED" && guardDept(dept, ["ADMIN", "BOD"]);
+
+  if (existing.status !== "DRAFT" && existing.status !== "REJECTED" && !isAdminDelete) {
     return { success: false, error: "Only Draft or Rejected lines can be deleted. Pending entries must be withdrawn first." };
   }
 
-  await db.delete(masterBomEntries).where(eq(masterBomEntries.id, id));
+  try {
+    await db.delete(masterBomEntries).where(eq(masterBomEntries.id, id));
+  } catch {
+    return { success: false, error: "This BOM entry cannot be deleted because it is already referenced by resource forecasts." };
+  }
 
   revalidatePath("/planning/bom");
   return { success: true };
@@ -462,7 +469,10 @@ export async function updateDraftBomEntry(
     .where(eq(masterBomEntries.id, parsed.data.id));
 
   if (!existing) return { success: false, error: "BOM entry not found." };
-  if (existing.status !== "DRAFT" && existing.status !== "REJECTED") {
+
+  const isAdminEdit = existing.status === "APPROVED" && guardDept(dept, ["ADMIN", "BOD"]);
+
+  if (existing.status !== "DRAFT" && existing.status !== "REJECTED" && !isAdminEdit) {
     return { success: false, error: "Only DRAFT or REJECTED entries can be edited. Pending entries must be withdrawn first." };
   }
 
@@ -476,12 +486,17 @@ export async function updateDraftBomEntry(
       materialId:      parsed.data.materialId,
       quantityPerUnit: String(parsed.data.quantityPerUnit),
       equipmentType:   parsed.data.equipmentType ?? null,
-      // Edits to a previously reviewed line must go through BOD approval again
-      status:          "DRAFT",
-      reviewedBy:      null,
-      reviewedAt:      null,
-      rejectionReason: null,
-      updatedAt:       new Date(),
+      // Edits to a previously reviewed line must go through BOD approval again,
+      // unless an Admin/BOD is correcting an already-approved entry in place
+      ...(isAdminEdit
+        ? { updatedAt: new Date() }
+        : {
+            status:          "DRAFT" as const,
+            reviewedBy:      null,
+            reviewedAt:      null,
+            rejectionReason: null,
+            updatedAt:       new Date(),
+          }),
     })
     .where(eq(masterBomEntries.id, parsed.data.id));
 
