@@ -6,7 +6,7 @@ import {
 } from "@/db/schema";
 import { phaseScopes } from "@/db/schema/phases";
 import { eq, desc } from "drizzle-orm";
-import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
+import { getAuthUser, isAdminOrBod, canReviewNtp } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { NtpApprovalPanel } from "./NtpApprovalPanel";
 
@@ -32,7 +32,7 @@ const AP_STATUS: Record<string, { bg: string; color: string }> = {
 
 export default async function NtpDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser();
-  const canApprove = await isAdminOrBod();
+  const [canApprove, canReview] = await Promise.all([isAdminOrBod(), canReviewNtp()]);
   const { id } = await params;
 
   const [ntp] = await db
@@ -48,6 +48,7 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
       submittedAt:     taskAssignments.submittedAt,
       bodApprovedAt:   taskAssignments.bodApprovedAt,
       rejectionReason: taskAssignments.rejectionReason,
+      ntpGroupId:      taskAssignments.ntpGroupId,
       unitCode:        projectUnits.unitCode,
       unitModel:       projectUnits.unitModel,
       unitId:          projectUnits.id,
@@ -67,6 +68,19 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
     .where(eq(taskAssignments.id, id));
 
   if (!ntp) notFound();
+
+  const siblingNtps = ntp.ntpGroupId
+    ? await db
+        .select({
+          id:       taskAssignments.id,
+          unitCode: projectUnits.unitCode,
+          status:   taskAssignments.status,
+        })
+        .from(taskAssignments)
+        .leftJoin(projectUnits, eq(taskAssignments.unitId, projectUnits.id))
+        .where(eq(taskAssignments.ntpGroupId, ntp.ntpGroupId))
+    : [];
+  const otherUnitsInGroup = siblingNtps.filter((s) => s.id !== ntp.id);
 
   const [progressRows, warRows] = await Promise.all([
     db.select({
@@ -149,9 +163,11 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
           ntpId={ntp.id}
           status={ntp.status}
           userId={user?.id ?? ""}
+          canReview={canReview}
           canApprove={canApprove}
           rejectionReason={ntp.rejectionReason}
           submittedAt={ntp.submittedAt?.toISOString() ?? null}
+          reviewedAt={null}
           bodApprovedAt={ntp.bodApprovedAt?.toISOString() ?? null}
         />
 
@@ -179,6 +195,22 @@ export default async function NtpDetailPage({ params }: { params: Promise<{ id: 
             <div style={FIELD}><div style={LABEL}>End Date</div><div style={VALUE}>{ntp.endDate}</div></div>
             <div style={FIELD}><div style={LABEL}>Issued At</div><div style={VALUE}>{new Date(ntp.issuedAt).toLocaleDateString("en-PH", { dateStyle: "long" })}</div></div>
           </div>
+
+          {otherUnitsInGroup.length > 0 && (
+            <div style={{ marginTop: "1.25rem", paddingTop: "1.25rem", borderTop: "1px solid #f3f4f6" }}>
+              <div style={LABEL}>Issued together with</div>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.4rem" }}>
+                {otherUnitsInGroup.map((s) => (
+                  <a key={s.id} href={`/construction/ntp/${s.id}`} style={{
+                    padding: "0.2rem 0.6rem", borderRadius: "999px", fontSize: "0.78rem", fontWeight: 600,
+                    background: "#eff6ff", color: "#1e40af", textDecoration: "none",
+                  }}>
+                    {s.unitCode ?? "Unit"} ({s.status})
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Daily Progress */}

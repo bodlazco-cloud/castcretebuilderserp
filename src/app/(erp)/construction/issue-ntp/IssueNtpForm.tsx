@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { issueTaskAssignment } from "@/actions/construction";
 
 type Project  = { id: string; name: string; status: string };
-type Unit     = { id: string; unitCode: string; projectId: string; unitModel: string; unitType: string };
+type Unit     = { id: string; unitCode: string; projectId: string; unitModel: string; unitType: string; blockId: string };
+type Block    = { id: string; blockName: string; projectId: string };
 type Subcon   = { id: string; name: string; code: string; tradeTypes: string[] };
 type Category = { id: string; code: string; name: string; sequenceOrder: number };
 type Scope    = { id: string; code: string; name: string; categoryId: string; sequenceOrder: number };
@@ -32,10 +33,11 @@ const categoryCodeMap: Record<string, string> = {
 };
 
 export function IssueNtpForm({
-  projects, units, subcontractors, categories, scopes, userId,
+  projects, units, blocks, subcontractors, categories, scopes, userId,
 }: {
   projects: Project[];
   units: Unit[];
+  blocks: Block[];
   subcontractors: Subcon[];
   categories: Category[];
   scopes: Scope[];
@@ -45,18 +47,22 @@ export function IssueNtpForm({
   const [isPending, startTransition] = useTransition();
   const [error, setError]           = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState<number | null>(null);
+  const [skippedUnits, setSkippedUnits] = useState<{ unitId: string; reason: string }[]>([]);
 
   const [selectedProject,  setSelectedProject]  = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedScope,    setSelectedScope]    = useState("");
+  const [filterBlock,      setFilterBlock]      = useState("");
   const [filterModel,      setFilterModel]      = useState("");
   const [filterType,       setFilterType]       = useState("");
   const [checkedUnits,     setCheckedUnits]     = useState<Set<string>>(new Set());
 
   const projectUnits  = units.filter((u) => u.projectId === selectedProject);
+  const projectBlocks = blocks.filter((b) => b.projectId === selectedProject);
   const uniqueModels  = [...new Set(projectUnits.map((u) => u.unitModel))].sort();
   const uniqueTypes   = [...new Set(projectUnits.map((u) => u.unitType))].sort();
   const visibleUnits  = projectUnits.filter((u) => {
+    if (filterBlock && u.blockId !== filterBlock) return false;
     if (filterModel && u.unitModel !== filterModel) return false;
     if (filterType  && u.unitType  !== filterType)  return false;
     return true;
@@ -84,15 +90,15 @@ export function IssueNtpForm({
   }
   function handleProjectChange(id: string) {
     setSelectedProject(id);
-    setFilterModel(""); setFilterType(""); setCheckedUnits(new Set());
-    setError(null); setSuccessCount(null);
+    setFilterBlock(""); setFilterModel(""); setFilterType(""); setCheckedUnits(new Set());
+    setError(null); setSuccessCount(null); setSkippedUnits([]);
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (checkedUnits.size === 0) { setError("Select at least one unit."); return; }
     if (!selectedScope) { setError("Select a Scope of Work."); return; }
-    setError(null); setSuccessCount(null);
+    setError(null); setSuccessCount(null); setSkippedUnits([]);
 
     const fd = new FormData(e.currentTarget);
     const unitIds = [...checkedUnits];
@@ -102,29 +108,26 @@ export function IssueNtpForm({
     if (!categoryValue) { setError("Invalid category selected."); return; }
 
     startTransition(async () => {
-      let issued = 0;
-      let lastError: string | null = null;
-      for (const unitId of unitIds) {
-        const result = await issueTaskAssignment({
-          projectId:    fd.get("projectId") as string,
-          unitId,
-          subconId:     fd.get("subconId") as string,
-          category:     categoryValue,
-          workType:     "STRUCTURAL",
-          phaseScopeId: selectedScope || undefined,
-          startDate:    fd.get("startDate") as string,
-          endDate:      fd.get("endDate") as string,
-          issuedBy:     userId,
-        });
-        if (result.success) { issued++; }
-        else { lastError = result.error; break; }
-      }
-      if (issued > 0) {
-        setSuccessCount(issued);
+      const result = await issueTaskAssignment({
+        projectId:    fd.get("projectId") as string,
+        unitIds,
+        subconId:     fd.get("subconId") as string,
+        category:     categoryValue,
+        workType:     "STRUCTURAL",
+        phaseScopeId: selectedScope || undefined,
+        startDate:    fd.get("startDate") as string,
+        endDate:      fd.get("endDate") as string,
+        issuedBy:     userId,
+      });
+
+      if (result.success) {
+        setSuccessCount(result.taskAssignmentIds.length);
+        setSkippedUnits(result.skipped);
         setCheckedUnits(new Set());
-        router.push("/construction/ntp");
+        if (result.taskAssignmentIds.length > 0) router.push("/construction/ntp");
+      } else {
+        setError(result.error);
       }
-      if (lastError) setError(lastError);
     });
   }
 
@@ -137,7 +140,18 @@ export function IssueNtpForm({
       )}
       {successCount != null && successCount > 0 && (
         <div style={{ padding: "0.85rem 1rem", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "6px", color: ACCENT, fontSize: "0.875rem" }}>
-          {successCount} NTP(s) issued successfully.
+          NTP issued successfully covering {successCount} unit{successCount !== 1 ? "s" : ""}.
+        </div>
+      )}
+      {skippedUnits.length > 0 && (
+        <div style={{ padding: "0.85rem 1rem", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "6px", color: "#92400e", fontSize: "0.85rem" }}>
+          <p style={{ margin: "0 0 0.4rem", fontWeight: 600 }}>{skippedUnits.length} unit{skippedUnits.length !== 1 ? "s" : ""} skipped:</p>
+          <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+            {skippedUnits.map((s) => {
+              const u = units.find((x) => x.id === s.unitId);
+              return <li key={s.unitId}>{u?.unitCode ?? s.unitId}: {s.reason}</li>;
+            })}
+          </ul>
         </div>
       )}
 
@@ -196,6 +210,11 @@ export function IssueNtpForm({
         <div>
           <span style={labelStyle}>Units <span style={{ color: "#e02424" }}>*</span></span>
           <div style={{ display: "flex", gap: "0.75rem", marginBottom: "0.65rem", flexWrap: "wrap" }}>
+            <select value={filterBlock} onChange={(e) => { setFilterBlock(e.target.value); setCheckedUnits(new Set()); }}
+              style={{ padding: "0.35rem 0.6rem", border: "1px solid #d1d5db", borderRadius: "5px", fontSize: "0.8rem", background: "#fff" }}>
+              <option value="">All Blocks</option>
+              {projectBlocks.map((b) => <option key={b.id} value={b.id}>{b.blockName}</option>)}
+            </select>
             <select value={filterModel} onChange={(e) => { setFilterModel(e.target.value); setCheckedUnits(new Set()); }}
               style={{ padding: "0.35rem 0.6rem", border: "1px solid #d1d5db", borderRadius: "5px", fontSize: "0.8rem", background: "#fff" }}>
               <option value="">All Models</option>

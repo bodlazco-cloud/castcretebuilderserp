@@ -256,7 +256,7 @@ export type ForecastUpdateResult = { success: boolean; error?: string };
 
 export async function updateForecastStatus(
   forecastId: string,
-  newStatus: "PENDING_PR" | "PR_CREATED" | "PO_ISSUED" | "ISSUED",
+  newStatus: "PENDING_APPROVAL" | "PENDING_PR" | "PR_CREATED" | "PO_ISSUED" | "ISSUED",
   prId?: string,
 ): Promise<ForecastUpdateResult> {
   const user = await getAuthUser();
@@ -565,17 +565,30 @@ export async function createManpowerLog(
 
 // ─── Generate Resource Forecasts for Unit ─────────────────────────────────────
 
+export type GenerateForecastsDiagnostics = {
+  unitId: string;
+  unitModel?: string;
+  unitType?: string;
+  bomEntriesFound: number;
+  alreadyExisted: number;
+  equipmentSkipped: number;
+  created: number;
+  reason?: string;
+};
+
 export async function generateResourceForecastsForUnit(
   projectId: string,
   unitId: string,
-): Promise<void> {
+): Promise<GenerateForecastsDiagnostics> {
   const [unit] = await db
     .select({ unitModel: projectUnits.unitModel, unitType: projectUnits.unitType })
     .from(projectUnits)
     .where(eq(projectUnits.id, unitId))
     .limit(1);
 
-  if (!unit) return;
+  if (!unit) {
+    return { unitId, bomEntriesFound: 0, alreadyExisted: 0, equipmentSkipped: 0, created: 0, reason: "Unit not found." };
+  }
 
   const bomEntries = await db
     .select({
@@ -596,7 +609,14 @@ export async function generateResourceForecastsForUnit(
       ),
     );
 
-  if (bomEntries.length === 0) return;
+  const base = { unitId, unitModel: unit.unitModel, unitType: unit.unitType ?? undefined };
+
+  if (bomEntries.length === 0) {
+    return {
+      ...base, bomEntriesFound: 0, alreadyExisted: 0, equipmentSkipped: 0, created: 0,
+      reason: `No APPROVED & active BOM entries found for model "${unit.unitModel}" / type "${unit.unitType ?? "—"}".`,
+    };
+  }
 
   const existing = await db
     .select({ masterBomEntryId: resourceForecasts.masterBomEntryId })
@@ -611,31 +631,47 @@ export async function generateResourceForecastsForUnit(
   const existingSet = new Set(existing.map((r) => r.masterBomEntryId));
   const toCreate = bomEntries.filter((b) => !existingSet.has(b.id));
 
-  if (toCreate.length === 0) return;
+  if (toCreate.length === 0) {
+    return {
+      ...base, bomEntriesFound: bomEntries.length, alreadyExisted: bomEntries.length, equipmentSkipped: 0, created: 0,
+      reason: "Resource forecasts already exist for all matching BOM entries.",
+    };
+  }
+
+  // Skip EQUIPMENT forecasts — motorpool is handled as monthly rental
+  const nonEquipment = toCreate.filter((b) => !b.equipmentType);
+  const equipmentSkipped = toCreate.length - nonEquipment.length;
+
+  if (nonEquipment.length === 0) {
+    return {
+      ...base, bomEntriesFound: bomEntries.length, alreadyExisted: existingSet.size, equipmentSkipped, created: 0,
+      reason: "All remaining BOM entries are EQUIPMENT type (handled separately as motorpool rentals).",
+    };
+  }
 
   await db.insert(resourceForecasts).values(
-    toCreate.map((b) => ({
+    nonEquipment.map((b) => ({
       projectId,
       unitId,
       masterBomEntryId: b.id,
       forecastType: (
-        b.equipmentType
-          ? "EQUIPMENT"
-          : b.matCategory === "CONCRETE"
-          ? "CONCRETE"
-          : "MATERIAL"
-      ) as "MATERIAL" | "CONCRETE" | "EQUIPMENT",
+        b.matCategory?.toUpperCase() === "CONCRETE" ? "CONCRETE" : "MATERIAL"
+      ) as "MATERIAL" | "CONCRETE",
       grossQuantity:    b.quantityPerUnit,
       quantityConsumed: "0",
-      status:           "PENDING_PR" as const,
-      equipmentType:    b.equipmentType ?? null,
+      status:           "PENDING_APPROVAL" as const,
+      equipmentType:    null,
     })),
   );
 
   revalidatePath("/planning/mrp-queue");
   revalidatePath("/planning/batching-forecast");
-  revalidatePath("/planning/motorpool-needs");
   revalidatePath("/planning");
+
+  return {
+    ...base, bomEntriesFound: bomEntries.length, alreadyExisted: existingSet.size,
+    equipmentSkipped, created: nonEquipment.length,
+  };
 }
 
 // ─── Raise MRP Purchase Requisition ──────────────────────────────────────────
@@ -643,6 +679,113 @@ export async function generateResourceForecastsForUnit(
 export type RaiseMrpPrResult =
   | { success: true; prId: string }
   | { success: false; error: string };
+
+/** Tier 1: Planning Manager reviews → forwards to BOD */
+export async function reviewForecastAsManager(
+  forecastId: string,
+): Promise<ForecastUpdateResult> {
+  try {
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+      return { success: false, error: "Only Planning, Admin, or BOD may review forecasts." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (forecast.status !== "PENDING_APPROVAL") {
+      return { success: false, error: `Forecast must be PENDING_APPROVAL (current: ${forecast.status}).` };
+    }
+    await db.update(resourceForecasts)
+      .set({ status: "PENDING_BOD_APPROVAL" })
+      .where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    revalidatePath("/planning/batching-forecast");
+    revalidatePath("/planning");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+/** Tier 2: BOD final approval → PENDING_PR (PR can now be raised) */
+export async function approveForecastAsBod(
+  forecastId: string,
+): Promise<ForecastUpdateResult> {
+  try {
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["ADMIN", "BOD"])) {
+      return { success: false, error: "Only Admin or BOD may give final forecast approval." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (forecast.status !== "PENDING_BOD_APPROVAL") {
+      return { success: false, error: `Forecast must be PENDING_BOD_APPROVAL (current: ${forecast.status}).` };
+    }
+    await db.update(resourceForecasts)
+      .set({ status: "PENDING_PR" })
+      .where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    revalidatePath("/planning/batching-forecast");
+    revalidatePath("/planning");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export type RegenerateForecastsResult =
+  | { success: true; created: number; diagnostics: GenerateForecastsDiagnostics[] }
+  | { success: false; error: string };
+
+/** Retroactive: generate forecasts for an already-ACTIVE NTP (and any sibling
+ *  units issued in the same NTP group) that have none. */
+export async function regenerateForecastsForNtp(
+  ntpId: string,
+): Promise<RegenerateForecastsResult> {
+  try {
+    const { taskAssignments } = await import("@/db/schema");
+    const [ntp] = await db
+      .select({
+        projectId:  taskAssignments.projectId,
+        unitId:     taskAssignments.unitId,
+        status:     taskAssignments.status,
+        ntpGroupId: taskAssignments.ntpGroupId,
+      })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (ntp.status !== "ACTIVE") return { success: false, error: "NTP must be ACTIVE." };
+
+    let unitIds = [ntp.unitId];
+    if (ntp.ntpGroupId) {
+      const siblings = await db
+        .select({ unitId: taskAssignments.unitId })
+        .from(taskAssignments)
+        .where(and(eq(taskAssignments.ntpGroupId, ntp.ntpGroupId), eq(taskAssignments.status, "ACTIVE")));
+      unitIds = [...new Set(siblings.map((s) => s.unitId))];
+    }
+
+    const diagnostics = await Promise.all(
+      unitIds.map((unitId) => generateResourceForecastsForUnit(ntp.projectId, unitId)),
+    );
+    const created = diagnostics.reduce((sum, d) => sum + d.created, 0);
+    return { success: true, created, diagnostics };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
 
 export async function raiseMrpPurchaseRequisition(
   forecastId: string,

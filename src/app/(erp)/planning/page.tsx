@@ -7,9 +7,10 @@ import {
   planningVarianceRequests,
   materials,
   projects,
+  taskAssignments,
 } from "@/db/schema";
 import { phaseActivities } from "@/db/schema/phases";
-import { eq, desc, count } from "drizzle-orm";
+import { eq, desc, count, sql } from "drizzle-orm";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -118,6 +119,21 @@ export default async function PlanningOverviewPage() {
       0,
     ),
   ]);
+
+  // ACTIVE NTPs that have no resource forecast lines yet
+  const missingForecastCount = await safe(
+    db
+      .select({ cnt: count() })
+      .from(taskAssignments)
+      .where(
+        sql`${taskAssignments.status} = 'ACTIVE' AND NOT EXISTS (
+          SELECT 1 FROM ${resourceForecasts}
+          WHERE ${resourceForecasts.unitId} = ${taskAssignments.unitId}
+        )`,
+      )
+      .then((rows) => Number(rows[0]?.cnt ?? 0)),
+    0,
+  );
 
   const bomStatusMap      = Object.fromEntries(bomByStatus.map((r) => [r.status, Number(r.cnt)]));
   const forecastTypeMap   = Object.fromEntries(forecastByType.map((r) => [r.forecastType, Number(r.cnt)]));
@@ -247,6 +263,20 @@ export default async function PlanningOverviewPage() {
             </div>
           )}
         </div>
+
+        {/* Flag: Active NTPs missing resource forecasts */}
+        {missingForecastCount > 0 && (
+          <div style={{ ...card, marginBottom: "1.5rem", padding: "1rem 1.25rem", background: "#fffbeb", border: "1px solid #fde68a" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+              <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: 600, color: "#92400e" }}>
+                ⚠ {missingForecastCount} active NTP{missingForecastCount > 1 ? "s are" : " is"} missing resource forecasts
+              </p>
+              <a href="/planning/resource-mapping" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
+                Resolve in Resource Mapping →
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* BOM Status + Forecast Pipeline */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
