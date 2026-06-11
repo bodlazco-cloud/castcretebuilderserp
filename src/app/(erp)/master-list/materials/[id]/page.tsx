@@ -20,6 +20,7 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
       code:            materials.code,
       name:            materials.name,
       unit:            materials.unit,
+      category:        materials.category,
       adminPrice:      materials.adminPrice,
       minimumQuantity: materials.minimumQuantity,
       priceVersion:    materials.priceVersion,
@@ -103,7 +104,7 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
             }}>{mat.isActive ? "Active" : "Inactive"}</span>
           </div>
           <EditMaterialForm
-            material={{ id: mat.id, name: mat.name, unit: mat.unit, adminPrice: mat.adminPrice, minimumQuantity: mat.minimumQuantity ?? null, supId: mat.supId ?? null }}
+            material={{ id: mat.id, name: mat.name, unit: mat.unit, category: mat.category ?? null, adminPrice: mat.adminPrice, minimumQuantity: mat.minimumQuantity ?? null, supId: mat.supId ?? null }}
             suppliers={supplierRows}
           />
         </div>

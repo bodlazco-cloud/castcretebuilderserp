@@ -22,6 +22,7 @@ export function NewMaterialForm({ suppliers }: { suppliers: Supplier[] }) {
   const [code, setCode]                               = useState("");
   const [name, setName]                               = useState("");
   const [unit, setUnit]                               = useState("");
+  const [category, setCategory]                       = useState("");
   const [adminPrice, setAdminPrice]                   = useState("");
   const [minimumQuantity, setMinimumQuantity]         = useState("");
   const [preferredSupplierId, setPreferredSupplierId] = useState("");
@@ -32,6 +33,7 @@ export function NewMaterialForm({ suppliers }: { suppliers: Supplier[] }) {
     startTransition(async () => {
       const result = await createMaterial({
         code, name, unit,
+        category: category || undefined,
         adminPrice: Number(adminPrice),
         minimumQuantity: minimumQuantity ? Number(minimumQuantity) : undefined,
         preferredSupplierId: preferredSupplierId || undefined,
@@ -65,11 +67,16 @@ export function NewMaterialForm({ suppliers }: { suppliers: Supplier[] }) {
         </label>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "1rem" }}>
         <label>
           <span style={labelStyle}>Unit of Measure *</span>
           <input type="text" required value={unit} onChange={(e) => setUnit(e.target.value)}
             placeholder="e.g. bag, kg, pc, lm, m2" style={inputStyle} />
+        </label>
+        <label>
+          <span style={labelStyle}>Category</span>
+          <input type="text" value={category} onChange={(e) => setCategory(e.target.value)}
+            placeholder="e.g. Concrete, Steel, Cement" style={inputStyle} />
         </label>
         <label>
           <span style={labelStyle}>Admin Price (PHP) *</span>
