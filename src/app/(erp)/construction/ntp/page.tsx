@@ -149,6 +149,7 @@ export default async function NtpRegisterPage() {
                             userId={userId}
                             canReview={canReview}
                             canApprove={canApprove}
+                            canDeleteActive={canApprove}
                           />
                         </td>
                       </tr>

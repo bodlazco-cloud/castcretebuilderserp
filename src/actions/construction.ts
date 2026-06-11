@@ -779,6 +779,34 @@ export async function updateNtp(
   return { success: true };
 }
 
+export async function deleteNtp(
+  ntpId: string,
+  isAdmin: boolean,
+): Promise<NtpActionResult> {
+  try {
+    const [ntp] = await db
+      .select({ status: taskAssignments.status })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+
+    if (ntp.status === "DRAFT" || ntp.status === "REJECTED") {
+      // any user with edit access may delete draft/rejected NTPs
+    } else if (ntp.status === "ACTIVE") {
+      if (!isAdmin) return { success: false, error: "Only Admin/BOD may delete an approved NTP." };
+    } else {
+      return { success: false, error: `Cannot delete NTP in status '${ntp.status}'.` };
+    }
+
+    await db.delete(taskAssignments).where(eq(taskAssignments.id, ntpId));
+    revalidatePath("/construction/ntp");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // DAILY PROGRESS ENTRY APPROVAL
 // Managers / Admin / BOD approve or reject submitted progress entries.
