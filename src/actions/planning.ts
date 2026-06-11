@@ -655,7 +655,7 @@ export async function generateResourceForecastsForUnit(
       unitId,
       masterBomEntryId: b.id,
       forecastType: (
-        b.matCategory?.toUpperCase() === "CONCRETE" ? "CONCRETE" : "MATERIAL"
+        b.matCategory?.toUpperCase() === "CEMENT" ? "CONCRETE" : "MATERIAL"
       ) as "MATERIAL" | "CONCRETE",
       grossQuantity:    b.quantityPerUnit,
       quantityConsumed: "0",
