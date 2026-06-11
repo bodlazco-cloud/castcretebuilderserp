@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { updateMaterial } from "@/actions/master-list";
 
 type Material = {
-  id: string; name: string; unit: string;
+  id: string; name: string; unit: string; category: string | null;
   adminPrice: string; minimumQuantity: string | null;
   supId: string | null;
 };
@@ -35,6 +35,7 @@ export function EditMaterialForm({ material, suppliers }: { material: Material; 
         id:                  material.id,
         name:                fd.get("name") as string,
         unit:                fd.get("unit") as string,
+        category:            (fd.get("category") as string) || undefined,
         adminPrice:          Number(fd.get("adminPrice")),
         minimumQuantity:     minQty ? Number(minQty) : undefined,
         preferredSupplierId: (fd.get("preferredSupplierId") as string) || undefined,
@@ -63,7 +64,7 @@ export function EditMaterialForm({ material, suppliers }: { material: Material; 
         <div style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.5rem", marginTop: "1rem" }}>
           <h3 style={{ margin: "0 0 1.25rem", fontSize: "0.9rem", fontWeight: 700, color: "#374151" }}>Edit Material</h3>
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "1rem" }}>
               <label>
                 <span style={labelStyle}>Material Name *</span>
                 <input name="name" required defaultValue={material.name} style={inputStyle} />
@@ -71,6 +72,10 @@ export function EditMaterialForm({ material, suppliers }: { material: Material; 
               <label>
                 <span style={labelStyle}>Unit *</span>
                 <input name="unit" required defaultValue={material.unit} style={inputStyle} />
+              </label>
+              <label>
+                <span style={labelStyle}>Category</span>
+                <input name="category" defaultValue={material.category ?? ""} style={inputStyle} />
               </label>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>

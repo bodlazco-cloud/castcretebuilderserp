@@ -20,6 +20,7 @@ export default async function MaterialDetailPage({ params }: { params: Promise<{
       code:            materials.code,
       name:            materials.name,
       unit:            materials.unit,
+      category:        materials.category,
       adminPrice:      materials.adminPrice,
       minimumQuantity: materials.minimumQuantity,
       priceVersion:    materials.priceVersion,
