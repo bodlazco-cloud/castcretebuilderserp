@@ -238,7 +238,7 @@ export default async function BatchingForecastPage() {
                             {!["PENDING_APPROVAL", "PENDING_BOD_APPROVAL"].includes(row.status) && (
                               <span style={{ color: "#d1d5db", fontSize: "0.78rem" }}>—</span>
                             )}
-                            {row.status === "PENDING_APPROVAL" && canBodApprove && (
+                            {["PENDING_APPROVAL", "PENDING_BOD_APPROVAL"].includes(row.status) && canBodApprove && (
                               <ForecastAdminActions forecastId={row.id} grossQuantity={gross} />
                             )}
                           </div>
