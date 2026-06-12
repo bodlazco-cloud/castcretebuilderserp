@@ -763,6 +763,69 @@ export type RegenerateForecastsResult =
   | { success: true; created: number; diagnostics: GenerateForecastsDiagnostics[] }
   | { success: false; error: string };
 
+// ─── Admin/BOD: edit or delete a draft (PENDING_APPROVAL) forecast line ──────
+
+export async function updateForecastQuantity(
+  forecastId: string,
+  grossQuantity: number,
+): Promise<ForecastUpdateResult> {
+  try {
+    if (!Number.isFinite(grossQuantity) || grossQuantity <= 0) {
+      return { success: false, error: "Quantity must be a positive number." };
+    }
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["ADMIN", "BOD"])) {
+      return { success: false, error: "Only Admin or BOD may edit forecast lines." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (forecast.status !== "PENDING_APPROVAL") {
+      return { success: false, error: "Only draft (Pending Mgr Review) forecast lines can be edited." };
+    }
+    await db.update(resourceForecasts)
+      .set({ grossQuantity: String(grossQuantity), updatedAt: new Date() })
+      .where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    revalidatePath("/planning/batching-forecast");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export async function deleteForecast(forecastId: string): Promise<ForecastUpdateResult> {
+  try {
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["ADMIN", "BOD"])) {
+      return { success: false, error: "Only Admin or BOD may delete forecast lines." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (forecast.status !== "PENDING_APPROVAL") {
+      return { success: false, error: "Only draft (Pending Mgr Review) forecast lines can be deleted." };
+    }
+    await db.delete(resourceForecasts).where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    revalidatePath("/planning/batching-forecast");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+
 /** Retroactive: generate forecasts for an already-ACTIVE NTP (and any sibling
  *  units issued in the same NTP group) that have none. */
 export async function regenerateForecastsForNtp(

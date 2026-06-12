@@ -6,6 +6,7 @@ import { inventoryStock, materialTransfers } from "@/db/schema/procurement";
 import { eq, count, sum } from "drizzle-orm";
 import { ApproveForecastButton } from "./ApproveForecastButton";
 import { RaisePrButton } from "./RaisePrButton";
+import { ForecastAdminActions } from "../ForecastAdminActions";
 import { canReviewForecast, isAdminOrBod } from "@/lib/supabase-server";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
@@ -304,21 +305,26 @@ export default async function MrpQueuePage() {
                                 <ForecastStatusBadge status={row.status} />
                               </td>
                               <td style={{ padding: "0.65rem 1rem", fontSize: "0.82rem", minWidth: "120px" }}>
-                                {(row.status === "PENDING_APPROVAL" || row.status === "PENDING_BOD_APPROVAL") && (
-                                  <ApproveForecastButton forecastId={row.id} status={row.status} canReview={canReview} canBodApprove={canBodApprove} />
-                                )}
-                                {row.status === "PENDING_PR" && (
-                                  <RaisePrButton forecastId={row.id} />
-                                )}
-                                {row.purchaseRequisitionId && (
-                                  <a href={`/procurement/purchase-requisitions/${row.purchaseRequisitionId}`}
-                                    style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600, fontSize: "0.78rem" }}>
-                                    View PR →
-                                  </a>
-                                )}
-                                {!["PENDING_APPROVAL", "PENDING_PR"].includes(row.status) && !row.purchaseRequisitionId && (
-                                  <span style={{ color: "#d1d5db" }}>—</span>
-                                )}
+                                <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                                  {(row.status === "PENDING_APPROVAL" || row.status === "PENDING_BOD_APPROVAL") && (
+                                    <ApproveForecastButton forecastId={row.id} status={row.status} canReview={canReview} canBodApprove={canBodApprove} />
+                                  )}
+                                  {row.status === "PENDING_PR" && (
+                                    <RaisePrButton forecastId={row.id} />
+                                  )}
+                                  {row.purchaseRequisitionId && (
+                                    <a href={`/procurement/purchase-requisitions/${row.purchaseRequisitionId}`}
+                                      style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600, fontSize: "0.78rem" }}>
+                                      View PR →
+                                    </a>
+                                  )}
+                                  {!["PENDING_APPROVAL", "PENDING_PR"].includes(row.status) && !row.purchaseRequisitionId && (
+                                    <span style={{ color: "#d1d5db" }}>—</span>
+                                  )}
+                                  {row.status === "PENDING_APPROVAL" && canBodApprove && (
+                                    <ForecastAdminActions forecastId={row.id} grossQuantity={gross} />
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
