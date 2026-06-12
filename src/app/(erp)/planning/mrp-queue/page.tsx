@@ -321,7 +321,7 @@ export default async function MrpQueuePage() {
                                   {!["PENDING_APPROVAL", "PENDING_PR"].includes(row.status) && !row.purchaseRequisitionId && (
                                     <span style={{ color: "#d1d5db" }}>—</span>
                                   )}
-                                  {row.status === "PENDING_APPROVAL" && canBodApprove && (
+                                  {["PENDING_APPROVAL", "PENDING_BOD_APPROVAL", "PENDING_PR"].includes(row.status) && canBodApprove && (
                                     <ForecastAdminActions forecastId={row.id} grossQuantity={gross} />
                                   )}
                                 </div>

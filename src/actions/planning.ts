@@ -763,7 +763,9 @@ export type RegenerateForecastsResult =
   | { success: true; created: number; diagnostics: GenerateForecastsDiagnostics[] }
   | { success: false; error: string };
 
-// ─── Admin/BOD: edit or delete a draft (PENDING_APPROVAL) forecast line ──────
+// ─── Admin/BOD: edit or delete a not-yet-procured forecast line ─────────────
+
+const EDITABLE_FORECAST_STATUSES = ["PENDING_APPROVAL", "PENDING_BOD_APPROVAL", "PENDING_PR"] as const;
 
 export async function updateForecastQuantity(
   forecastId: string,
@@ -785,8 +787,8 @@ export async function updateForecastQuantity(
       .where(eq(resourceForecasts.id, forecastId))
       .limit(1);
     if (!forecast) return { success: false, error: "Forecast not found." };
-    if (forecast.status !== "PENDING_APPROVAL") {
-      return { success: false, error: "Only draft (Pending Mgr Review) forecast lines can be edited." };
+    if (!EDITABLE_FORECAST_STATUSES.includes(forecast.status as typeof EDITABLE_FORECAST_STATUSES[number])) {
+      return { success: false, error: "Forecast lines that already have a PR raised cannot be edited." };
     }
     await db.update(resourceForecasts)
       .set({ grossQuantity: String(grossQuantity), updatedAt: new Date() })
@@ -813,8 +815,8 @@ export async function deleteForecast(forecastId: string): Promise<ForecastUpdate
       .where(eq(resourceForecasts.id, forecastId))
       .limit(1);
     if (!forecast) return { success: false, error: "Forecast not found." };
-    if (forecast.status !== "PENDING_APPROVAL") {
-      return { success: false, error: "Only draft (Pending Mgr Review) forecast lines can be deleted." };
+    if (!EDITABLE_FORECAST_STATUSES.includes(forecast.status as typeof EDITABLE_FORECAST_STATUSES[number])) {
+      return { success: false, error: "Forecast lines that already have a PR raised cannot be deleted." };
     }
     await db.delete(resourceForecasts).where(eq(resourceForecasts.id, forecastId));
     revalidatePath("/planning/mrp-queue");
