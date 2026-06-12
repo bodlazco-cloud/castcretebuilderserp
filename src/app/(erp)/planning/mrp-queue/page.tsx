@@ -313,7 +313,7 @@ export default async function MrpQueuePage() {
                                     <RaisePrButton forecastId={row.id} />
                                   )}
                                   {row.purchaseRequisitionId && (
-                                    <a href={`/procurement/purchase-requisitions/${row.purchaseRequisitionId}`}
+                                    <a href={`/procurement/pr/${row.purchaseRequisitionId}`}
                                       style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600, fontSize: "0.78rem" }}>
                                       View PR →
                                     </a>

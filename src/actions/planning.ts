@@ -939,7 +939,7 @@ export async function raiseMrpPurchaseRequisition(
 
   revalidatePath("/planning/mrp-queue");
   revalidatePath("/planning");
-  revalidatePath("/procurement/purchase-requisitions");
+  revalidatePath("/procurement/pr");
 
   return { success: true, prId: pr.id };
 }
