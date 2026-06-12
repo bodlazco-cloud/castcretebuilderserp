@@ -6,6 +6,7 @@ import {
 import { premixMaterialLinks, mixDesignBom, mixDesigns } from "@/db/schema/batching";
 import { eq, desc } from "drizzle-orm";
 import { ApproveForecastButton } from "./ApproveForecastButton";
+import { ForecastAdminActions } from "../ForecastAdminActions";
 import { canReviewForecast, isAdminOrBod } from "@/lib/supabase-server";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 10000): Promise<T> {
@@ -230,12 +231,17 @@ export default async function BatchingForecastPage() {
                           </span>
                         </td>
                         <td style={{ padding: "0.65rem 1rem", minWidth: "100px" }}>
-                          {(row.status === "PENDING_APPROVAL" || row.status === "PENDING_BOD_APPROVAL") && (
-                            <ApproveForecastButton forecastId={row.id} status={row.status} canReview={canReview} canBodApprove={canBodApprove} />
-                          )}
-                          {!["PENDING_APPROVAL", "PENDING_BOD_APPROVAL"].includes(row.status) && (
-                            <span style={{ color: "#d1d5db", fontSize: "0.78rem" }}>—</span>
-                          )}
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                            {(row.status === "PENDING_APPROVAL" || row.status === "PENDING_BOD_APPROVAL") && (
+                              <ApproveForecastButton forecastId={row.id} status={row.status} canReview={canReview} canBodApprove={canBodApprove} />
+                            )}
+                            {!["PENDING_APPROVAL", "PENDING_BOD_APPROVAL"].includes(row.status) && (
+                              <span style={{ color: "#d1d5db", fontSize: "0.78rem" }}>—</span>
+                            )}
+                            {row.status === "PENDING_APPROVAL" && canBodApprove && (
+                              <ForecastAdminActions forecastId={row.id} grossQuantity={gross} />
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
