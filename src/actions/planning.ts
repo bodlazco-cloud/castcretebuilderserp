@@ -765,7 +765,7 @@ export type RegenerateForecastsResult =
 
 // ─── Admin/BOD: edit or delete a not-yet-procured forecast line ─────────────
 
-const EDITABLE_FORECAST_STATUSES = ["PENDING_APPROVAL", "PENDING_BOD_APPROVAL", "PENDING_PR"] as const;
+const EDITABLE_FORECAST_STATUSES = ["PENDING_APPROVAL", "PENDING_BOD_APPROVAL"] as const;
 
 export async function updateForecastQuantity(
   forecastId: string,
@@ -788,7 +788,7 @@ export async function updateForecastQuantity(
       .limit(1);
     if (!forecast) return { success: false, error: "Forecast not found." };
     if (!EDITABLE_FORECAST_STATUSES.includes(forecast.status as typeof EDITABLE_FORECAST_STATUSES[number])) {
-      return { success: false, error: "Forecast lines that already have a PR raised cannot be edited." };
+      return { success: false, error: "Only forecast lines that are not yet BOD-approved can be edited." };
     }
     await db.update(resourceForecasts)
       .set({ grossQuantity: String(grossQuantity), updatedAt: new Date() })
@@ -816,7 +816,7 @@ export async function deleteForecast(forecastId: string): Promise<ForecastUpdate
       .limit(1);
     if (!forecast) return { success: false, error: "Forecast not found." };
     if (!EDITABLE_FORECAST_STATUSES.includes(forecast.status as typeof EDITABLE_FORECAST_STATUSES[number])) {
-      return { success: false, error: "Forecast lines that already have a PR raised cannot be deleted." };
+      return { success: false, error: "Only forecast lines that are not yet BOD-approved can be deleted." };
     }
     await db.delete(resourceForecasts).where(eq(resourceForecasts.id, forecastId));
     revalidatePath("/planning/mrp-queue");
