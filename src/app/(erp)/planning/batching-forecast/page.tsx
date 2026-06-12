@@ -7,6 +7,7 @@ import { premixMaterialLinks, mixDesignBom, mixDesigns } from "@/db/schema/batch
 import { eq, desc } from "drizzle-orm";
 import { ApproveForecastButton } from "./ApproveForecastButton";
 import { ForecastAdminActions } from "../ForecastAdminActions";
+import { RaisePrButton } from "../mrp-queue/RaisePrButton";
 import { canReviewForecast, isAdminOrBod } from "@/lib/supabase-server";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 10000): Promise<T> {
@@ -45,6 +46,7 @@ export default async function BatchingForecastPage() {
         matUnit:      materials.unit,
         matId:        materials.id,
         projectName:  projects.name,
+        purchaseRequisitionId: resourceForecasts.purchaseRequisitionId,
       })
         .from(resourceForecasts)
         .leftJoin(masterBomEntries, eq(resourceForecasts.masterBomEntryId, masterBomEntries.id))
@@ -56,6 +58,7 @@ export default async function BatchingForecastPage() {
       [] as {
         id: string; grossQty: string; consumed: string; status: string; projectId: string | null;
         unitCode: string | null; unitModel: string | null; matName: string | null; matUnit: string | null; matId: string | null; projectName: string | null;
+        purchaseRequisitionId: string | null;
       }[],
     ),
     safe(
@@ -235,7 +238,16 @@ export default async function BatchingForecastPage() {
                             {(row.status === "PENDING_APPROVAL" || row.status === "PENDING_BOD_APPROVAL") && (
                               <ApproveForecastButton forecastId={row.id} status={row.status} canReview={canReview} canBodApprove={canBodApprove} />
                             )}
-                            {!["PENDING_APPROVAL", "PENDING_BOD_APPROVAL"].includes(row.status) && (
+                            {row.status === "PENDING_PR" && (
+                              <RaisePrButton forecastId={row.id} />
+                            )}
+                            {row.purchaseRequisitionId && (
+                              <a href={`/procurement/pr/${row.purchaseRequisitionId}`}
+                                style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600, fontSize: "0.78rem" }}>
+                                View PR →
+                              </a>
+                            )}
+                            {!["PENDING_APPROVAL", "PENDING_BOD_APPROVAL", "PENDING_PR"].includes(row.status) && !row.purchaseRequisitionId && (
                               <span style={{ color: "#d1d5db", fontSize: "0.78rem" }}>—</span>
                             )}
                             {["PENDING_APPROVAL", "PENDING_BOD_APPROVAL"].includes(row.status) && canBodApprove && (

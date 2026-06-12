@@ -32,7 +32,7 @@ export function RaisePrButton({ forecastId }: { forecastId: string }) {
   if (state === "done" && prId) {
     return (
       <a
-        href={`/procurement/purchase-requisitions/${prId}`}
+        href={`/procurement/pr/${prId}`}
         style={{
           color: "#057a55",
           fontWeight: 600,
