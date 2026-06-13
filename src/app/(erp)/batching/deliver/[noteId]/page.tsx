@@ -6,8 +6,9 @@ import { db } from "@/db";
 import {
   concreteDeliveryNotes, concreteDeliveryReceipts,
   batchingProductionLogs, mixDesigns, projects, projectUnits,
+  internalPurchaseOrders, ipoRawMaterialRequirements, materials,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { SignReceiptForm } from "./SignReceiptForm";
 
 const ACCENT = "#1a56db";
@@ -29,7 +30,6 @@ export default async function SignReceiptPage({ params }: { params: Promise<{ no
       mixName:            mixDesigns.name,
       batchDate:          batchingProductionLogs.batchDate,
       shift:              batchingProductionLogs.shift,
-      internalRatePerM3:  mixDesigns.cementBagsPerM3, // placeholder — actual rate from IPO
     })
     .from(concreteDeliveryNotes)
     .leftJoin(batchingProductionLogs, eq(concreteDeliveryNotes.productionLogId, batchingProductionLogs.id))
@@ -49,6 +49,30 @@ export default async function SignReceiptPage({ params }: { params: Promise<{ no
     .limit(1);
 
   const volDispatched = Number(note.volumeDispatchedM3);
+
+  // Default internal rate: the IPO's set rate, or a cost-recovery rate derived
+  // from the exploded raw-material requirements (admin price) ÷ requested volume.
+  let defaultRate = 0;
+  if (note.productionLogId) {
+    const [ipo] = await db
+      .select({ id: internalPurchaseOrders.id, internalRatePerM3: internalPurchaseOrders.internalRatePerM3, requestedVolumeM3: internalPurchaseOrders.requestedVolumeM3 })
+      .from(internalPurchaseOrders)
+      .where(eq(internalPurchaseOrders.productionLogId, note.productionLogId))
+      .limit(1);
+
+    if (ipo?.internalRatePerM3) {
+      defaultRate = Number(ipo.internalRatePerM3);
+    } else if (ipo) {
+      const [costRow] = await db
+        .select({ totalCost: sql<string>`coalesce(sum(${ipoRawMaterialRequirements.requiredQty} * ${materials.adminPrice}), 0)` })
+        .from(ipoRawMaterialRequirements)
+        .leftJoin(materials, eq(ipoRawMaterialRequirements.materialId, materials.id))
+        .where(eq(ipoRawMaterialRequirements.ipoId, ipo.id));
+
+      const volume = Number(ipo.requestedVolumeM3);
+      if (volume > 0) defaultRate = Number(costRow?.totalCost ?? 0) / volume;
+    }
+  }
 
   return (
     <main style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui, sans-serif" }}>
@@ -121,6 +145,7 @@ export default async function SignReceiptPage({ params }: { params: Promise<{ no
               unitId={note.unitId}
               volumeDispatchedM3={volDispatched}
               userId={user?.id ?? ""}
+              defaultRatePerM3={defaultRate > 0 ? defaultRate : undefined}
             />
           </div>
         )}

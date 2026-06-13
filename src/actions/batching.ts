@@ -5,6 +5,7 @@ import {
   batchingProductionLogs, concreteDeliveryNotes,
   concreteDeliveryReceipts, batchingInternalSales,
   mixDesigns, mixDesignBom, standardMixes, inventoryStock,
+  financialLedger, departments, costCenters,
 } from "@/db/schema";
 import { materials } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
@@ -255,6 +256,17 @@ export async function receiveConcreteDelivery(
     transactionDate:      new Date().toISOString().split("T")[0],
   });
 
+  // Post IDB to the financial ledger: Construction project cost center is debited
+  // (cost of premix concrete consumed); Batching Plant cost center is credited
+  // (internal revenue, offsetting the raw-material cost recognized at IPO acceptance).
+  await postInternalDeliveryBilling({
+    projectId:  note.projectId,
+    unitId,
+    mixDesignId: log.mixDesignId,
+    receiptId:  receipt.id,
+    amount:     idbTotal,
+  });
+
   // Inventory drawdown: BOM × volume received subtracted from Batching Plant stock
   const bomItems = await db
     .select({ materialId: mixDesignBom.materialId, requiredQuantity: mixDesignBom.requiredQuantity })
@@ -280,6 +292,65 @@ export async function receiveConcreteDelivery(
   revalidatePath("/batching/internal-sales");
   revalidatePath("/batching");
   return { success: true, receiptId: receipt.id, isFlagged: isDeliveryFlagged, varianceM3, idbTotal };
+}
+
+// Inter-departmental billing for premix concrete: the Construction project absorbs
+// the internal transfer price as a project cost, while the Batching Plant books it
+// as internal revenue (offsetting the raw-material cost recognized at IPO acceptance).
+async function postInternalDeliveryBilling(args: {
+  projectId: string; unitId: string; mixDesignId: string; receiptId: string; amount: number;
+}): Promise<void> {
+  if (args.amount <= 0) return;
+
+  const [constructionDept, batchingDept] = await Promise.all([
+    db.select({ id: departments.id }).from(departments).where(eq(departments.code, "CONSTRUCTION")).limit(1),
+    db.select({ id: departments.id }).from(departments).where(eq(departments.code, "BATCHING")).limit(1),
+  ]);
+  if (!constructionDept[0] || !batchingDept[0]) return;
+
+  const [constructionCC, batchingCC] = await Promise.all([
+    db.select({ id: costCenters.id }).from(costCenters)
+      .where(and(eq(costCenters.deptId, constructionDept[0].id), eq(costCenters.isActive, true))).limit(1),
+    db.select({ id: costCenters.id }).from(costCenters)
+      .where(and(eq(costCenters.deptId, batchingDept[0].id), eq(costCenters.isActive, true))).limit(1),
+  ]);
+  if (!constructionCC[0] || !batchingCC[0]) return;
+
+  const txDate = new Date().toISOString().split("T")[0];
+  const amount = String(args.amount.toFixed(2));
+
+  await db.insert(financialLedger).values([
+    {
+      projectId:       args.projectId,
+      costCenterId:    constructionCC[0].id,
+      deptId:          constructionDept[0].id,
+      unitId:          args.unitId,
+      resourceType:    "MATERIAL",
+      resourceId:      args.mixDesignId,
+      transactionType: "OUTFLOW",
+      referenceType:   "IDB",
+      referenceId:     args.receiptId,
+      amount,
+      isExternal:      false,
+      transactionDate: txDate,
+      description:     "Premix concrete — internal delivery billing (Batching Plant)",
+    },
+    {
+      projectId:       args.projectId,
+      costCenterId:    batchingCC[0].id,
+      deptId:          batchingDept[0].id,
+      unitId:          args.unitId,
+      resourceType:    "MATERIAL",
+      resourceId:      args.mixDesignId,
+      transactionType: "INFLOW",
+      referenceType:   "IDB",
+      referenceId:     args.receiptId,
+      amount,
+      isExternal:      false,
+      transactionDate: txDate,
+      description:     "Premix concrete — internal revenue (delivered to project)",
+    },
+  ]);
 }
 
 // ─── Standard Mixes ───────────────────────────────────────────────────────────
