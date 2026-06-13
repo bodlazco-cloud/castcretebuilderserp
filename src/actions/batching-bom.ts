@@ -4,12 +4,12 @@ import { db } from "@/db";
 import {
   mixDesigns, mixDesignBom, internalPurchaseOrders,
   premixMaterialLinks, ipoRawMaterialRequirements, batchingPlantPRFlags,
-  materials,
+  materials, financialLedger, departments, costCenters,
 } from "@/db/schema";
 import {
   purchaseRequisitions, purchaseRequisitionItems, inventoryStock,
 } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
@@ -358,10 +358,87 @@ export async function updateIPOStatus(
     })
     .where(eq(internalPurchaseOrders.id, d.id));
 
+  // On acceptance, recognize the raw-material cost of the batch against the Batching cost center
+  if (d.status === "ACCEPTED") {
+    await postIpoRawMaterialCost(d.id);
+  }
+
   revalidatePath(`/batching/ipo/${d.id}`);
   revalidatePath("/batching/ipo");
   revalidatePath("/batching");
   return { success: true };
+}
+
+// ── Cost allocation: raw materials consumed → Batching Plant cost center ──────
+// Posted once, when the Batching Plant accepts an IPO. Mirrors the MRR ledger
+// pattern (procurement.ts) — uses materials.adminPrice as the standard cost.
+async function postIpoRawMaterialCost(ipoId: string): Promise<void> {
+  const [alreadyPosted] = await db
+    .select({ id: financialLedger.id })
+    .from(financialLedger)
+    .where(and(eq(financialLedger.referenceType, "IPO_RAW_MATERIAL"), eq(financialLedger.referenceId, ipoId)))
+    .limit(1);
+  if (alreadyPosted) return;
+
+  let requirements = await db
+    .select({ materialId: ipoRawMaterialRequirements.materialId, requiredQty: ipoRawMaterialRequirements.requiredQty })
+    .from(ipoRawMaterialRequirements)
+    .where(eq(ipoRawMaterialRequirements.ipoId, ipoId));
+
+  if (requirements.length === 0) {
+    const exploded = await explodeIPORequirements(ipoId);
+    if (!exploded.success) return;
+    requirements = exploded.items.map((i) => ({ materialId: i.materialId, requiredQty: String(i.requiredQty) }));
+  }
+
+  const [ipo] = await db
+    .select({ projectId: internalPurchaseOrders.projectId, mixDesignId: internalPurchaseOrders.mixDesignId })
+    .from(internalPurchaseOrders)
+    .where(eq(internalPurchaseOrders.id, ipoId))
+    .limit(1);
+  if (!ipo) return;
+
+  const [batchingDept] = await db
+    .select({ id: departments.id })
+    .from(departments)
+    .where(eq(departments.code, "BATCHING"))
+    .limit(1);
+  if (!batchingDept) return;
+
+  const [batchingCC] = await db
+    .select({ id: costCenters.id })
+    .from(costCenters)
+    .where(and(eq(costCenters.deptId, batchingDept.id), eq(costCenters.isActive, true)))
+    .limit(1);
+  if (!batchingCC) return;
+
+  const matIds = requirements.map((r) => r.materialId);
+  const matRows = await db
+    .select({ id: materials.id, adminPrice: materials.adminPrice })
+    .from(materials)
+    .where(inArray(materials.id, matIds));
+  const priceMap = new Map(matRows.map((m) => [m.id, Number(m.adminPrice)]));
+
+  const totalCost = requirements.reduce(
+    (sum, r) => sum + Number(r.requiredQty) * (priceMap.get(r.materialId) ?? 0),
+    0,
+  );
+  if (totalCost <= 0) return;
+
+  await db.insert(financialLedger).values({
+    projectId:       ipo.projectId,
+    costCenterId:    batchingCC.id,
+    deptId:          batchingDept.id,
+    resourceType:    "MATERIAL",
+    resourceId:      ipo.mixDesignId,
+    transactionType: "OUTFLOW",
+    referenceType:   "IPO_RAW_MATERIAL",
+    referenceId:     ipoId,
+    amount:          String(totalCost.toFixed(2)),
+    isExternal:      false,
+    transactionDate: new Date().toISOString().split("T")[0],
+    description:     `Raw material cost — Batching Plant production for IPO`,
+  });
 }
 
 // ── IPO BOM Explosion ─────────────────────────────────────────────────────────

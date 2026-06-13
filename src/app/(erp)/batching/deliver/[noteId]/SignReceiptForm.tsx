@@ -11,13 +11,14 @@ interface Props {
   unitId: string;
   volumeDispatchedM3: number;
   userId: string;
+  defaultRatePerM3?: number;
 }
 
-export function SignReceiptForm({ deliveryNoteId, unitId, volumeDispatchedM3, userId }: Props) {
+export function SignReceiptForm({ deliveryNoteId, unitId, volumeDispatchedM3, userId, defaultRatePerM3 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [volumeReceived, setVolumeReceived] = useState(String(volumeDispatchedM3));
-  const [internalRate, setInternalRate] = useState("");
+  const [internalRate, setInternalRate] = useState(defaultRatePerM3 ? defaultRatePerM3.toFixed(2) : "");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ receiptId: string; isFlagged: boolean; varianceM3: number; idbTotal: number } | null>(null);
 
@@ -145,6 +146,11 @@ export function SignReceiptForm({ deliveryNoteId, unitId, volumeDispatchedM3, us
         <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#374151", marginBottom: "0.35rem" }}>
           Internal Rate (₱ / m³) <span style={{ color: "#dc2626" }}>*</span>
         </label>
+        {defaultRatePerM3 != null && (
+          <p style={{ margin: "0 0 0.35rem", fontSize: "0.72rem", color: "#6b7280" }}>
+            Pre-filled from the IPO rate / raw-material cost recovery rate — adjust if needed.
+          </p>
+        )}
         <input
           type="number"
           value={internalRate}
