@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { resourceForecasts, masterBomEntries, materials, projectUnits, projects } from "@/db/schema";
 import { inventoryStock, materialTransfers } from "@/db/schema/procurement";
-import { eq, count, sum } from "drizzle-orm";
+import { eq, count, sum, inArray } from "drizzle-orm";
 import { ApproveForecastButton } from "./ApproveForecastButton";
 import { RaisePrButton } from "./RaisePrButton";
 import { ForecastAdminActions } from "../ForecastAdminActions";
@@ -84,7 +84,7 @@ export default async function MrpQueuePage() {
         .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
         .leftJoin(projectUnits, eq(resourceForecasts.unitId, projectUnits.id))
         .leftJoin(projects, eq(resourceForecasts.projectId, projects.id))
-        .where(eq(resourceForecasts.forecastType, "MATERIAL"))
+        .where(inArray(resourceForecasts.forecastType, ["MATERIAL", "CONCRETE"]))
         .orderBy(projects.name, projectUnits.unitCode),
       [] as MrpRow[],
     ),
@@ -92,7 +92,7 @@ export default async function MrpQueuePage() {
       db
         .select({ status: resourceForecasts.status, cnt: count() })
         .from(resourceForecasts)
-        .where(eq(resourceForecasts.forecastType, "MATERIAL"))
+        .where(inArray(resourceForecasts.forecastType, ["MATERIAL", "CONCRETE"]))
         .groupBy(resourceForecasts.status),
       [] as { status: string; cnt: number }[],
     ),
@@ -172,7 +172,7 @@ export default async function MrpQueuePage() {
           </p>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>MRP Planning — Material Requirements</h1>
           <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>
-            Resource forecasts generated from approved BOM entries when an NTP is activated. Planning must approve before a PR can be raised.
+            Resource forecasts (materials and premix concrete) generated from approved BOM entries when an NTP is activated. Planning must approve before a PR can be raised.
           </p>
         </div>
 
