@@ -31,7 +31,6 @@ const NAV: NavSection[] = [
       { label: "Resource Mapping", isGroup: true, items: [
         { label: "Generate Forecasts",  href: "/planning/resource-mapping" },
         { label: "MRP Queue",           href: "/planning/mrp-queue" },
-        { label: "Batching Forecast",   href: "/planning/batching-forecast" },
         { label: "Variance Requests",   href: "/planning/variance-requests" },
       ]},
       { label: "Reports", isGroup: true, items: [

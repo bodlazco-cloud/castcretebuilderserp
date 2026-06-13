@@ -284,7 +284,6 @@ export async function updateForecastStatus(
     .where(eq(resourceForecasts.id, forecastId));
 
   revalidatePath("/planning/mrp-queue");
-  revalidatePath("/planning/batching-forecast");
   revalidatePath("/planning/motorpool-needs");
   return { success: true };
 }
@@ -680,7 +679,6 @@ export async function generateResourceForecastsForUnit(
   );
 
   revalidatePath("/planning/mrp-queue");
-  revalidatePath("/planning/batching-forecast");
   revalidatePath("/planning");
 
   return {
@@ -719,7 +717,6 @@ export async function reviewForecastAsManager(
       .set({ status: "PENDING_BOD_APPROVAL" })
       .where(eq(resourceForecasts.id, forecastId));
     revalidatePath("/planning/mrp-queue");
-    revalidatePath("/planning/batching-forecast");
     revalidatePath("/planning");
     return { success: true };
   } catch (err) {
@@ -751,7 +748,6 @@ export async function approveForecastAsBod(
       .set({ status: "PENDING_PR" })
       .where(eq(resourceForecasts.id, forecastId));
     revalidatePath("/planning/mrp-queue");
-    revalidatePath("/planning/batching-forecast");
     revalidatePath("/planning");
     return { success: true };
   } catch (err) {
@@ -794,7 +790,6 @@ export async function updateForecastQuantity(
       .set({ grossQuantity: String(grossQuantity), updatedAt: new Date() })
       .where(eq(resourceForecasts.id, forecastId));
     revalidatePath("/planning/mrp-queue");
-    revalidatePath("/planning/batching-forecast");
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };
@@ -820,7 +815,6 @@ export async function deleteForecast(forecastId: string): Promise<ForecastUpdate
     }
     await db.delete(resourceForecasts).where(eq(resourceForecasts.id, forecastId));
     revalidatePath("/planning/mrp-queue");
-    revalidatePath("/planning/batching-forecast");
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };

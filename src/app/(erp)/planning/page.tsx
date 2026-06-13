@@ -146,8 +146,8 @@ export default async function PlanningOverviewPage() {
   const rejectedBom   = bomStatusMap["REJECTED"]        ?? 0;
   const totalBomLines = approvedBom + pendingBom + draftBom + rejectedBom;
 
-  const mrpQueue      = forecastTypeMap["MATERIAL"]  ?? 0;
   const concreteQueue = forecastTypeMap["CONCRETE"]  ?? 0;
+  const mrpQueue      = (forecastTypeMap["MATERIAL"]  ?? 0) + concreteQueue;
   const equipQueue    = forecastTypeMap["EQUIPMENT"] ?? 0;
 
   const pendingPr     = forecastStatusMap["PENDING_PR"] ?? 0;
@@ -331,11 +331,10 @@ export default async function PlanningOverviewPage() {
           </div>
         </div>
 
-        {/* MRP / Concrete / Equipment Quick Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+        {/* MRP / Equipment Quick Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
           {[
             { title: "Material Requirements (MRP)", count: mrpQueue,      stat: `${pendingPr} pending procurement`, link: "/planning/mrp-queue",          linkLabel: "Open MRP Queue →",  accent: "#1a56db" },
-            { title: "Concrete Forecast",           count: concreteQueue, stat: "Batching schedule lines",          link: "/planning/batching-forecast",    linkLabel: "View Batching →",   accent: "#e3a008" },
             { title: "Equipment Needs",             count: equipQueue,    stat: "Motorpool demand lines",           link: "/planning/motorpool-needs",      linkLabel: "View Motorpool →",  accent: "#0694a2" },
           ].map((c) => (
             <div key={c.title} style={{ ...card, borderTop: `3px solid ${c.accent}` }}>
