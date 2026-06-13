@@ -8,6 +8,7 @@ import { eq, count, sum } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { redirect } from "next/navigation";
 import { CreatePoForm } from "./CreatePoForm";
+import { getPremixMaterialIds } from "@/actions/procurement";
 
 const ACCENT = "#e3a008";
 
@@ -33,11 +34,17 @@ export default async function NewPoPage({ searchParams }: { searchParams: Promis
   if (!pr || pr.status !== "APPROVED") redirect(`/procurement/pr/${prId ?? ""}`);
 
   const itemRows = await db
-    .select({ qty: purchaseRequisitionItems.quantityToOrder, price: purchaseRequisitionItems.unitPrice })
+    .select({ materialId: purchaseRequisitionItems.materialId, qty: purchaseRequisitionItems.quantityToOrder, price: purchaseRequisitionItems.unitPrice })
     .from(purchaseRequisitionItems)
     .where(eq(purchaseRequisitionItems.prId, prId));
 
-  const totalAmount = itemRows.reduce((s, i) => s + Number(i.qty) * Number(i.price), 0);
+  // Premix concrete lines are fulfilled internally via Batching Plant IPO — excluded from the vendor PO
+  const premixMaterialIds = await getPremixMaterialIds();
+  const vendorItems = itemRows.filter((i) => !i.materialId || !premixMaterialIds.has(i.materialId));
+
+  if (vendorItems.length === 0) redirect(`/procurement/pr/${prId}`);
+
+  const totalAmount = vendorItems.reduce((s, i) => s + Number(i.qty) * Number(i.price), 0);
 
   const supplierRows = await db
     .select({ id: suppliers.id, name: suppliers.name })
@@ -50,7 +57,7 @@ export default async function NewPoPage({ searchParams }: { searchParams: Promis
     projName:    pr.projName ?? "—",
     activityName: pr.activityName,
     totalAmount: String(totalAmount),
-    itemCount:   itemRows.length,
+    itemCount:   vendorItems.length,
   };
 
   return (

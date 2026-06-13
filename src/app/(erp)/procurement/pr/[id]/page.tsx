@@ -1,10 +1,11 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
-import { purchaseRequisitions, purchaseRequisitionItems, projects, activityDefinitions, materials, suppliers } from "@/db/schema";
+import { purchaseRequisitions, purchaseRequisitionItems, projects, activityDefinitions, materials, suppliers, internalPurchaseOrders } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/supabase-server";
 import { notFound } from "next/navigation";
 import { PrActions } from "./PrActions";
+import { getPremixMaterialIds } from "@/actions/procurement";
 
 const ACCENT = "#e3a008";
 
@@ -53,6 +54,7 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
       matCode:             materials.code,
       matName:             materials.name,
       matUnit:             materials.unit,
+      matId:               materials.id,
       supplierName:        suppliers.name,
     })
     .from(purchaseRequisitionItems)
@@ -60,7 +62,20 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
     .leftJoin(suppliers, eq(purchaseRequisitionItems.preferredSupplierId, suppliers.id))
     .where(eq(purchaseRequisitionItems.prId, id));
 
+  const premixMaterialIds = await getPremixMaterialIds();
+  const premixItems    = items.filter((i) => i.matId && premixMaterialIds.has(i.matId));
+  const vendorItems    = items.filter((i) => !i.matId || !premixMaterialIds.has(i.matId));
+  const isFullyPremix  = items.length > 0 && premixItems.length === items.length;
+
+  const triggeredIPOs = premixItems.length > 0
+    ? await db
+        .select({ id: internalPurchaseOrders.id, ipoNumber: internalPurchaseOrders.ipoNumber, status: internalPurchaseOrders.status })
+        .from(internalPurchaseOrders)
+        .where(eq(internalPurchaseOrders.triggeredBy, `PR-APPROVED:${id}`))
+    : [];
+
   const totalAmount = items.reduce((sum, i) => sum + Number(i.quantityToOrder) * Number(i.unitPrice), 0);
+  const vendorTotal = vendorItems.reduce((sum, i) => sum + Number(i.quantityToOrder) * Number(i.unitPrice), 0);
   const st = STATUS_STYLE[pr.status] ?? STATUS_STYLE.DRAFT;
 
   return (
@@ -141,6 +156,11 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
                     <td style={{ padding: "0.6rem 0.75rem" }}>
                       <span style={{ fontFamily: "monospace", fontSize: "0.8rem", fontWeight: 600 }}>{item.matCode}</span>
                       <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>{item.matName}</div>
+                      {item.matId && premixMaterialIds.has(item.matId) && (
+                        <span style={{ display: "inline-block", marginTop: "0.2rem", fontSize: "0.7rem", fontWeight: 600, color: "#1e40af", background: "#eff6ff", padding: "0.1rem 0.4rem", borderRadius: "4px" }}>
+                          Premix — via Batching IPO
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding: "0.6rem 0.75rem" }}>
                       {item.supplierName
@@ -183,14 +203,45 @@ export default async function PrDetailPage({ params }: { params: Promise<{ id: s
           </div>
         )}
 
-        {pr.status === "APPROVED" && (
-          <div style={{ padding: "1rem", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-            <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#166534" }}>✓ PR Approved — ready to create a PO</div>
-            <a href={`/procurement/po/new?prId=${pr.id}`} style={{
-              padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#16a34a",
-              color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
-            }}>Create PO →</a>
+        {triggeredIPOs.length > 0 && (
+          <div style={{ padding: "1rem", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+            <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#1e40af" }}>
+              Premix line{premixItems.length !== 1 ? "s" : ""} routed to Batching Plant via Internal Purchase Order{triggeredIPOs.length !== 1 ? "s" : ""}
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              {triggeredIPOs.map((ipo) => (
+                <a key={ipo.id} href={`/batching/ipo/${ipo.id}`} style={{
+                  padding: "0.4rem 0.85rem", borderRadius: "6px", background: "#1e40af",
+                  color: "#fff", fontSize: "0.8rem", fontWeight: 600, textDecoration: "none",
+                }}>{ipo.ipoNumber} ({ipo.status}) →</a>
+              ))}
+            </div>
           </div>
+        )}
+
+        {pr.status === "APPROVED" && (
+          isFullyPremix ? (
+            <div style={{ padding: "1rem", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "8px" }}>
+              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#166534" }}>
+                ✓ PR Approved — fully fulfilled internally via Batching Plant IPO. No vendor PO required.
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: "1rem", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+              <div style={{ fontSize: "0.875rem", fontWeight: 600, color: "#166534" }}>
+                ✓ PR Approved — ready to create a PO
+                {premixItems.length > 0 && (
+                  <span style={{ display: "block", fontSize: "0.78rem", fontWeight: 500, color: "#15803d", marginTop: "0.2rem" }}>
+                    Premix line{premixItems.length !== 1 ? "s" : ""} excluded — handled via IPO above. PO value: PHP {vendorTotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                  </span>
+                )}
+              </div>
+              <a href={`/procurement/po/new?prId=${pr.id}`} style={{
+                padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#16a34a",
+                color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
+              }}>Create PO →</a>
+            </div>
+          )
         )}
       </div>
     </main>
