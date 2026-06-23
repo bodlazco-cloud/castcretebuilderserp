@@ -503,6 +503,74 @@ export async function updateDraftBomEntry(
   return { success: true };
 }
 
+// ─── Save Edited BOM Group (batch upsert lines by referenceId) ──────────────
+
+const SaveEditedBomGroupSchema = z.object({
+  referenceId: z.string().uuid(),
+  lines: z.array(z.object({
+    id:              z.string().uuid().optional(),
+    materialId:      z.string().uuid(),
+    quantityPerUnit: z.number().positive(),
+    equipmentType:   z.string().max(100).optional(),
+  })).min(1, "At least one line is required"),
+});
+
+export async function saveEditedBomGroup(
+  input: z.infer<typeof SaveEditedBomGroupSchema>,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const parsed = SaveEditedBomGroupSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may edit BOM entries." };
+  }
+
+  const { referenceId, lines } = parsed.data;
+
+  for (const line of lines) {
+    if (line.id) {
+      await db.update(masterBomEntries).set({
+        materialId:      line.materialId,
+        quantityPerUnit: String(line.quantityPerUnit),
+        equipmentType:   line.equipmentType ?? null,
+        updatedAt:       new Date(),
+      }).where(eq(masterBomEntries.id, line.id));
+    } else {
+      const [ref] = await db
+        .select({
+          projectId:    masterBomEntries.projectId,
+          phaseScopeId: masterBomEntries.phaseScopeId,
+          unitModel:    masterBomEntries.unitModel,
+          unitType:     masterBomEntries.unitType,
+        })
+        .from(masterBomEntries)
+        .where(eq(masterBomEntries.id, referenceId))
+        .limit(1);
+
+      if (!ref) return { success: false, error: "Reference BOM entry not found." };
+
+      await db.insert(masterBomEntries).values({
+        projectId:       ref.projectId,
+        phaseScopeId:    ref.phaseScopeId,
+        unitModel:       ref.unitModel,
+        unitType:        ref.unitType,
+        materialId:      line.materialId,
+        quantityPerUnit: String(line.quantityPerUnit),
+        equipmentType:   line.equipmentType ?? null,
+        status:          "DRAFT",
+        createdBy:       user.id,
+      });
+    }
+  }
+
+  revalidatePath("/planning/bom");
+  return { success: true };
+}
+
 // ─── Withdraw a Submitted BOM Entry (return PENDING_REVIEW → DRAFT) ───────────
 
 export async function withdrawBomSubmission(id: string): Promise<BomReviewResult> {
