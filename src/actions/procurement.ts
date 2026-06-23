@@ -180,12 +180,20 @@ export async function createPoFromApprovedPr(
   }
 
   // ── Fetch PR line items ───────────────────────────────────────────────────
-  const prItems = await db
+  const allPrItems = await db
     .select()
     .from(purchaseRequisitionItems)
     .where(eq(purchaseRequisitionItems.prId, prId));
 
-  if (prItems.length === 0) return { success: false, error: "PR has no line items." };
+  if (allPrItems.length === 0) return { success: false, error: "PR has no line items." };
+
+  // ── Exclude premix concrete lines — these are fulfilled internally via Batching Plant IPO ──
+  const premixMaterialIds = await getPremixMaterialIds();
+  const prItems = allPrItems.filter((item) => !item.materialId || !premixMaterialIds.has(item.materialId));
+
+  if (prItems.length === 0) {
+    return { success: false, error: "All line items in this PR are premix concrete, fulfilled internally via a Batching Plant IPO. No vendor PO is required." };
+  }
 
   const totalAmount = prItems.reduce(
     (sum, item) => sum + Number(item.quantityToOrder) * Number(item.unitPrice),
@@ -355,6 +363,17 @@ export async function approvePr(id: string): Promise<SimpleResult> {
   revalidatePath("/procurement/pr");
   void notifyPrApproved(id);
   return { success: true };
+}
+
+// ── Premix concrete materials with a defined mix design recipe ────────────────
+// These are fulfilled internally via Batching Plant IPO rather than a vendor PO.
+export async function getPremixMaterialIds(): Promise<Set<string>> {
+  const rows = await db
+    .select({ materialId: premixMaterialLinks.materialId })
+    .from(premixMaterialLinks)
+    .innerJoin(mixDesignBom, eq(mixDesignBom.mixDesignId, premixMaterialLinks.mixDesignId));
+
+  return new Set(rows.map((r) => r.materialId));
 }
 
 async function triggerBatchingIPOsForPR(prId: string, userId: string): Promise<void> {

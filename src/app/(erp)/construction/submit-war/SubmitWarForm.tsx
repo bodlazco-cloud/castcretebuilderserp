@@ -4,10 +4,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { submitWorkAccomplishedReport } from "@/actions/construction";
 
-type Project = { id: string; name: string };
-type Unit = { id: string; unitCode: string; projectId: string };
-type Assignment = { id: string; unitId: string; subconName: string; category: string };
-type Milestone = { id: string; unitId: string; milestoneName: string; status: string };
+type Project    = { id: string; name: string };
+type Unit       = { id: string; unitCode: string; projectId: string };
+type Assignment = { id: string; unitId: string; subconName: string; category: string; scopeName: string };
+type Milestone  = { id: string; unitId: string; milestoneName: string; status: string };
 
 const ACCENT = "#057a55";
 const inputStyle: React.CSSProperties = {
@@ -18,12 +18,13 @@ const labelStyle: React.CSSProperties = {
   display: "block", fontSize: "0.82rem", fontWeight: 600, color: "#374151", marginBottom: "0.35rem",
 };
 
-export function SubmitWarForm({ projects, units, assignments, milestones, userId }: {
+export function SubmitWarForm({ projects, units, assignments, milestones, userId, warReadyNtpIds }: {
   projects: Project[];
   units: Unit[];
   assignments: Assignment[];
   milestones: Milestone[];
   userId: string;
+  warReadyNtpIds: string[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -35,17 +36,21 @@ export function SubmitWarForm({ projects, units, assignments, milestones, userId
   const filteredAssignments = assignments.filter((a) => a.unitId === selectedUnit);
   const filteredMilestones = milestones.filter((m) => m.unitId === selectedUnit && m.status === "PENDING");
 
+  const warReadySet = new Set(warReadyNtpIds);
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const fd = new FormData(e.currentTarget);
+    const grossStr = (fd.get("grossAccomplishment") as string) || "0";
     startTransition(async () => {
       const result = await submitWorkAccomplishedReport({
-        projectId:        fd.get("projectId") as string,
-        unitId:           fd.get("unitId") as string,
-        unitMilestoneId:  fd.get("unitMilestoneId") as string,
-        taskAssignmentId: fd.get("taskAssignmentId") as string,
-        submittedBy:      userId,
+        projectId:           fd.get("projectId") as string,
+        unitId:              fd.get("unitId") as string,
+        unitMilestoneId:     fd.get("unitMilestoneId") as string,
+        taskAssignmentId:    fd.get("taskAssignmentId") as string,
+        grossAccomplishment: parseFloat(grossStr) || 0,
+        submittedBy:         userId,
       });
       if (result.success) {
         router.push("/construction");
@@ -58,10 +63,9 @@ export function SubmitWarForm({ projects, units, assignments, milestones, userId
   return (
     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {error && (
-        <div style={{
-          padding: "0.85rem 1rem", background: "#fef2f2",
-          border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.875rem",
-        }}>{error}</div>
+        <div style={{ padding: "0.85rem 1rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.875rem" }}>
+          {error}
+        </div>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
@@ -90,9 +94,16 @@ export function SubmitWarForm({ projects, units, assignments, milestones, userId
         <select name="taskAssignmentId" required style={inputStyle} disabled={!selectedUnit}>
           <option value="">Select assignment…</option>
           {filteredAssignments.map((a) => (
-            <option key={a.id} value={a.id}>{a.subconName} — {a.category}</option>
+            <option key={a.id} value={a.id}>
+              {warReadySet.has(a.id) ? "✅ " : ""}{a.subconName} — {a.scopeName || a.category}
+            </option>
           ))}
         </select>
+        {selectedUnit && filteredAssignments.some((a) => warReadySet.has(a.id)) && (
+          <div style={{ marginTop: "0.35rem", fontSize: "0.78rem", color: "#166534", fontWeight: 500 }}>
+            ✅ = All activities completed — WAR-ready
+          </div>
+        )}
       </label>
 
       <label>
@@ -106,6 +117,18 @@ export function SubmitWarForm({ projects, units, assignments, milestones, userId
             <option value="" disabled>No pending milestones for this unit</option>
           )}
         </select>
+      </label>
+
+      <label>
+        <span style={labelStyle}>Gross Accomplishment (₱)</span>
+        <input
+          type="number"
+          name="grossAccomplishment"
+          min="0"
+          step="0.01"
+          placeholder="0.00"
+          style={inputStyle}
+        />
       </label>
 
       <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>

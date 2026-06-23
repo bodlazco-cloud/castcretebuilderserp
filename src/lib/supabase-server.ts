@@ -1,5 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { db } from "@/db";
+import { users, departments } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 /**
  * Server-side Supabase client for Server Components and Route Handlers.
@@ -35,4 +38,69 @@ export async function getAuthUser() {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
   return user;
+}
+
+/** Returns true if the logged-in user has ADMIN or BOD role in the DB users table. */
+export async function isAdminOrBod(): Promise<boolean> {
+  const authUser = await getAuthUser();
+  if (!authUser?.email) return false;
+  try {
+    const [dbUser] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.email, authUser.email));
+    if (!dbUser) return false;
+    return dbUser.role === "ADMIN" || dbUser.role === "BOD";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns true if the user can approve daily progress entries:
+ * - ADMIN or BOD (always), OR
+ * - role = MANAGER in the CONSTRUCTION department
+ */
+export async function canApproveProgressEntries(): Promise<boolean> {
+  const authUser = await getAuthUser();
+  if (!authUser?.email) return false;
+  try {
+    const [row] = await db
+      .select({ role: users.role, deptCode: departments.code })
+      .from(users)
+      .leftJoin(departments, eq(users.deptId, departments.id))
+      .where(eq(users.email, authUser.email));
+    if (!row) return false;
+    if (row.role === "ADMIN" || row.role === "BOD") return true;
+    return row.role === "MANAGER" && row.deptCode === "CONSTRUCTION";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns true if the user can review NTPs (forward to BOD):
+ * - ADMIN or BOD (always), OR
+ * - role = MANAGER in the CONSTRUCTION department
+ */
+export async function canReviewNtp(): Promise<boolean> {
+  return canApproveProgressEntries();
+}
+
+/** Planning Manager (or Admin/BOD) can do tier-1 forecast review. */
+export async function canReviewForecast(): Promise<boolean> {
+  const authUser = await getAuthUser();
+  if (!authUser?.email) return false;
+  try {
+    const [row] = await db
+      .select({ role: users.role, deptCode: departments.code })
+      .from(users)
+      .leftJoin(departments, eq(users.deptId, departments.id))
+      .where(eq(users.email, authUser.email));
+    if (!row) return false;
+    if (row.role === "ADMIN" || row.role === "BOD") return true;
+    return row.role === "MANAGER" && row.deptCode === "PLANNING";
+  } catch {
+    return false;
+  }
 }

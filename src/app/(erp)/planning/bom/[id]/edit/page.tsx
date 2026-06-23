@@ -2,10 +2,11 @@ export const dynamic = "force-dynamic";
 
 import { notFound, redirect } from "next/navigation";
 import { db } from "@/db";
-import { masterBomEntries, materials, projects, suppliers } from "@/db/schema";
+import { masterBomEntries, materials, projects, suppliers, projectUnits } from "@/db/schema";
 import { phaseScopes, phaseActivities } from "@/db/schema/phases";
-import { eq, and } from "drizzle-orm";
-import { BomGroupEditForm } from "./BomGroupEditForm";
+import { eq } from "drizzle-orm";
+import { isAdminOrBod } from "@/lib/supabase-server";
+import { BomLineEditForm } from "./BomLineEditForm";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -21,17 +22,19 @@ export default async function EditBomEntryPage({
 }) {
   const { id } = await params;
 
-  // Load the reference line to get group identity
-  const [ref] = await db
+  const [entry] = await db
     .select({
       id:              masterBomEntries.id,
       status:          masterBomEntries.status,
       projectId:       masterBomEntries.projectId,
       projectName:     projects.name,
-      phaseScopeId:    masterBomEntries.phaseScopeId,
-      phaseActivityId: masterBomEntries.phaseActivityId,
       unitModel:       masterBomEntries.unitModel,
       unitType:        masterBomEntries.unitType,
+      materialId:      masterBomEntries.materialId,
+      quantityPerUnit: masterBomEntries.quantityPerUnit,
+      equipmentType:   masterBomEntries.equipmentType,
+      phaseScopeId:    masterBomEntries.phaseScopeId,
+      phaseActivityId: masterBomEntries.phaseActivityId,
       scopeCode:       phaseScopes.code,
       scopeName:       phaseScopes.name,
       activityCode:    phaseActivities.code,
@@ -43,30 +46,16 @@ export default async function EditBomEntryPage({
     .leftJoin(phaseActivities, eq(masterBomEntries.phaseActivityId, phaseActivities.id))
     .where(eq(masterBomEntries.id, id));
 
-  if (!ref) notFound();
-  if (ref.status !== "DRAFT") redirect("/planning/bom");
+  if (!entry) notFound();
 
-  // Load all active DRAFT lines in the same group
-  const groupLines = await db
-    .select({
-      id:              masterBomEntries.id,
-      materialId:      masterBomEntries.materialId,
-      quantityPerUnit: masterBomEntries.quantityPerUnit,
-      equipmentType:   masterBomEntries.equipmentType,
-    })
-    .from(masterBomEntries)
-    .where(
-      and(
-        eq(masterBomEntries.projectId,   ref.projectId),
-        eq(masterBomEntries.phaseScopeId, ref.phaseScopeId!),
-        eq(masterBomEntries.unitModel,   ref.unitModel),
-        eq(masterBomEntries.unitType,    ref.unitType),
-        eq(masterBomEntries.isActive,    true),
-        eq(masterBomEntries.status,      "DRAFT"),
-      ),
-    );
+  const canApprove = await isAdminOrBod().catch(() => false);
+  const isAdminEdit = entry.status === "APPROVED" && canApprove;
 
-  const [materialRows, vendorRows] = await Promise.all([
+  if (entry.status !== "DRAFT" && entry.status !== "REJECTED" && !isAdminEdit) {
+    redirect("/planning/bom");
+  }
+
+  const [materialRows, vendorRows, scopeRows, activityRows, unitModelRows] = await Promise.all([
     safe(
       db
         .select({
@@ -90,11 +79,35 @@ export default async function EditBomEntryPage({
         .orderBy(suppliers.name),
       [] as { id: string; name: string }[],
     ),
+    safe(
+      db
+        .select({ id: phaseScopes.id, code: phaseScopes.code, name: phaseScopes.name, categoryId: phaseScopes.categoryId })
+        .from(phaseScopes)
+        .where(eq(phaseScopes.isActive, true))
+        .orderBy(phaseScopes.sequenceOrder),
+      [] as { id: string; code: string; name: string; categoryId: string }[],
+    ),
+    safe(
+      db
+        .select({ id: phaseActivities.id, scopeId: phaseActivities.scopeId, code: phaseActivities.code, name: phaseActivities.name })
+        .from(phaseActivities)
+        .where(eq(phaseActivities.isActive, true))
+        .orderBy(phaseActivities.sequenceOrder),
+      [] as { id: string; scopeId: string; code: string; name: string }[],
+    ),
+    safe(
+      db
+        .selectDistinct({ unitModel: projectUnits.unitModel })
+        .from(projectUnits)
+        .where(eq(projectUnits.projectId, entry.projectId))
+        .orderBy(projectUnits.unitModel),
+      [] as { unitModel: string }[],
+    ),
   ]);
 
   return (
     <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
+      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
 
         <div style={{ marginBottom: "1.5rem" }}>
           <p style={{ marginBottom: "0.25rem" }}>
@@ -102,30 +115,38 @@ export default async function EditBomEntryPage({
               ← BOM Register
             </a>
           </p>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>Edit Draft BOM</h1>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>Edit BOM Entry</h1>
           <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>
-            Add, edit, or remove material lines for this draft entry.
+            Update the material, quantity, or equipment type for this draft line.
           </p>
         </div>
 
         {/* Context card */}
         <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "0.75rem 1rem", fontSize: "0.82rem", color: "#1e40af", marginBottom: "1.25rem", display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
-          <span><strong>Project:</strong> {ref.projectName ?? "—"}</span>
-          {ref.scopeCode && <span><strong>Scope:</strong> [{ref.scopeCode}] {ref.scopeName}</span>}
-          {ref.activityCode && <span><strong>Activity:</strong> [{ref.activityCode}] {ref.activityName}</span>}
-          <span><strong>Unit Model:</strong> {ref.unitModel}</span>
-          <span><strong>Unit Type:</strong> {ref.unitType}</span>
+          <span><strong>Project:</strong> {entry.projectName ?? "—"}</span>
+          <span><strong>Status:</strong> {entry.status}</span>
+        </div>
+
+        <div style={{ background: "#fef9c3", border: "1px solid #fde047", borderRadius: "8px", padding: "0.75rem 1rem", fontSize: "0.82rem", color: "#713f12", marginBottom: "1.25rem" }}>
+          {isAdminEdit
+            ? <>Admin/BOD correction — this entry will remain <strong>Approved</strong> after saving.</>
+            : <>Saving will return this line to <strong>Draft</strong> so it can be resubmitted for Admin / BOD approval.</>}
         </div>
 
         <div style={{ background: "#fff", borderRadius: "10px", padding: "1.5rem 2rem", boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
-          <BomGroupEditForm
-            referenceId={ref.id}
-            initialLines={groupLines.map((l) => ({
-              id:            l.id,
-              materialId:    l.materialId,
-              qty:           l.quantityPerUnit,
-              equipmentType: l.equipmentType ?? "",
-            }))}
+          <BomLineEditForm
+            id={entry.id}
+            isAdminEdit={isAdminEdit}
+            initialScopeId={entry.phaseScopeId ?? ""}
+            initialActivityId={entry.phaseActivityId ?? ""}
+            initialUnitModel={entry.unitModel}
+            initialUnitType={entry.unitType}
+            initialMaterialId={entry.materialId}
+            initialQty={entry.quantityPerUnit}
+            initialEquipmentType={entry.equipmentType ?? ""}
+            phaseScopes={scopeRows}
+            phaseActivities={activityRows}
+            unitModels={unitModelRows.map((u) => u.unitModel)}
             materials={materialRows}
             vendors={vendorRows}
           />

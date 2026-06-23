@@ -5,7 +5,7 @@ import {
 import { users } from "./core";
 import { projects } from "./projects";
 import { activityDefinitions } from "./admin";
-import { phaseActivities } from "./phases";
+import { phaseActivities, phaseScopes } from "./phases";
 import { tradeTypeEnum, performanceGradeEnum, unitTypeEnum } from "./enums";
 
 export const subcontractors = pgTable("subcontractors", {
@@ -67,9 +67,10 @@ export const subcontractorPerformanceRatings = pgTable("subcontractor_performanc
 
 export const subcontractorRateCards = pgTable("subcontractor_rate_cards", {
   id:              uuid("id").primaryKey().defaultRandom(),
-  subconId:        uuid("subcon_id").notNull().references(() => subcontractors.id),
+  subconId:        uuid("subcon_id").references(() => subcontractors.id),
   projectId:       uuid("project_id").notNull().references(() => projects.id),
   activityDefId:   uuid("activity_def_id").references(() => activityDefinitions.id),
+  phaseScopeId:    uuid("phase_scope_id").references(() => phaseScopes.id),
   phaseActivityId: uuid("phase_activity_id").references(() => phaseActivities.id),
   unitModel:       varchar("unit_model", { length: 50 }),
   unitType:        unitTypeEnum("unit_type"),

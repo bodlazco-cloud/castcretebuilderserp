@@ -15,7 +15,7 @@ type Row = {
   supName: string | null;
 };
 
-export default function MaterialsTable({ rows }: { rows: Row[] }) {
+export default function MaterialsTable({ rows, isAdmin }: { rows: Row[]; isAdmin: boolean }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -83,7 +83,7 @@ export default function MaterialsTable({ rows }: { rows: Row[] }) {
                     <td style={{ padding: "0.65rem 1rem", textAlign: "right" }}>
                       <span style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center" }}>
                         <a href={`/master-list/materials/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
-                        <DeleteRowButton action={deleteMaterial.bind(null, r.id)} />
+                        {isAdmin && <DeleteRowButton action={deleteMaterial.bind(null, r.id)} />}
                       </span>
                     </td>
                   </tr>

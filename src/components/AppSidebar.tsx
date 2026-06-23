@@ -29,9 +29,8 @@ const NAV: NavSection[] = [
         { label: "Bill of Materials",   href: "/planning/bom" },
       ]},
       { label: "Resource Mapping", isGroup: true, items: [
+        { label: "Generate Forecasts",  href: "/planning/resource-mapping" },
         { label: "MRP Queue",           href: "/planning/mrp-queue" },
-        { label: "Batching Forecast",   href: "/planning/batching-forecast" },
-        { label: "Motorpool Needs",     href: "/planning/motorpool-needs" },
         { label: "Variance Requests",   href: "/planning/variance-requests" },
       ]},
       { label: "Reports", isGroup: true, items: [
@@ -97,8 +96,11 @@ const NAV: NavSection[] = [
       { label: "Overview",              href: "/motorpool" },
       { label: "Equipment Directory",   href: "/motorpool/equipment" },
       { label: "Maintenance",           href: "/motorpool/maintenance" },
-      { label: "Internal Rental Logs",  href: "/motorpool/internal-rental-logs" },
       { label: "Fleet Manpower",        href: "/motorpool/manpower" },
+      { label: "Rentals", isGroup: true, items: [
+        { label: "Deployments",         href: "/motorpool/deployments" },
+        { label: "Monthly Billing",     href: "/motorpool/billing" },
+      ]},
       { label: "Reports", isGroup: true, items: [
         { label: "Fleet Reports",       href: "/motorpool/reports" },
       ]},

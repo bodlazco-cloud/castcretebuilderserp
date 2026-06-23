@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { subcontractors } from "@/db/schema";
-import { getAuthUser } from "@/lib/supabase-server";
+import { getAuthUser, isAdminOrBod } from "@/lib/supabase-server";
 import SubcontractorsTable from "./SubcontractorsTable";
 
 export default async function SubcontractorsPage() {
   await getAuthUser();
+  const isAdmin = await isAdminOrBod();
   const rows = await db
     .select({
       id:                   subcontractors.id,
@@ -32,13 +33,15 @@ export default async function SubcontractorsPage() {
             <h1 style={{ margin: "0 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827" }}>Subcontractors</h1>
             <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>Accredited subcontractors, performance grades, and assignment status.</p>
           </div>
-          <a href="/master-list/subcontractors/new" style={{
-            padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#6366f1",
-            color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
-          }}>+ Add Subcontractor</a>
+          {isAdmin && (
+            <a href="/master-list/subcontractors/new" style={{
+              padding: "0.55rem 1.1rem", borderRadius: "6px", background: "#6366f1",
+              color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
+            }}>+ Add Subcontractor</a>
+          )}
         </div>
 
-        <SubcontractorsTable rows={rows.map(r => ({ ...r, performanceScore: String(r.performanceScore) }))} />
+        <SubcontractorsTable rows={rows.map(r => ({ ...r, performanceScore: String(r.performanceScore) }))} isAdmin={isAdmin} />
       </div>
     </main>
   );

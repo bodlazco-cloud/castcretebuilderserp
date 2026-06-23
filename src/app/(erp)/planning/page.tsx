@@ -7,9 +7,10 @@ import {
   planningVarianceRequests,
   materials,
   projects,
+  taskAssignments,
 } from "@/db/schema";
 import { phaseActivities } from "@/db/schema/phases";
-import { eq, desc, count } from "drizzle-orm";
+import { eq, desc, count, sql } from "drizzle-orm";
 
 function safe<T>(p: Promise<T>, fallback: T, ms = 6000): Promise<T> {
   return Promise.race([
@@ -119,6 +120,21 @@ export default async function PlanningOverviewPage() {
     ),
   ]);
 
+  // ACTIVE NTPs that have no resource forecast lines yet
+  const missingForecastCount = await safe(
+    db
+      .select({ cnt: count() })
+      .from(taskAssignments)
+      .where(
+        sql`${taskAssignments.status} = 'ACTIVE' AND NOT EXISTS (
+          SELECT 1 FROM ${resourceForecasts}
+          WHERE ${resourceForecasts.unitId} = ${taskAssignments.unitId}
+        )`,
+      )
+      .then((rows) => Number(rows[0]?.cnt ?? 0)),
+    0,
+  );
+
   const bomStatusMap      = Object.fromEntries(bomByStatus.map((r) => [r.status, Number(r.cnt)]));
   const forecastTypeMap   = Object.fromEntries(forecastByType.map((r) => [r.forecastType, Number(r.cnt)]));
   const forecastStatusMap = Object.fromEntries(forecastByStatus.map((r) => [r.status, Number(r.cnt)]));
@@ -130,8 +146,8 @@ export default async function PlanningOverviewPage() {
   const rejectedBom   = bomStatusMap["REJECTED"]        ?? 0;
   const totalBomLines = approvedBom + pendingBom + draftBom + rejectedBom;
 
-  const mrpQueue      = forecastTypeMap["MATERIAL"]  ?? 0;
   const concreteQueue = forecastTypeMap["CONCRETE"]  ?? 0;
+  const mrpQueue      = (forecastTypeMap["MATERIAL"]  ?? 0) + concreteQueue;
   const equipQueue    = forecastTypeMap["EQUIPMENT"] ?? 0;
 
   const pendingPr     = forecastStatusMap["PENDING_PR"] ?? 0;
@@ -207,6 +223,61 @@ export default async function PlanningOverviewPage() {
           ))}
         </div>
 
+        {/* Cross-Department Flow */}
+        <div style={{ ...card, marginBottom: "1.5rem", padding: "1rem 1.25rem", background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+          <p style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#1e40af", marginBottom: "0.6rem", marginTop: 0 }}>
+            Cross-Department Logic Flow
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", fontSize: "0.78rem" }}>
+            {[
+              { step: "BOM Entry", color: "#1e40af", bg: "#dbeafe", href: "/planning/bom/new" },
+              { step: "→" },
+              { step: "NTP Issued", color: "#065f46", bg: "#d1fae5" },
+              { step: "→" },
+              { step: "Forecast Lines", color: "#1e40af", bg: "#dbeafe", href: "/planning/mrp-queue" },
+              { step: "→" },
+              { step: "Raise PR (MRP Queue)", color: "#b91c1c", bg: "#fee2e2", href: "/planning/mrp-queue" },
+              { step: "→" },
+              { step: "PR Approved (Procurement)", color: "#713f12", bg: "#fef9c3" },
+              { step: "→" },
+              { step: "PO / Batching IPO", color: "#065f46", bg: "#d1fae5" },
+            ].map((s, i) =>
+              "href" in s ? (
+                <a key={i} href={s.href} style={{ padding: "0.25rem 0.6rem", borderRadius: "6px", background: s.bg, color: s.color, fontWeight: 600, fontSize: "0.75rem", textDecoration: "none", whiteSpace: "nowrap" }}>
+                  {s.step}
+                </a>
+              ) : s.step === "→" ? (
+                <span key={i} style={{ color: "#93c5fd", fontWeight: 700 }}>→</span>
+              ) : (
+                <span key={i} style={{ padding: "0.25rem 0.6rem", borderRadius: "6px", background: s.bg, color: s.color, fontWeight: 600, fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                  {s.step}
+                </span>
+              )
+            )}
+          </div>
+          {pendingPr > 0 && (
+            <div style={{ marginTop: "0.6rem", fontSize: "0.75rem", color: "#b91c1c", fontWeight: 600 }}>
+              ⚠ {pendingPr} forecast line{pendingPr !== 1 ? "s" : ""} waiting for PR — go to{" "}
+              <a href="/planning/mrp-queue" style={{ color: "#1a56db", textDecoration: "underline" }}>MRP Queue</a>
+              {" "}to raise them.
+            </div>
+          )}
+        </div>
+
+        {/* Flag: Active NTPs missing resource forecasts */}
+        {missingForecastCount > 0 && (
+          <div style={{ ...card, marginBottom: "1.5rem", padding: "1rem 1.25rem", background: "#fffbeb", border: "1px solid #fde68a" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+              <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: 600, color: "#92400e" }}>
+                ⚠ {missingForecastCount} active NTP{missingForecastCount > 1 ? "s are" : " is"} missing resource forecasts
+              </p>
+              <a href="/planning/resource-mapping" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>
+                Resolve in Resource Mapping →
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* BOM Status + Forecast Pipeline */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
 
@@ -260,11 +331,10 @@ export default async function PlanningOverviewPage() {
           </div>
         </div>
 
-        {/* MRP / Concrete / Equipment Quick Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+        {/* MRP / Equipment Quick Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
           {[
             { title: "Material Requirements (MRP)", count: mrpQueue,      stat: `${pendingPr} pending procurement`, link: "/planning/mrp-queue",          linkLabel: "Open MRP Queue →",  accent: "#1a56db" },
-            { title: "Concrete Forecast",           count: concreteQueue, stat: "Batching schedule lines",          link: "/planning/batching-forecast",    linkLabel: "View Batching →",   accent: "#e3a008" },
             { title: "Equipment Needs",             count: equipQueue,    stat: "Motorpool demand lines",           link: "/planning/motorpool-needs",      linkLabel: "View Motorpool →",  accent: "#0694a2" },
           ].map((c) => (
             <div key={c.title} style={{ ...card, borderTop: `3px solid ${c.accent}` }}>

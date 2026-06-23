@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createSubconRateCard, toggleSubconRateCardActive, createSubconRateCardDeduction, deleteSubconRateCardDeduction } from "@/actions/master-list";
+import { createSubconRateCard, updateSubconRateCard, toggleSubconRateCardActive, createSubconRateCardDeduction, deleteSubconRateCardDeduction } from "@/actions/master-list";
 import { useRouter } from "next/navigation";
 
 type RateCard = {
   id: string;
+  projectId: string;
   projectName: string | null;
+  phaseScopeId: string | null;
   phaseActivityId: string | null;
   unitModel: string | null;
   unitType: string | null;
@@ -93,16 +95,22 @@ function AddDeductionForm({ rateCardId, onAdded }: { rateCardId: string; onAdded
   );
 }
 
+type UnitModelOption = { projectId: string; unitModel: string };
+
+const BLANK_EDIT = { project: "", category: "", scope: "", activity: "", unitModel: "", unitType: "", ratePerUnit: "", retentionPct: "10" };
+
 export function SubconRateCards({
-  subconId, rateCards, deductions, projects, phaseCategories, phaseScopes, phaseActivities,
+  rateCards, deductions, projects, phaseCategories, phaseScopes, phaseActivities, unitModelOptions, isAdmin, title,
 }: {
-  subconId: string;
   rateCards: RateCard[];
   deductions: Deduction[];
   projects: Project[];
   phaseCategories: PhaseCategory[];
   phaseScopes: PhaseScope[];
   phaseActivities: PhaseActivity[];
+  unitModelOptions: UnitModelOption[];
+  isAdmin: boolean;
+  title?: string;
 }) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
@@ -118,16 +126,24 @@ export function SubconRateCards({
   const [isPending, startTransition] = useTransition();
   const [openDeductions, setOpenDeductions] = useState<string | null>(null);
 
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState(BLANK_EDIT);
+
   const filteredScopes = phaseScopes.filter((s) => s.categoryId === selectedCategory);
   const filteredActivities = phaseActivities.filter((a) => a.scopeId === selectedScope);
+  const filteredUnitModels = selectedProject ? unitModelOptions.filter((u) => u.projectId === selectedProject) : [];
+  const editFilteredScopes = phaseScopes.filter((s) => s.categoryId === editForm.category);
+  const editFilteredActivities = phaseActivities.filter((a) => a.scopeId === editForm.scope);
+  const editFilteredUnitModels = editForm.project ? unitModelOptions.filter((u) => u.projectId === editForm.project) : [];
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     startTransition(async () => {
       const result = await createSubconRateCard({
-        subconId,
         projectId:       selectedProject,
+        phaseScopeId:    selectedScope || undefined,
         phaseActivityId: selectedActivity || undefined,
         unitModel:       unitModel || undefined,
         unitType:        (unitType as "BEG" | "MID" | "END" | "SHOP") || undefined,
@@ -141,6 +157,48 @@ export function SubconRateCards({
         router.refresh();
       } else {
         setError(result.error ?? "Error saving rate card.");
+      }
+    });
+  }
+
+  function handleEditStart(rc: RateCard) {
+    const act = phaseActivities.find((a) => a.id === rc.phaseActivityId);
+    const scopeViaAct = act ? phaseScopes.find((s) => s.id === act.scopeId) : null;
+    const scopeDirect = phaseScopes.find((s) => s.id === rc.phaseScopeId);
+    const resolvedScope = scopeViaAct ?? scopeDirect ?? null;
+    setEditForm({
+      project:     rc.projectId,
+      category:    resolvedScope?.categoryId ?? "",
+      scope:       resolvedScope?.id ?? "",
+      activity:    rc.phaseActivityId ?? "",
+      unitModel:   rc.unitModel ?? "",
+      unitType:    rc.unitType ?? "",
+      ratePerUnit: String(Number(rc.ratePerUnit)),
+      retentionPct: String((Number(rc.retentionPct) * 100).toFixed(2)),
+    });
+    setEditingId(rc.id);
+    setError(null);
+  }
+
+  function handleEditSubmit(e: React.FormEvent, id: string) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const result = await updateSubconRateCard(id, {
+        projectId:       editForm.project,
+        phaseScopeId:    editForm.scope || undefined,
+        phaseActivityId: editForm.activity || undefined,
+        unitModel:       editForm.unitModel || undefined,
+        unitType:        (editForm.unitType as "BEG" | "MID" | "END" | "SHOP") || undefined,
+        ratePerUnit:     Number(editForm.ratePerUnit),
+        retentionPct:    Number(editForm.retentionPct) / 100,
+      });
+      if (result.success) {
+        setEditingId(null);
+        setEditForm(BLANK_EDIT);
+        router.refresh();
+      } else {
+        setError(result.error ?? "Error saving.");
       }
     });
   }
@@ -159,26 +217,35 @@ export function SubconRateCards({
     });
   }
 
+  function setEdit(field: keyof typeof BLANK_EDIT, value: string) {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  }
+
   return (
     <div style={{ marginTop: "2rem" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.35rem" }}>
         <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, color: "#374151" }}>
-          Rate Cards ({rateCards.length})
+          {title ?? "Labor Rate Schedule"} ({rateCards.length})
         </h2>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          style={{ padding: "0.45rem 1rem", borderRadius: "6px", background: ACCENT, color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
-        >
-          {showForm ? "Cancel" : "+ Add Rate Card"}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => { setShowForm((v) => !v); setEditingId(null); }}
+            style={{ padding: "0.45rem 1rem", borderRadius: "6px", background: ACCENT, color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: "pointer" }}
+          >
+            {showForm ? "Cancel" : "+ Add Rate"}
+          </button>
+        )}
       </div>
+      <p style={{ margin: "0 0 0.75rem", fontSize: "0.78rem", color: "#9ca3af" }}>
+        Global labor rates per project / scope / unit — apply to all subcontractors assigned to that scope.
+      </p>
 
       {showForm && (
         <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.25rem", marginBottom: "1rem" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
             <label>
               <span style={labelStyle}>Project (Site) *</span>
-              <select required value={selectedProject} onChange={(e) => setSelectedProject(e.target.value)} style={inputStyle}>
+              <select required value={selectedProject} onChange={(e) => { setSelectedProject(e.target.value); setUnitModel(""); }} style={inputStyle}>
                 <option value="">Select project…</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -205,11 +272,13 @@ export function SubconRateCards({
               </select>
             </label>
           </div>
-
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
             <label>
               <span style={labelStyle}>Unit Model</span>
-              <input value={unitModel} onChange={(e) => setUnitModel(e.target.value)} placeholder="e.g. 2-story, Penthouse" style={inputStyle} />
+              <select value={unitModel} onChange={(e) => setUnitModel(e.target.value)} style={inputStyle} disabled={!selectedProject}>
+                <option value="">{selectedProject ? "Any / not specified" : "Select project first…"}</option>
+                {filteredUnitModels.map((u) => <option key={u.unitModel} value={u.unitModel}>{u.unitModel}</option>)}
+              </select>
             </label>
             <label>
               <span style={labelStyle}>Unit Type</span>
@@ -219,10 +288,9 @@ export function SubconRateCards({
               </select>
             </label>
           </div>
-
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
             <label>
-              <span style={labelStyle}>Rate per Unit (PHP) *</span>
+              <span style={labelStyle}>Rate per Unit *</span>
               <input type="number" required min="0" step="0.01" value={ratePerUnit} onChange={(e) => setRatePerUnit(e.target.value)} placeholder="0.00" style={inputStyle} />
             </label>
             <label>
@@ -230,17 +298,9 @@ export function SubconRateCards({
               <input type="number" min="0" max="100" step="0.01" value={retentionPct} onChange={(e) => setRetentionPct(e.target.value)} style={inputStyle} />
             </label>
           </div>
-
-          {error && (
-            <div style={{ padding: "0.65rem 0.9rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.8rem", marginBottom: "1rem" }}>
-              {error}
-            </div>
-          )}
+          {error && <div style={{ padding: "0.65rem 0.9rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.8rem", marginBottom: "1rem" }}>{error}</div>}
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button type="submit" disabled={isPending} style={{
-              padding: "0.5rem 1.25rem", borderRadius: "6px", background: isPending ? "#a5b4fc" : ACCENT,
-              color: "#fff", border: "none", fontSize: "0.875rem", fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer",
-            }}>
+            <button type="submit" disabled={isPending} style={{ padding: "0.5rem 1.25rem", borderRadius: "6px", background: isPending ? "#a5b4fc" : ACCENT, color: "#fff", border: "none", fontSize: "0.875rem", fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer" }}>
               {isPending ? "Saving…" : "Save Rate Card"}
             </button>
           </div>
@@ -256,59 +316,136 @@ export function SubconRateCards({
           {rateCards.map((rc) => {
             const rcDeductions = deductions.filter((d) => d.rateCardId === rc.id);
             const showDed = openDeductions === rc.id;
+            const isEditing = editingId === rc.id;
+
             return (
               <div key={rc.id} style={{ background: "#fff", borderRadius: "8px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "0.9rem 1.25rem", opacity: rc.isActive ? 1 : 0.6 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: "1rem", alignItems: "center" }}>
-                  <div>
-                    <div style={LABEL}>{rc.projectName ?? "—"}</div>
-                    {rc.phaseCategoryName && <div style={{ fontSize: "0.72rem", color: "#6366f1", fontWeight: 600, marginBottom: "0.1rem" }}>{rc.phaseCategoryName} › {rc.phaseScopeName}</div>}
-                    <div style={VALUE}>{rc.phaseActivityCode ? `${rc.phaseActivityCode} – ` : ""}{rc.phaseActivityName ?? "—"}</div>
-                    {(rc.unitModel || rc.unitType) && (
-                      <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "0.15rem" }}>
-                        {rc.unitModel && <span style={{ marginRight: "0.5rem" }}>Model: {rc.unitModel}</span>}
-                        {rc.unitType && <span>Type: {rc.unitType}</span>}
+                {isEditing ? (
+                  <form onSubmit={(e) => handleEditSubmit(e, rc.id)}>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "#374151", marginBottom: "0.75rem" }}>Edit Rate Card</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                      <label>
+                        <span style={labelStyle}>Project (Site) *</span>
+                        <select required value={editForm.project} onChange={(e) => { setEdit("project", e.target.value); setEdit("unitModel", ""); }} style={inputStyle}>
+                          <option value="">Select project…</option>
+                          {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Phase Category</span>
+                        <select value={editForm.category} onChange={(e) => { setEdit("category", e.target.value); setEdit("scope", ""); setEdit("activity", ""); }} style={inputStyle}>
+                          <option value="">Select category…</option>
+                          {phaseCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Scope of Work</span>
+                        <select value={editForm.scope} onChange={(e) => { setEdit("scope", e.target.value); setEdit("activity", ""); }} style={inputStyle} disabled={!editForm.category}>
+                          <option value="">Select scope…</option>
+                          {editFilteredScopes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Activity</span>
+                        <select value={editForm.activity} onChange={(e) => setEdit("activity", e.target.value)} style={inputStyle} disabled={!editForm.scope}>
+                          <option value="">Select activity…</option>
+                          {editFilteredActivities.map((a) => <option key={a.id} value={a.id}>{a.code} – {a.name}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                      <label>
+                        <span style={labelStyle}>Unit Model</span>
+                        <select value={editForm.unitModel} onChange={(e) => setEdit("unitModel", e.target.value)} style={inputStyle} disabled={!editForm.project}>
+                          <option value="">{editForm.project ? "Any / not specified" : "Select project first…"}</option>
+                          {editFilteredUnitModels.map((u) => <option key={u.unitModel} value={u.unitModel}>{u.unitModel}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Unit Type</span>
+                        <select value={editForm.unitType} onChange={(e) => setEdit("unitType", e.target.value)} style={inputStyle}>
+                          <option value="">Any / not specified</option>
+                          {UNIT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                      <label>
+                        <span style={labelStyle}>Rate per Unit *</span>
+                        <input type="number" required min="0" step="0.01" value={editForm.ratePerUnit} onChange={(e) => setEdit("ratePerUnit", e.target.value)} style={inputStyle} />
+                      </label>
+                      <label>
+                        <span style={labelStyle}>Retention %</span>
+                        <input type="number" min="0" max="100" step="0.01" value={editForm.retentionPct} onChange={(e) => setEdit("retentionPct", e.target.value)} style={inputStyle} />
+                      </label>
+                    </div>
+                    {error && <div style={{ padding: "0.65rem 0.9rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.8rem", marginBottom: "0.75rem" }}>{error}</div>}
+                    <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                      <button type="button" onClick={() => { setEditingId(null); setError(null); }} style={{ padding: "0.4rem 0.9rem", borderRadius: "5px", background: "#f3f4f6", border: "1px solid #d1d5db", fontSize: "0.8rem", color: "#374151", cursor: "pointer" }}>Cancel</button>
+                      <button type="submit" disabled={isPending} style={{ padding: "0.4rem 1rem", borderRadius: "5px", background: isPending ? "#a5b4fc" : ACCENT, color: "#fff", border: "none", fontSize: "0.8rem", fontWeight: 600, cursor: isPending ? "not-allowed" : "pointer" }}>
+                        {isPending ? "Saving…" : "Save Changes"}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: "1rem", alignItems: "center" }}>
+                      <div>
+                        <div style={LABEL}>{rc.projectName ?? "—"}</div>
+                        {(() => {
+                          const catName = rc.phaseCategoryName ?? (() => { const sc = phaseScopes.find(s => s.id === rc.phaseScopeId); return sc ? phaseCategories.find(c => c.id === sc.categoryId)?.name ?? null : null; })();
+                          const scName  = rc.phaseScopeName  ?? phaseScopes.find(s => s.id === rc.phaseScopeId)?.name ?? null;
+                          return catName ? <div style={{ fontSize: "0.72rem", color: "#6366f1", fontWeight: 600, marginBottom: "0.1rem" }}>{catName} › {scName}</div> : null;
+                        })()}
+                        <div style={VALUE}>{rc.phaseActivityCode ? `${rc.phaseActivityCode} – ` : ""}{rc.phaseActivityName ?? (rc.phaseScopeId ? "" : "—")}</div>
+                        {(rc.unitModel || rc.unitType) && (
+                          <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "0.15rem" }}>
+                            {rc.unitModel && <span style={{ marginRight: "0.5rem" }}>Model: {rc.unitModel}</span>}
+                            {rc.unitType && <span>Type: {rc.unitType}</span>}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div>
-                    <div style={LABEL}>Rate / Unit</div>
-                    <div style={{ ...VALUE, fontWeight: 700 }}>PHP {Number(rc.ratePerUnit).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div>
-                  </div>
-                  <div>
-                    <div style={LABEL}>Retention</div>
-                    <div style={VALUE}>{(Number(rc.retentionPct) * 100).toFixed(1)}%</div>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", alignItems: "flex-end" }}>
-                    <button
-                      onClick={() => handleToggle(rc.id, !rc.isActive)}
-                      disabled={isPending}
-                      style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "none", fontSize: "0.75rem", fontWeight: 600, background: rc.isActive ? "#fee2e2" : "#dcfce7", color: rc.isActive ? "#991b1b" : "#166534", cursor: isPending ? "not-allowed" : "pointer" }}
-                    >
-                      {rc.isActive ? "Deactivate" : "Activate"}
-                    </button>
-                    <button
-                      onClick={() => setOpenDeductions(showDed ? null : rc.id)}
-                      style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}
-                    >
-                      Deductions {rcDeductions.length > 0 ? `(${rcDeductions.length})` : ""}
-                    </button>
-                  </div>
-                </div>
+                      <div>
+                        <div style={LABEL}>Rate / Unit</div>
+                        <div style={{ ...VALUE, fontWeight: 700 }}>PHP {Number(rc.ratePerUnit).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</div>
+                      </div>
+                      <div>
+                        <div style={LABEL}>Retention</div>
+                        <div style={VALUE}>{(Number(rc.retentionPct) * 100).toFixed(1)}%</div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", alignItems: "flex-end" }}>
+                        {isAdmin && (
+                          <button onClick={() => handleEditStart(rc)} style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}>
+                            Edit
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={() => handleToggle(rc.id, !rc.isActive)} disabled={isPending} style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "none", fontSize: "0.75rem", fontWeight: 600, background: rc.isActive ? "#fee2e2" : "#dcfce7", color: rc.isActive ? "#991b1b" : "#166534", cursor: isPending ? "not-allowed" : "pointer" }}>
+                            {rc.isActive ? "Deactivate" : "Activate"}
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button onClick={() => setOpenDeductions(showDed ? null : rc.id)} style={{ padding: "0.3rem 0.75rem", borderRadius: "5px", border: "1px solid #d1d5db", fontSize: "0.75rem", fontWeight: 600, background: "#fff", color: "#374151", cursor: "pointer" }}>
+                            Deductions {rcDeductions.length > 0 ? `(${rcDeductions.length})` : ""}
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-                {showDed && (
-                  <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid #f3f4f6" }}>
-                    <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.4rem" }}>Additional Billing Deductions</div>
-                    {rcDeductions.length === 0 ? (
-                      <div style={{ fontSize: "0.8rem", color: "#9ca3af", marginBottom: "0.4rem" }}>No extra deductions yet.</div>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginBottom: "0.5rem" }}>
-                        {rcDeductions.map((d) => (
-                          <DeductionRow key={d.id} d={d} isPending={isPending} onDelete={handleDeleteDeduction} />
-                        ))}
+                    {showDed && (
+                      <div style={{ marginTop: "0.75rem", paddingTop: "0.75rem", borderTop: "1px solid #f3f4f6" }}>
+                        <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "#374151", marginBottom: "0.4rem" }}>Additional Billing Deductions</div>
+                        {rcDeductions.length === 0 ? (
+                          <div style={{ fontSize: "0.8rem", color: "#9ca3af", marginBottom: "0.4rem" }}>No extra deductions yet.</div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginBottom: "0.5rem" }}>
+                            {rcDeductions.map((d) => <DeductionRow key={d.id} d={d} isPending={isPending} onDelete={handleDeleteDeduction} />)}
+                          </div>
+                        )}
+                        <AddDeductionForm rateCardId={rc.id} onAdded={() => setOpenDeductions(rc.id)} />
                       </div>
                     )}
-                    <AddDeductionForm rateCardId={rc.id} onAdded={() => setOpenDeductions(rc.id)} />
-                  </div>
+                  </>
                 )}
               </div>
             );

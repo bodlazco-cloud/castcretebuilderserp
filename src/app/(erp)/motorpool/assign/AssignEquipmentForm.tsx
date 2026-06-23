@@ -30,6 +30,7 @@ export function AssignEquipmentForm({ equipment, projects, costCenters, units, o
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState("");
+  const [rateType, setRateType] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
 
   const filteredUnits = units.filter((u) => u.projectId === selectedProject);
 
@@ -45,7 +46,8 @@ export function AssignEquipmentForm({ equipment, projects, costCenters, units, o
         costCenterId: fd.get("costCenterId") as string,
         operatorId:   fd.get("operatorId") as string,
         assignedDate: fd.get("assignedDate") as string,
-        dailyRate:    Number(fd.get("dailyRate")),
+        rateType:     (fd.get("rateType") as "DAILY" | "WEEKLY" | "MONTHLY") ?? "DAILY",
+        dailyRate:    Number(fd.get("rateAmount")),
       });
       if (result.success) {
         router.push("/motorpool");
@@ -116,10 +118,27 @@ export function AssignEquipmentForm({ equipment, projects, costCenters, units, o
             defaultValue={new Date().toISOString().slice(0, 10)} />
         </label>
         <label>
-          <span style={labelStyle}>Daily Rate (PHP) *</span>
-          <input name="dailyRate" type="number" min="0" step="0.01" required style={inputStyle} placeholder="0.00" />
+          <span style={labelStyle}>Rate Type *</span>
+          <select
+            name="rateType"
+            required
+            style={inputStyle}
+            value={rateType}
+            onChange={(e) => setRateType(e.target.value as "DAILY" | "WEEKLY" | "MONTHLY")}
+          >
+            <option value="DAILY">Daily Rate</option>
+            <option value="WEEKLY">Weekly Rate</option>
+            <option value="MONTHLY">Monthly Rate</option>
+          </select>
         </label>
       </div>
+
+      <label>
+        <span style={labelStyle}>
+          {rateType === "DAILY" ? "Daily" : rateType === "WEEKLY" ? "Weekly" : "Monthly"} Rate *
+        </span>
+        <input name="rateAmount" type="number" min="0" step="0.01" required style={inputStyle} placeholder="0.00" />
+      </label>
 
       <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
         <a href="/motorpool" style={{

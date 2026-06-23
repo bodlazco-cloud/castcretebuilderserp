@@ -22,7 +22,7 @@ const GRADE_STYLE: Record<string, { bg: string; color: string }> = {
   C: { bg: "#fef2f2", color: "#b91c1c" },
 };
 
-export default function SubcontractorsTable({ rows }: { rows: Row[] }) {
+export default function SubcontractorsTable({ rows, isAdmin }: { rows: Row[]; isAdmin: boolean }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -96,7 +96,7 @@ export default function SubcontractorsTable({ rows }: { rows: Row[] }) {
                       <td style={{ padding: "0.65rem 1rem", textAlign: "right" }}>
                         <span style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center" }}>
                           <a href={`/master-list/subcontractors/${r.id}`} style={{ color: "#6366f1", textDecoration: "none", fontSize: "0.8rem", fontWeight: 600 }}>View →</a>
-                          <DeleteRowButton action={deleteSubcontractor.bind(null, r.id)} />
+                          {isAdmin && <DeleteRowButton action={deleteSubcontractor.bind(null, r.id)} />}
                         </span>
                       </td>
                     </tr>

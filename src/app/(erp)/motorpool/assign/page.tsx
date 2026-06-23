@@ -6,33 +6,48 @@ import { eq } from "drizzle-orm";
 import { AssignEquipmentForm } from "./AssignEquipmentForm";
 
 export default async function AssignEquipmentPage() {
+  return await renderPage();
+}
+
+async function renderPage() {
   await getAuthUser();
 
-  const [equipmentRows, projectRows, costCenterRows, unitRows, employeeRows] = await Promise.all([
-    db
-      .select({ id: schema.equipment.id, code: schema.equipment.code, name: schema.equipment.name, type: schema.equipment.type })
-      .from(schema.equipment)
-      .where(eq(schema.equipment.status, "AVAILABLE"))
-      .orderBy(schema.equipment.code),
-    db
-      .select({ id: schema.projects.id, name: schema.projects.name })
-      .from(schema.projects)
-      .orderBy(schema.projects.name),
-    db
-      .select({ id: schema.costCenters.id, code: schema.costCenters.code, name: schema.costCenters.name })
-      .from(schema.costCenters)
-      .where(eq(schema.costCenters.isActive, true))
-      .orderBy(schema.costCenters.code),
-    db
-      .select({ id: schema.projectUnits.id, unitCode: schema.projectUnits.unitCode, projectId: schema.projectUnits.projectId })
-      .from(schema.projectUnits)
-      .orderBy(schema.projectUnits.unitCode),
-    db
-      .select({ id: schema.employees.id, fullName: schema.employees.fullName, employeeCode: schema.employees.employeeCode })
-      .from(schema.employees)
-      .where(eq(schema.employees.isActive, true))
-      .orderBy(schema.employees.fullName),
-  ]);
+  let equipmentRows: { id: string; code: string; name: string; type: string }[] = [];
+  let projectRows: { id: string; name: string }[] = [];
+  let costCenterRows: { id: string; code: string; name: string }[] = [];
+  let unitRows: { id: string; unitCode: string; projectId: string }[] = [];
+  let employeeRows: { id: string; fullName: string; employeeCode: string }[] = [];
+  let loadError: string | null = null;
+
+  try {
+    [equipmentRows, projectRows, costCenterRows, unitRows, employeeRows] = await Promise.all([
+      db
+        .select({ id: schema.equipment.id, code: schema.equipment.code, name: schema.equipment.name, type: schema.equipment.type })
+        .from(schema.equipment)
+        .where(eq(schema.equipment.status, "AVAILABLE"))
+        .orderBy(schema.equipment.code),
+      db
+        .select({ id: schema.projects.id, name: schema.projects.name })
+        .from(schema.projects)
+        .orderBy(schema.projects.name),
+      db
+        .select({ id: schema.costCenters.id, code: schema.costCenters.code, name: schema.costCenters.name })
+        .from(schema.costCenters)
+        .where(eq(schema.costCenters.isActive, true))
+        .orderBy(schema.costCenters.code),
+      db
+        .select({ id: schema.projectUnits.id, unitCode: schema.projectUnits.unitCode, projectId: schema.projectUnits.projectId })
+        .from(schema.projectUnits)
+        .orderBy(schema.projectUnits.unitCode),
+      db
+        .select({ id: schema.employees.id, fullName: schema.employees.fullName, employeeCode: schema.employees.employeeCode })
+        .from(schema.employees)
+        .where(eq(schema.employees.isActive, true))
+        .orderBy(schema.employees.fullName),
+    ]);
+  } catch (err) {
+    loadError = err instanceof Error ? err.message : String(err);
+  }
 
   const ACCENT = "#0694a2";
 
@@ -66,6 +81,12 @@ export default async function AssignEquipmentPage() {
           </p>
         </header>
 
+        {loadError && (
+          <div style={{ padding: "1rem", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "6px", marginBottom: "1rem", color: "#b91c1c", fontSize: "0.85rem", fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+            <strong>DB Error (please report this):</strong>{"\n"}{loadError}
+          </div>
+        )}
+
         <div style={{
           background: "#fff", borderRadius: "8px",
           boxShadow: "0 1px 4px rgba(0,0,0,0.07)", padding: "1.75rem",
@@ -82,3 +103,4 @@ export default async function AssignEquipmentPage() {
     </main>
   );
 }
+

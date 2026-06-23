@@ -4,7 +4,13 @@ import { useState, useTransition } from "react";
 import { createActivityDefinition } from "@/actions/master-list";
 import { useRouter, useSearchParams } from "next/navigation";
 
-type Project = { id: string; name: string };
+type Project      = { id: string; name: string };
+type PhaseCat     = { id: string; code: string; name: string };
+type PhaseScope   = { id: string; categoryId: string; code: string; name: string };
+type PhaseActivity = {
+  id: string; scopeId: string; code: string; name: string;
+  standardDurationDays: number; weightInScopePct: string | number; sequenceOrder: number;
+};
 
 const inputStyle: React.CSSProperties = {
   display: "block", width: "100%", padding: "0.6rem 0.8rem",
@@ -14,7 +20,18 @@ const labelStyle: React.CSSProperties = {
   display: "block", fontSize: "0.82rem", fontWeight: 600, color: "#374151", marginBottom: "0.35rem",
 };
 
-export function NewSowForm({ projects }: { projects: Project[] }) {
+type WorkCategory = "SLAB" | "STRUCTURAL" | "SPECIALTY_WORKS" | "MEPF" | "ARCHITECTURAL" | "TURNOVER";
+const CATEGORY_MAP: Record<string, WorkCategory> = {
+  SLAB: "SLAB", STRUCTURAL: "STRUCTURAL", SPECIALTY_WORKS: "SPECIALTY_WORKS",
+  MEPF: "MEPF", ARCHITECTURAL: "ARCHITECTURAL", TURNOVER: "TURNOVER",
+};
+
+export function NewSowForm({ projects, phaseCats, phaseScps, phaseActs }: {
+  projects:   Project[];
+  phaseCats:  PhaseCat[];
+  phaseScps:  PhaseScope[];
+  phaseActs:  PhaseActivity[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -22,16 +39,51 @@ export function NewSowForm({ projects }: { projects: Project[] }) {
 
   const defaultProject = searchParams.get("projectId") ?? "";
 
-  type WorkCategory = "SLAB" | "STRUCTURAL" | "SPECIALTY_WORKS" | "MEPF" | "ARCHITECTURAL" | "TURNOVER";
-  const [projectId, setProjectId]           = useState(defaultProject);
-  const [category, setCategory]             = useState<WorkCategory>("STRUCTURAL");
-  const [scopeCode, setScopeCode]           = useState("");
-  const [scopeName, setScopeName]           = useState("");
-  const [activityCode, setActivityCode]     = useState("");
-  const [activityName, setActivityName]     = useState("");
-  const [durationDays, setDurationDays]     = useState("14");
-  const [weightPct, setWeightPct]           = useState("0.00");
-  const [sequenceOrder, setSequenceOrder]   = useState("1");
+  const [projectId, setProjectId]         = useState(defaultProject);
+  const [category, setCategory]           = useState<WorkCategory>("STRUCTURAL");
+  const [scopeCode, setScopeCode]         = useState("");
+  const [scopeName, setScopeName]         = useState("");
+  const [activityCode, setActivityCode]   = useState("");
+  const [activityName, setActivityName]   = useState("");
+  const [durationDays, setDurationDays]   = useState("14");
+  const [weightPct, setWeightPct]         = useState("0.00");
+  const [sequenceOrder, setSequenceOrder] = useState("1");
+
+  // Phase cascade state
+  const [selCatId, setSelCatId]     = useState("");
+  const [selScopeId, setSelScopeId] = useState("");
+  const [selActId, setSelActId]     = useState("");
+
+  const filteredScopes     = phaseScps.filter((s) => s.categoryId === selCatId);
+  const filteredActivities = phaseActs.filter((a) => a.scopeId === selScopeId);
+
+  function handleCatChange(catId: string) {
+    setSelCatId(catId);
+    setSelScopeId("");
+    setSelActId("");
+    const cat = phaseCats.find((c) => c.id === catId);
+    if (cat && CATEGORY_MAP[cat.code]) setCategory(CATEGORY_MAP[cat.code]);
+  }
+
+  function handleScopeChange(scopeId: string) {
+    setSelScopeId(scopeId);
+    setSelActId("");
+    const sc = phaseScps.find((s) => s.id === scopeId);
+    if (sc) { setScopeCode(sc.code); setScopeName(sc.name); }
+  }
+
+  function handleActivityChange(actId: string) {
+    setSelActId(actId);
+    const act = phaseActs.find((a) => a.id === actId);
+    if (!act) return;
+    const sc = phaseScps.find((s) => s.id === act.scopeId);
+    if (sc) { setScopeCode(sc.code); setScopeName(sc.name); }
+    setActivityCode(act.code);
+    setActivityName(act.name);
+    setDurationDays(String(act.standardDurationDays));
+    setWeightPct(String(act.weightInScopePct));
+    setSequenceOrder(String(act.sequenceOrder));
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,6 +114,33 @@ export function NewSowForm({ projects }: { projects: Project[] }) {
       {error && (
         <div style={{ padding: "0.85rem 1rem", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "0.875rem" }}>
           {error}
+        </div>
+      )}
+
+      {/* Phase cascade — shown only if data exists */}
+      {phaseCats.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+          <label>
+            <span style={labelStyle}>Phase Category</span>
+            <select value={selCatId} onChange={(e) => handleCatChange(e.target.value)} style={inputStyle}>
+              <option value="">Select phase category…</option>
+              {phaseCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span style={labelStyle}>Phase Scope</span>
+            <select value={selScopeId} onChange={(e) => handleScopeChange(e.target.value)} style={inputStyle} disabled={!selCatId}>
+              <option value="">Select phase scope…</option>
+              {filteredScopes.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span style={labelStyle}>Phase Activity</span>
+            <select value={selActId} onChange={(e) => handleActivityChange(e.target.value)} style={inputStyle} disabled={!selScopeId}>
+              <option value="">Select activity to auto-fill…</option>
+              {filteredActivities.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </label>
         </div>
       )}
 
@@ -101,13 +180,13 @@ export function NewSowForm({ projects }: { projects: Project[] }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "1rem" }}>
         <label>
-          <span style={labelStyle}>Activity Code *</span>
-          <input type="text" required value={activityCode} onChange={(e) => setActivityCode(e.target.value)}
+          <span style={labelStyle}>Activity Code</span>
+          <input type="text" value={activityCode} onChange={(e) => setActivityCode(e.target.value)}
             placeholder="e.g. STR-001-A" style={inputStyle} />
         </label>
         <label>
-          <span style={labelStyle}>Activity Name *</span>
-          <input type="text" required value={activityName} onChange={(e) => setActivityName(e.target.value)}
+          <span style={labelStyle}>Activity Name</span>
+          <input type="text" value={activityName} onChange={(e) => setActivityName(e.target.value)}
             placeholder="e.g. Excavation and Gravel Bedding" style={inputStyle} />
         </label>
       </div>

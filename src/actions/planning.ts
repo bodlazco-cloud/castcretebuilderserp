@@ -6,6 +6,13 @@ import {
   resourceForecasts,
   planningVarianceRequests,
   constructionManpowerLogs,
+  projectUnits,
+  materials,
+  purchaseRequisitions,
+  purchaseRequisitionItems,
+  activityDefinitions,
+  phaseScopes,
+  phaseActivities,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -30,6 +37,7 @@ const BomLineSchema = z.object({
 
 const SaveMasterBomSchema = z.object({
   projectId:       z.string().uuid(),
+  activityDefId:   z.string().uuid().optional(),
   phaseScopeId:    z.string().uuid(),
   phaseActivityId: z.string().uuid().optional(),
   unitModel:       z.string().min(1).max(50),
@@ -56,6 +64,23 @@ export async function saveMasterBomEntries(
   }
 
   const { projectId, phaseScopeId, phaseActivityId, unitModel, unitType, items } = parsed.data;
+  let { activityDefId } = parsed.data;
+
+  // Auto-link to a matching Scope of Work item by code when not explicitly provided
+  // (e.g. entries created from the general BOM form rather than via "+ Add BOM Entry" on a SOW item)
+  if (!activityDefId) {
+    const [scope] = await db.select({ code: phaseScopes.code }).from(phaseScopes).where(eq(phaseScopes.id, phaseScopeId));
+    const activity = phaseActivityId
+      ? (await db.select({ code: phaseActivities.code }).from(phaseActivities).where(eq(phaseActivities.id, phaseActivityId)))[0]
+      : null;
+
+    if (scope) {
+      const conditions = [eq(activityDefinitions.scopeCode, scope.code)];
+      if (activity) conditions.push(eq(activityDefinitions.activityCode, activity.code));
+      const [match] = await db.select({ id: activityDefinitions.id }).from(activityDefinitions).where(and(...conditions)).limit(1);
+      if (match) activityDefId = match.id;
+    }
+  }
 
   // Deactivate existing DRAFT entries for same scope (soft version bump)
   await db
@@ -75,7 +100,7 @@ export async function saveMasterBomEntries(
   await db.insert(masterBomEntries).values(
     items.map((item) => ({
       projectId,
-      activityDefId:   null,
+      activityDefId:   activityDefId ?? null,
       phaseScopeId,
       phaseActivityId: phaseActivityId ?? null,
       unitModel,
@@ -92,7 +117,97 @@ export async function saveMasterBomEntries(
   return { success: true, inserted: items.length };
 }
 
+// ─── Add a single Material line to an existing BOM group ─────────────────────
+
+const AddBomLineSchema = z.object({
+  projectId:       z.string().uuid(),
+  phaseScopeId:    z.string().uuid(),
+  phaseActivityId: z.string().uuid().optional(),
+  activityDefId:   z.string().uuid().optional(),
+  unitModel:       z.string().min(1).max(50),
+  unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
+  materialId:      z.string().uuid(),
+  quantityPerUnit: z.number().positive(),
+  equipmentType:   z.string().max(100).optional(),
+});
+
+export type AddBomLineResult =
+  | { success: true; id: string }
+  | { success: false; error: string };
+
+export async function addMasterBomLine(
+  input: z.infer<typeof AddBomLineSchema>,
+): Promise<AddBomLineResult> {
+  const parsed = AddBomLineSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
+
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may add BOM material lines." };
+  }
+
+  const d = parsed.data;
+
+  const [row] = await db
+    .insert(masterBomEntries)
+    .values({
+      projectId:       d.projectId,
+      activityDefId:   d.activityDefId   ?? null,
+      phaseScopeId:    d.phaseScopeId,
+      phaseActivityId: d.phaseActivityId ?? null,
+      unitModel:       d.unitModel,
+      unitType:        d.unitType,
+      materialId:      d.materialId,
+      quantityPerUnit: String(d.quantityPerUnit),
+      equipmentType:   d.equipmentType ?? null,
+      status:          "DRAFT" as const,
+      createdBy:       user.id,
+    })
+    .returning({ id: masterBomEntries.id });
+
+  revalidatePath("/planning/bom");
+  return { success: true, id: row.id };
+}
+
+// ─── Delete a Draft / Rejected BOM line ──────────────────────────────────────
+
 export type BomReviewResult = { success: boolean; error?: string };
+
+export async function deleteDraftBomEntry(id: string): Promise<BomReviewResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may delete BOM material lines." };
+  }
+
+  const [existing] = await db
+    .select({ status: masterBomEntries.status })
+    .from(masterBomEntries)
+    .where(eq(masterBomEntries.id, id));
+
+  if (!existing) return { success: false, error: "BOM entry not found." };
+
+  const isAdminDelete = existing.status === "APPROVED" && guardDept(dept, ["ADMIN", "BOD"]);
+
+  if (existing.status !== "DRAFT" && existing.status !== "REJECTED" && !isAdminDelete) {
+    return { success: false, error: "Only Draft or Rejected lines can be deleted. Pending entries must be withdrawn first." };
+  }
+
+  try {
+    await db.delete(masterBomEntries).where(eq(masterBomEntries.id, id));
+  } catch {
+    return { success: false, error: "This BOM entry cannot be deleted because it is already referenced by resource forecasts." };
+  }
+
+  revalidatePath("/planning/bom");
+  return { success: true };
+}
+
 
 export async function submitBomForReview(ids: string[]): Promise<BomReviewResult> {
   if (ids.length === 0) return { success: false, error: "No entries selected." };
@@ -148,7 +263,7 @@ export type ForecastUpdateResult = { success: boolean; error?: string };
 
 export async function updateForecastStatus(
   forecastId: string,
-  newStatus: "PENDING_PR" | "PR_CREATED" | "PO_ISSUED" | "ISSUED",
+  newStatus: "PENDING_APPROVAL" | "PENDING_PR" | "PR_CREATED" | "PO_ISSUED" | "ISSUED",
   prId?: string,
 ): Promise<ForecastUpdateResult> {
   const user = await getAuthUser();
@@ -169,7 +284,6 @@ export async function updateForecastStatus(
     .where(eq(resourceForecasts.id, forecastId));
 
   revalidatePath("/planning/mrp-queue");
-  revalidatePath("/planning/batching-forecast");
   revalidatePath("/planning/motorpool-needs");
   return { success: true };
 }
@@ -317,28 +431,27 @@ export async function reviewVarianceRequest(
   return { success: true };
 }
 
-// ─── Edit Draft BOM Group ─────────────────────────────────────────────────────
+// ─── Update Draft BOM Entry ───────────────────────────────────────────────────
 
-const BomGroupLineSchema = z.object({
-  id:              z.string().uuid().optional(),   // existing line; omit for new
+const UpdateDraftBomSchema = z.object({
+  id:              z.string().uuid(),
+  phaseScopeId:    z.string().uuid(),
+  phaseActivityId: z.string().uuid().optional(),
+  unitModel:       z.string().min(1).max(50),
+  unitType:        z.enum(["BEG", "MID", "END", "SHOP"]),
   materialId:      z.string().uuid(),
   quantityPerUnit: z.number().positive(),
   equipmentType:   z.string().max(100).optional(),
 });
 
-const SaveEditedBomGroupSchema = z.object({
-  referenceId: z.string().uuid(),                  // any existing line in the group
-  lines:       z.array(BomGroupLineSchema).min(1, "At least one material line is required"),
-});
-
-export type SaveEditedBomGroupResult =
+export type UpdateDraftBomResult =
   | { success: true }
   | { success: false; error: string };
 
-export async function saveEditedBomGroup(
-  input: z.infer<typeof SaveEditedBomGroupSchema>,
-): Promise<SaveEditedBomGroupResult> {
-  const parsed = SaveEditedBomGroupSchema.safeParse(input);
+export async function updateDraftBomEntry(
+  input: z.infer<typeof UpdateDraftBomSchema>,
+): Promise<UpdateDraftBomResult> {
+  const parsed = UpdateDraftBomSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid input." };
 
   const user = await getAuthUser();
@@ -349,88 +462,77 @@ export async function saveEditedBomGroup(
     return { success: false, error: "Only Planning, Admin, or BOD may edit BOM entries." };
   }
 
-  // Load reference line to identify the group
-  const [ref] = await db
-    .select({
-      projectId:       masterBomEntries.projectId,
-      phaseScopeId:    masterBomEntries.phaseScopeId,
-      phaseActivityId: masterBomEntries.phaseActivityId,
-      unitModel:       masterBomEntries.unitModel,
-      unitType:        masterBomEntries.unitType,
-      status:          masterBomEntries.status,
+  const [existing] = await db
+    .select({ status: masterBomEntries.status })
+    .from(masterBomEntries)
+    .where(eq(masterBomEntries.id, parsed.data.id));
+
+  if (!existing) return { success: false, error: "BOM entry not found." };
+
+  const isAdminEdit = existing.status === "APPROVED" && guardDept(dept, ["ADMIN", "BOD"]);
+
+  if (existing.status !== "DRAFT" && existing.status !== "REJECTED" && !isAdminEdit) {
+    return { success: false, error: "Only DRAFT or REJECTED entries can be edited. Pending entries must be withdrawn first." };
+  }
+
+  await db
+    .update(masterBomEntries)
+    .set({
+      phaseScopeId:    parsed.data.phaseScopeId,
+      phaseActivityId: parsed.data.phaseActivityId ?? null,
+      unitModel:       parsed.data.unitModel,
+      unitType:        parsed.data.unitType,
+      materialId:      parsed.data.materialId,
+      quantityPerUnit: String(parsed.data.quantityPerUnit),
+      equipmentType:   parsed.data.equipmentType ?? null,
+      // Edits to a previously reviewed line must go through BOD approval again,
+      // unless an Admin/BOD is correcting an already-approved entry in place
+      ...(isAdminEdit
+        ? { updatedAt: new Date() }
+        : {
+            status:          "DRAFT" as const,
+            reviewedBy:      null,
+            reviewedAt:      null,
+            rejectionReason: null,
+            updatedAt:       new Date(),
+          }),
     })
-    .from(masterBomEntries)
-    .where(eq(masterBomEntries.id, parsed.data.referenceId));
-
-  if (!ref) return { success: false, error: "BOM entry not found." };
-  if (ref.status !== "DRAFT") return { success: false, error: "Only DRAFT entries can be edited." };
-
-  // All current DRAFT lines in this group
-  const currentLines = await db
-    .select({ id: masterBomEntries.id })
-    .from(masterBomEntries)
-    .where(
-      and(
-        eq(masterBomEntries.projectId,  ref.projectId),
-        eq(masterBomEntries.phaseScopeId, ref.phaseScopeId!),
-        eq(masterBomEntries.unitModel,  ref.unitModel),
-        eq(masterBomEntries.unitType,   ref.unitType),
-        eq(masterBomEntries.isActive,   true),
-        eq(masterBomEntries.status,     "DRAFT"),
-      ),
-    );
-
-  const submittedIds = new Set(parsed.data.lines.map((l) => l.id).filter(Boolean) as string[]);
-
-  // Soft-delete lines not in the submitted set
-  const toDelete = currentLines.map((l) => l.id).filter((id) => !submittedIds.has(id));
-  if (toDelete.length > 0) {
-    await db
-      .update(masterBomEntries)
-      .set({ isActive: false, updatedAt: new Date() })
-      .where(inArray(masterBomEntries.id, toDelete));
-  }
-
-  // Update existing lines
-  for (const line of parsed.data.lines) {
-    if (!line.id) continue;
-    await db
-      .update(masterBomEntries)
-      .set({
-        materialId:      line.materialId,
-        quantityPerUnit: String(line.quantityPerUnit),
-        equipmentType:   line.equipmentType ?? null,
-        updatedAt:       new Date(),
-      })
-      .where(and(eq(masterBomEntries.id, line.id), eq(masterBomEntries.status, "DRAFT")));
-  }
-
-  // Insert new lines
-  const newLines = parsed.data.lines.filter((l) => !l.id);
-  if (newLines.length > 0) {
-    await db.insert(masterBomEntries).values(
-      newLines.map((line) => ({
-        projectId:       ref.projectId,
-        phaseScopeId:    ref.phaseScopeId,
-        phaseActivityId: ref.phaseActivityId ?? null,
-        unitModel:       ref.unitModel,
-        unitType:        ref.unitType,
-        materialId:      line.materialId,
-        quantityPerUnit: String(line.quantityPerUnit),
-        equipmentType:   line.equipmentType ?? null,
-        activityDefId:   null,
-        status:          "DRAFT" as const,
-        createdBy:       user.id,
-      })),
-    );
-  }
+    .where(eq(masterBomEntries.id, parsed.data.id));
 
   revalidatePath("/planning/bom");
   return { success: true };
 }
 
-// kept for any external callers
-export type UpdateDraftBomResult = SaveEditedBomGroupResult;
+// ─── Withdraw a Submitted BOM Entry (return PENDING_REVIEW → DRAFT) ───────────
+
+export async function withdrawBomSubmission(id: string): Promise<BomReviewResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may withdraw a submitted BOM entry." };
+  }
+
+  const [existing] = await db
+    .select({ status: masterBomEntries.status })
+    .from(masterBomEntries)
+    .where(eq(masterBomEntries.id, id));
+
+  if (!existing) return { success: false, error: "BOM entry not found." };
+  if (existing.status !== "PENDING_REVIEW") {
+    return { success: false, error: "Only entries pending BOD review can be withdrawn." };
+  }
+
+  await db
+    .update(masterBomEntries)
+    .set({ status: "DRAFT", submittedBy: null, submittedAt: null, updatedAt: new Date() })
+    .where(eq(masterBomEntries.id, id));
+
+  revalidatePath("/planning/bom");
+  return { success: true };
+}
+
 
 // ─── Manpower Logs (kept for resource-forecasting page) ───────────────────────
 
@@ -473,4 +575,365 @@ export async function createManpowerLog(
 
   revalidatePath("/planning/resource-forecasting");
   return { success: true, id: row.id };
+}
+
+// ─── Generate Resource Forecasts for Unit ─────────────────────────────────────
+
+export type GenerateForecastsDiagnostics = {
+  unitId: string;
+  unitModel?: string;
+  unitType?: string;
+  bomEntriesFound: number;
+  alreadyExisted: number;
+  equipmentSkipped: number;
+  created: number;
+  reason?: string;
+};
+
+export async function generateResourceForecastsForUnit(
+  projectId: string,
+  unitId: string,
+): Promise<GenerateForecastsDiagnostics> {
+  const [unit] = await db
+    .select({ unitModel: projectUnits.unitModel, unitType: projectUnits.unitType })
+    .from(projectUnits)
+    .where(eq(projectUnits.id, unitId))
+    .limit(1);
+
+  if (!unit) {
+    return { unitId, bomEntriesFound: 0, alreadyExisted: 0, equipmentSkipped: 0, created: 0, reason: "Unit not found." };
+  }
+
+  const bomEntries = await db
+    .select({
+      id:              masterBomEntries.id,
+      quantityPerUnit: masterBomEntries.quantityPerUnit,
+      equipmentType:   masterBomEntries.equipmentType,
+      matCategory:     materials.category,
+    })
+    .from(masterBomEntries)
+    .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
+    .where(
+      and(
+        eq(masterBomEntries.projectId, projectId),
+        eq(masterBomEntries.unitModel, unit.unitModel),
+        eq(masterBomEntries.unitType, unit.unitType as any),
+        eq(masterBomEntries.status, "APPROVED"),
+        eq(masterBomEntries.isActive, true),
+      ),
+    );
+
+  const base = { unitId, unitModel: unit.unitModel, unitType: unit.unitType ?? undefined };
+
+  if (bomEntries.length === 0) {
+    return {
+      ...base, bomEntriesFound: 0, alreadyExisted: 0, equipmentSkipped: 0, created: 0,
+      reason: `No APPROVED & active BOM entries found for model "${unit.unitModel}" / type "${unit.unitType ?? "—"}".`,
+    };
+  }
+
+  const existing = await db
+    .select({ masterBomEntryId: resourceForecasts.masterBomEntryId })
+    .from(resourceForecasts)
+    .where(
+      and(
+        eq(resourceForecasts.projectId, projectId),
+        eq(resourceForecasts.unitId, unitId),
+      ),
+    );
+
+  const existingSet = new Set(existing.map((r) => r.masterBomEntryId));
+  const toCreate = bomEntries.filter((b) => !existingSet.has(b.id));
+
+  if (toCreate.length === 0) {
+    return {
+      ...base, bomEntriesFound: bomEntries.length, alreadyExisted: bomEntries.length, equipmentSkipped: 0, created: 0,
+      reason: "Resource forecasts already exist for all matching BOM entries.",
+    };
+  }
+
+  // Skip EQUIPMENT forecasts — motorpool is handled as monthly rental
+  const nonEquipment = toCreate.filter((b) => !b.equipmentType);
+  const equipmentSkipped = toCreate.length - nonEquipment.length;
+
+  if (nonEquipment.length === 0) {
+    return {
+      ...base, bomEntriesFound: bomEntries.length, alreadyExisted: existingSet.size, equipmentSkipped, created: 0,
+      reason: "All remaining BOM entries are EQUIPMENT type (handled separately as motorpool rentals).",
+    };
+  }
+
+  await db.insert(resourceForecasts).values(
+    nonEquipment.map((b) => ({
+      projectId,
+      unitId,
+      masterBomEntryId: b.id,
+      forecastType: (
+        b.matCategory?.toUpperCase() === "CEMENT" ? "CONCRETE" : "MATERIAL"
+      ) as "MATERIAL" | "CONCRETE",
+      grossQuantity:    b.quantityPerUnit,
+      quantityConsumed: "0",
+      status:           "PENDING_APPROVAL" as const,
+      equipmentType:    null,
+    })),
+  );
+
+  revalidatePath("/planning/mrp-queue");
+  revalidatePath("/planning");
+
+  return {
+    ...base, bomEntriesFound: bomEntries.length, alreadyExisted: existingSet.size,
+    equipmentSkipped, created: nonEquipment.length,
+  };
+}
+
+// ─── Raise MRP Purchase Requisition ──────────────────────────────────────────
+
+export type RaiseMrpPrResult =
+  | { success: true; prId: string }
+  | { success: false; error: string };
+
+/** Tier 1: Planning Manager reviews → forwards to BOD */
+export async function reviewForecastAsManager(
+  forecastId: string,
+): Promise<ForecastUpdateResult> {
+  try {
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+      return { success: false, error: "Only Planning, Admin, or BOD may review forecasts." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (forecast.status !== "PENDING_APPROVAL") {
+      return { success: false, error: `Forecast must be PENDING_APPROVAL (current: ${forecast.status}).` };
+    }
+    await db.update(resourceForecasts)
+      .set({ status: "PENDING_BOD_APPROVAL" })
+      .where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    revalidatePath("/planning");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+/** Tier 2: BOD final approval → PENDING_PR (PR can now be raised) */
+export async function approveForecastAsBod(
+  forecastId: string,
+): Promise<ForecastUpdateResult> {
+  try {
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["ADMIN", "BOD"])) {
+      return { success: false, error: "Only Admin or BOD may give final forecast approval." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (forecast.status !== "PENDING_BOD_APPROVAL") {
+      return { success: false, error: `Forecast must be PENDING_BOD_APPROVAL (current: ${forecast.status}).` };
+    }
+    await db.update(resourceForecasts)
+      .set({ status: "PENDING_PR" })
+      .where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    revalidatePath("/planning");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export type RegenerateForecastsResult =
+  | { success: true; created: number; diagnostics: GenerateForecastsDiagnostics[] }
+  | { success: false; error: string };
+
+// ─── Admin/BOD: edit or delete a not-yet-procured forecast line ─────────────
+
+const EDITABLE_FORECAST_STATUSES = ["PENDING_APPROVAL", "PENDING_BOD_APPROVAL"] as const;
+
+export async function updateForecastQuantity(
+  forecastId: string,
+  grossQuantity: number,
+): Promise<ForecastUpdateResult> {
+  try {
+    if (!Number.isFinite(grossQuantity) || grossQuantity <= 0) {
+      return { success: false, error: "Quantity must be a positive number." };
+    }
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["ADMIN", "BOD"])) {
+      return { success: false, error: "Only Admin or BOD may edit forecast lines." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (!EDITABLE_FORECAST_STATUSES.includes(forecast.status as typeof EDITABLE_FORECAST_STATUSES[number])) {
+      return { success: false, error: "Only forecast lines that are not yet BOD-approved can be edited." };
+    }
+    await db.update(resourceForecasts)
+      .set({ grossQuantity: String(grossQuantity), updatedAt: new Date() })
+      .where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export async function deleteForecast(forecastId: string): Promise<ForecastUpdateResult> {
+  try {
+    const user = await getAuthUser();
+    if (!user) return { success: false, error: "Not authenticated." };
+    const dept = user.user_metadata?.dept_code as DeptCode;
+    if (!guardDept(dept, ["ADMIN", "BOD"])) {
+      return { success: false, error: "Only Admin or BOD may delete forecast lines." };
+    }
+    const [forecast] = await db
+      .select({ status: resourceForecasts.status })
+      .from(resourceForecasts)
+      .where(eq(resourceForecasts.id, forecastId))
+      .limit(1);
+    if (!forecast) return { success: false, error: "Forecast not found." };
+    if (!EDITABLE_FORECAST_STATUSES.includes(forecast.status as typeof EDITABLE_FORECAST_STATUSES[number])) {
+      return { success: false, error: "Only forecast lines that are not yet BOD-approved can be deleted." };
+    }
+    await db.delete(resourceForecasts).where(eq(resourceForecasts.id, forecastId));
+    revalidatePath("/planning/mrp-queue");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+
+/** Retroactive: generate forecasts for an already-ACTIVE NTP (and any sibling
+ *  units issued in the same NTP group) that have none. */
+export async function regenerateForecastsForNtp(
+  ntpId: string,
+): Promise<RegenerateForecastsResult> {
+  try {
+    const { taskAssignments } = await import("@/db/schema");
+    const [ntp] = await db
+      .select({
+        projectId:  taskAssignments.projectId,
+        unitId:     taskAssignments.unitId,
+        status:     taskAssignments.status,
+        ntpGroupId: taskAssignments.ntpGroupId,
+      })
+      .from(taskAssignments)
+      .where(eq(taskAssignments.id, ntpId))
+      .limit(1);
+    if (!ntp) return { success: false, error: "NTP not found." };
+    if (ntp.status !== "ACTIVE") return { success: false, error: "NTP must be ACTIVE." };
+
+    let unitIds = [ntp.unitId];
+    if (ntp.ntpGroupId) {
+      const siblings = await db
+        .select({ unitId: taskAssignments.unitId })
+        .from(taskAssignments)
+        .where(and(eq(taskAssignments.ntpGroupId, ntp.ntpGroupId), eq(taskAssignments.status, "ACTIVE")));
+      unitIds = [...new Set(siblings.map((s) => s.unitId))];
+    }
+
+    const diagnostics = await Promise.all(
+      unitIds.map((unitId) => generateResourceForecastsForUnit(ntp.projectId, unitId)),
+    );
+    const created = diagnostics.reduce((sum, d) => sum + d.created, 0);
+    return { success: true, created, diagnostics };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+}
+
+export async function raiseMrpPurchaseRequisition(
+  forecastId: string,
+): Promise<RaiseMrpPrResult> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+
+  const dept = user.user_metadata?.dept_code as DeptCode;
+  if (!guardDept(dept, ["PLANNING", "ADMIN", "BOD"])) {
+    return { success: false, error: "Only Planning, Admin, or BOD may raise purchase requisitions." };
+  }
+
+  const [forecast] = await db
+    .select({
+      id:               resourceForecasts.id,
+      projectId:        resourceForecasts.projectId,
+      unitId:           resourceForecasts.unitId,
+      status:           resourceForecasts.status,
+      grossQuantity:    resourceForecasts.grossQuantity,
+      quantityConsumed: resourceForecasts.quantityConsumed,
+      materialId:       masterBomEntries.materialId,
+      adminPrice:       materials.adminPrice,
+    })
+    .from(resourceForecasts)
+    .leftJoin(masterBomEntries, eq(resourceForecasts.masterBomEntryId, masterBomEntries.id))
+    .leftJoin(materials, eq(masterBomEntries.materialId, materials.id))
+    .where(eq(resourceForecasts.id, forecastId))
+    .limit(1);
+
+  if (!forecast) return { success: false, error: "Forecast line not found." };
+  if (forecast.status !== "PENDING_PR") {
+    return { success: false, error: "Only PENDING_PR forecasts can be converted to a PR." };
+  }
+  if (!forecast.materialId) {
+    return { success: false, error: "Forecast has no linked material — check BOM entry." };
+  }
+
+  const gross    = Number(forecast.grossQuantity);
+  const consumed = Number(forecast.quantityConsumed);
+  const toOrder  = Math.max(0, gross - consumed);
+
+  if (toOrder <= 0) return { success: false, error: "No remaining quantity to order for this line." };
+
+  const [pr] = await db
+    .insert(purchaseRequisitions)
+    .values({
+      projectId:   forecast.projectId,
+      unitId:      forecast.unitId ?? null,
+      status:      "DRAFT" as const,
+      requestedBy: user.id,
+    })
+    .returning({ id: purchaseRequisitions.id });
+
+  await db.insert(purchaseRequisitionItems).values({
+    prId:             pr.id,
+    materialId:       forecast.materialId,
+    quantityRequired: String(gross),
+    quantityInStock:  String(consumed),
+    quantityToOrder:  String(toOrder),
+    unitPrice:        forecast.adminPrice ?? "0",
+  });
+
+  await db
+    .update(resourceForecasts)
+    .set({
+      status:                "PR_CREATED" as const,
+      purchaseRequisitionId: pr.id,
+      updatedAt:             new Date(),
+    })
+    .where(eq(resourceForecasts.id, forecastId));
+
+  revalidatePath("/planning/mrp-queue");
+  revalidatePath("/planning");
+  revalidatePath("/procurement/pr");
+
+  return { success: true, prId: pr.id };
 }
