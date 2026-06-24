@@ -358,8 +358,10 @@ export async function updateIPOStatus(
     })
     .where(eq(internalPurchaseOrders.id, d.id));
 
-  // On acceptance, recognize the raw-material cost of the batch against the Batching cost center
+  // On acceptance: explode BOM → generate raw-material PR → post cost allocation
   if (d.status === "ACCEPTED") {
+    await explodeIPORequirements(d.id);
+    await generateBatchingPlantPR(d.id, d.acceptedBy ?? "system");
     await postIpoRawMaterialCost(d.id);
   }
 
