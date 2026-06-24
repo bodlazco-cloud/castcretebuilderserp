@@ -4,7 +4,7 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { eq, and, gte, count, desc, sum, sql, notInArray } from "drizzle-orm";
 
-const ACCENT = "#1a56db";
+const ACCENT = "#7c3aed";
 
 const IPO_STATUS_STYLES: Record<string, { bg: string; color: string }> = {
   PENDING:       { bg: "#fef3c7", color: "#92400e" },
@@ -32,6 +32,7 @@ async function safe<T>(promise: Promise<T>, fallback: T): Promise<T> {
 
 export default async function BatchingPage() {
   const user = await getAuthUser();
+  const displayName: string = user?.user_metadata?.full_name ?? user?.email ?? "Guest";
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const today = now.toISOString().slice(0, 10);
@@ -41,6 +42,7 @@ export default async function BatchingPage() {
     batchesThisMonthRows, flaggedBatchRows, flaggedDeliveryRows,
     activeMixRows, pendingIPORows, volumeTodayRows,
     pendingDeliveryRows, undispatchedRows,
+    ipoByStatus,
   ] = await safe(
     Promise.all([
       db.select({ value: count() }).from(schema.batchingProductionLogs)
@@ -56,21 +58,23 @@ export default async function BatchingPage() {
       db.select({ value: sum(schema.batchingProductionLogs.volumeProducedM3) })
         .from(schema.batchingProductionLogs)
         .where(eq(schema.batchingProductionLogs.batchDate, today)),
-      // Delivery notes without receipts
       db.select({ value: count() }).from(schema.concreteDeliveryNotes)
         .where(notInArray(
           schema.concreteDeliveryNotes.id,
           db.select({ id: schema.concreteDeliveryReceipts.deliveryNoteId }).from(schema.concreteDeliveryReceipts),
         )),
-      // Production logs without delivery notes
       db.select({ value: count() }).from(schema.batchingProductionLogs)
         .where(notInArray(
           schema.batchingProductionLogs.id,
           db.select({ id: schema.concreteDeliveryNotes.productionLogId }).from(schema.concreteDeliveryNotes),
         )),
+      db.select({ status: schema.internalPurchaseOrders.status, cnt: count() })
+        .from(schema.internalPurchaseOrders)
+        .groupBy(schema.internalPurchaseOrders.status),
     ]),
     [[{ value: 0 }], [{ value: 0 }], [{ value: 0 }], [{ value: 0 }],
-     [{ value: 0 }], [{ value: null }], [{ value: 0 }], [{ value: 0 }]],
+     [{ value: 0 }], [{ value: null }], [{ value: 0 }], [{ value: 0 }],
+     [] as { status: string; cnt: number }[]],
   );
 
   const batchesThisMonth   = Number(batchesThisMonthRows[0]?.value ?? 0);
@@ -81,8 +85,24 @@ export default async function BatchingPage() {
   const volumeToday        = Number(volumeTodayRows[0]?.value ?? 0);
   const pendingDeliveries  = Number(pendingDeliveryRows[0]?.value ?? 0);
   const undispatched       = Number(undispatchedRows[0]?.value ?? 0);
-
   const totalAlerts = flaggedBatches + flaggedDeliveries + pendingIPOs + pendingDeliveries + undispatched;
+
+  // IPO pipeline
+  const ipoStatusMap = Object.fromEntries(ipoByStatus.map((r) => [r.status, Number(r.cnt)]));
+  const ipoPending      = ipoStatusMap["PENDING"]       ?? 0;
+  const ipoAccepted     = ipoStatusMap["ACCEPTED"]      ?? 0;
+  const ipoInProduction = ipoStatusMap["IN_PRODUCTION"] ?? 0;
+  const ipoDelivered    = ipoStatusMap["DELIVERED"]      ?? 0;
+  const ipoBilled       = ipoStatusMap["BILLED"]         ?? 0;
+  const ipoTotal = Math.max(ipoPending + ipoAccepted + ipoInProduction + ipoDelivered + ipoBilled, 1);
+
+  const ipoPipelineStages = [
+    { label: "Pending",       count: ipoPending,      pct: Math.round((ipoPending / ipoTotal) * 100),      color: "#fde68a", text: "#92400e" },
+    { label: "Accepted",      count: ipoAccepted,     pct: Math.round((ipoAccepted / ipoTotal) * 100),     color: "#93c5fd", text: "#1e40af" },
+    { label: "In Production", count: ipoInProduction, pct: Math.round((ipoInProduction / ipoTotal) * 100), color: "#67e8f9", text: "#0369a1" },
+    { label: "Delivered",     count: ipoDelivered,    pct: Math.round((ipoDelivered / ipoTotal) * 100),    color: "#86efac", text: "#166534" },
+    { label: "Billed",        count: ipoBilled,       pct: Math.round((ipoBilled / ipoTotal) * 100),       color: "#c4b5fd", text: "#6b21a8" },
+  ];
 
   // ── Detail rows ──────────────────────────────────────────────────────────────
   const [recentBatches, flaggedBatchDetail, pendingIPODetail] = await safe(
@@ -136,89 +156,156 @@ export default async function BatchingPage() {
 
   // ── KPI card definitions ─────────────────────────────────────────────────────
   const kpis = [
-    { label: "Batches This Month", value: batchesThisMonth, href: "/batching/production", alert: false },
-    { label: "Volume Today (m³)", value: volumeToday.toFixed(2), href: "/batching/production", alert: false },
-    { label: "Active Mix Designs", value: activeMixDesigns, href: "/batching/recipes", alert: false },
-    { label: "Pending IPOs", value: pendingIPOs, href: "/batching/ipo", alert: pendingIPOs > 0 },
-    { label: "Batches Ready to Dispatch", value: undispatched, href: "/batching/dispatch", alert: undispatched > 0 },
-    { label: "Pending Site Sign-offs", value: pendingDeliveries, href: "/batching/deliver", alert: pendingDeliveries > 0 },
-    { label: "Flagged Batches", value: flaggedBatches, href: "/batching/yield", alert: flaggedBatches > 0 },
-    { label: "Flagged Deliveries", value: flaggedDeliveries, href: "/batching/deliver", alert: flaggedDeliveries > 0 },
+    { label: "Batches This Month", value: String(batchesThisMonth), sub: `${volumeToday.toFixed(1)} m³ produced today`,  accent: ACCENT },
+    { label: "Active Mix Designs",  value: String(activeMixDesigns), sub: "recipe configurations",                         accent: "#1a56db" },
+    { label: "Pending IPOs",        value: String(pendingIPOs),      sub: `${undispatched} ready to dispatch`,              accent: pendingIPOs > 0 ? "#dc2626" : "#057a55" },
+    { label: "Pending Sign-offs",   value: String(pendingDeliveries), sub: `${flaggedBatches + flaggedDeliveries} flagged`, accent: pendingDeliveries > 0 ? "#e3a008" : "#057a55" },
   ];
 
-  return (
-    <main style={{ minHeight: "100vh", background: "#f9fafb", fontFamily: "system-ui, sans-serif" }}>
-      <nav style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 2rem", height: "56px",
-        background: "#fff", borderBottom: "1px solid #e5e7eb",
-        position: "sticky", top: 0, zIndex: 10,
-      }}>
-        <span style={{ fontWeight: 700, fontSize: "1rem", color: "#111827" }}>Castcrete 360</span>
-      </nav>
+  const card: React.CSSProperties = {
+    background: "#fff", borderRadius: "10px", padding: "1.25rem 1.5rem",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+  };
 
-      <div style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "1.25rem" }}>
-          <a href="/main-dashboard" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>
-            ← Back to Dashboard
-          </a>
-        </div>
+  return (
+    <main style={{ background: "#f9fafb", minHeight: "100vh", fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
 
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.75rem", flexWrap: "wrap", gap: "0.75rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap", marginBottom: "1.5rem" }}>
           <div>
-            <span style={{ fontSize: "0.7rem", fontWeight: 700, color: ACCENT, letterSpacing: "0.08em", textTransform: "uppercase" }}>Department</span>
-            <h1 style={{ margin: "0.2rem 0 0.25rem", fontSize: "1.5rem", fontWeight: 700, color: "#111827", borderLeft: `4px solid ${ACCENT}`, paddingLeft: "0.75rem" }}>
-              Batching Plant
-            </h1>
-            <p style={{ margin: "0 0 0 1rem", color: "#6b7280", fontSize: "0.85rem" }}>
-              {now.toLocaleDateString("en-PH", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            <p style={{ marginBottom: "0.25rem" }}>
+              <a href="/main-dashboard" style={{ fontSize: "0.8rem", color: ACCENT, textDecoration: "none" }}>
+                ← Dashboard
+              </a>
+            </p>
+            <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#111827", margin: 0 }}>Batching Plant</h1>
+            <p style={{ fontSize: "0.875rem", color: "#6b7280", marginTop: "0.25rem", marginBottom: 0 }}>
+              Concrete production, IPOs, dispatch &amp; delivery tracking
             </p>
           </div>
-          {totalAlerts > 0 && (
-            <div style={{
-              display: "flex", alignItems: "center", gap: "0.5rem",
-              padding: "0.5rem 1rem", background: "#fef2f2",
-              border: "1px solid #fecaca", borderRadius: "8px",
-            }}>
-              <span style={{ fontSize: "1rem" }}>⚠</span>
-              <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#dc2626" }}>
-                {totalAlerts} item{totalAlerts > 1 ? "s" : ""} need attention
-              </span>
-            </div>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+            {totalAlerts > 0 && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: "0.4rem",
+                padding: "0.4rem 0.85rem", background: "#fef2f2",
+                border: "1px solid #fecaca", borderRadius: "8px",
+              }}>
+                <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#dc2626" }}>
+                  {totalAlerts} item{totalAlerts > 1 ? "s" : ""} need attention
+                </span>
+              </div>
+            )}
+            <a href="/batching/log-batch" style={{
+              padding: "0.55rem 1.1rem", borderRadius: "6px", background: ACCENT,
+              color: "#fff", fontSize: "0.875rem", fontWeight: 600, textDecoration: "none",
+            }}>+ Log Batch</a>
+          </div>
         </div>
 
-        {/* KPI Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: "1rem", marginBottom: "2rem" }}>
-          {kpis.map((k) => (
-            <a key={k.label} href={k.href} style={{ textDecoration: "none" }}>
-              <div style={{
-                background: k.alert ? "#fef2f2" : "#fff",
-                borderRadius: "10px", padding: "1.1rem 1.25rem",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
-                borderLeft: `4px solid ${k.alert ? "#dc2626" : ACCENT}`,
-                cursor: "pointer", transition: "box-shadow 0.15s",
-              }}>
-                <div style={{ fontSize: "1.65rem", fontWeight: 700, color: k.alert ? "#dc2626" : "#111827" }}>
-                  {k.value}
-                </div>
-                <div style={{ fontSize: "0.72rem", color: k.alert ? "#b91c1c" : "#6b7280", marginTop: "0.2rem", fontWeight: k.alert ? 600 : 400 }}>
-                  {k.label}
-                </div>
+        {/* KPI Cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
+          {kpis.map((kpi) => (
+            <div key={kpi.label} style={{ ...card, borderTop: `3px solid ${kpi.accent}` }}>
+              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#111827", lineHeight: 1 }}>
+                {kpi.value}
               </div>
-            </a>
+              <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#111827", marginTop: "0.3rem" }}>{kpi.label}</div>
+              <div style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: "0.2rem" }}>{kpi.sub}</div>
+            </div>
           ))}
+        </div>
+
+        {/* Cross-Department Flow */}
+        <div style={{ ...card, marginBottom: "1.5rem", padding: "1rem 1.25rem", background: "#f5f3ff", border: `1px solid #ddd6fe` }}>
+          <p style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: ACCENT, marginBottom: "0.6rem", marginTop: 0 }}>
+            Batching Plant Production Flow
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap", fontSize: "0.78rem" }}>
+            {[
+              { step: "IPO Received", color: "#92400e", bg: "#fef3c7", href: "/batching/ipo" },
+              { step: "→" },
+              { step: "Accept & Explode BOM", color: "#1e40af", bg: "#dbeafe" },
+              { step: "→" },
+              { step: "Log Production", color: "#6b21a8", bg: "#f3e8ff", href: "/batching/log-batch" },
+              { step: "→" },
+              { step: "Dispatch to Site", color: "#0369a1", bg: "#e0f2fe", href: "/batching/dispatch" },
+              { step: "→" },
+              { step: "Site Sign-off", color: "#065f46", bg: "#d1fae5", href: "/batching/deliver" },
+            ].map((s, i) =>
+              "href" in s ? (
+                <a key={i} href={s.href} style={{ padding: "0.25rem 0.6rem", borderRadius: "6px", background: s.bg, color: s.color, fontWeight: 600, fontSize: "0.75rem", textDecoration: "none", whiteSpace: "nowrap" }}>
+                  {s.step}
+                </a>
+              ) : s.step === "→" ? (
+                <span key={i} style={{ color: "#c4b5fd", fontWeight: 700 }}>→</span>
+              ) : (
+                <span key={i} style={{ padding: "0.25rem 0.6rem", borderRadius: "6px", background: s.bg, color: s.color, fontWeight: 600, fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                  {s.step}
+                </span>
+              )
+            )}
+          </div>
+        </div>
+
+        {/* IPO Pipeline + Production Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
+
+          {/* IPO Pipeline */}
+          <div style={card}>
+            <p style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af", marginBottom: "0.75rem", marginTop: 0 }}>
+              IPO Pipeline
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {ipoPipelineStages.map((stage) => (
+                <div key={stage.label}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", marginBottom: "0.25rem" }}>
+                    <span style={{ color: "#374151" }}>{stage.label}</span>
+                    <span style={{ color: "#6b7280", fontFamily: "monospace" }}>{stage.count} · {stage.pct}%</span>
+                  </div>
+                  <div style={{ height: "8px", background: "#f3f4f6", borderRadius: "999px", overflow: "hidden" }}>
+                    <div style={{ height: "100%", background: stage.color, borderRadius: "999px", width: `${stage.pct}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem", color: "#6b7280" }}>
+              <span>{ipoTotal} total IPOs</span>
+              <a href="/batching/ipo" style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>View All IPOs →</a>
+            </div>
+          </div>
+
+          {/* Quick Links */}
+          <div style={card}>
+            <p style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af", marginBottom: "0.75rem", marginTop: 0 }}>
+              Quick Actions
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              {[
+                { title: "Ready to Dispatch",    count: undispatched,      accent: "#0369a1", bg: "#e0f2fe", href: "/batching/dispatch" },
+                { title: "Pending Deliveries",   count: pendingDeliveries, accent: "#92400e", bg: "#fef3c7", href: "/batching/deliver" },
+                { title: "Flagged Batches",       count: flaggedBatches,    accent: "#dc2626", bg: "#fef2f2", href: "/batching/yield" },
+                { title: "Flagged Deliveries",    count: flaggedDeliveries, accent: "#dc2626", bg: "#fef2f2", href: "/batching/deliver" },
+              ].map((q) => (
+                <a key={q.title} href={q.href} style={{ textDecoration: "none" }}>
+                  <div style={{ background: q.bg, borderRadius: "8px", padding: "1rem" }}>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 700, color: q.accent, lineHeight: 1 }}>{q.count}</div>
+                    <div style={{ fontSize: "0.72rem", color: "#6b7280", marginTop: "0.25rem" }}>{q.title}</div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Needs Attention + Pending IPOs */}
         {(flaggedBatchDetail.length > 0 || pendingIPODetail.length > 0) && (
-          <div style={{ display: "grid", gridTemplateColumns: flaggedBatchDetail.length > 0 && pendingIPODetail.length > 0 ? "1fr 1fr" : "1fr", gap: "1.25rem", marginBottom: "1.5rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: flaggedBatchDetail.length > 0 && pendingIPODetail.length > 0 ? "1fr 1fr" : "1fr", gap: "1rem", marginBottom: "1.5rem" }}>
             {/* Flagged batches */}
             {flaggedBatchDetail.length > 0 && (
               <div style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                 <div style={{ padding: "0.85rem 1.25rem", borderBottom: "1px solid #fecaca", background: "#fef2f2", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#dc2626" }}>⚠ Flagged Batches</span>
+                  <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#dc2626" }}>Flagged Batches</span>
                   <a href="/batching/yield" style={{ fontSize: "0.72rem", color: "#dc2626", textDecoration: "none", fontWeight: 600 }}>View All →</a>
                 </div>
                 {flaggedBatchDetail.map((b, i) => (
@@ -245,7 +332,7 @@ export default async function BatchingPage() {
             {pendingIPODetail.length > 0 && (
               <div style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
                 <div style={{ padding: "0.85rem 1.25rem", borderBottom: "1px solid #fde68a", background: "#fffbeb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#92400e" }}>⏳ Pending IPOs</span>
+                  <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#92400e" }}>Pending IPOs</span>
                   <a href="/batching/ipo" style={{ fontSize: "0.72rem", color: "#92400e", textDecoration: "none", fontWeight: 600 }}>View All →</a>
                 </div>
                 {pendingIPODetail.map((ipo, i) => (
@@ -265,10 +352,12 @@ export default async function BatchingPage() {
         )}
 
         {/* Recent Pour Log */}
-        <div style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-          <div style={{ padding: "0.85rem 1.25rem", borderBottom: "1px solid #f3f4f6", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ margin: 0, fontSize: "0.92rem", fontWeight: 700, color: "#374151" }}>Recent Pour Log</h2>
-            <a href="/batching/log-batch" style={{ fontSize: "0.75rem", color: ACCENT, textDecoration: "none", fontWeight: 600 }}>+ Log Batch</a>
+        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <p style={{ fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#9ca3af", margin: 0 }}>
+              Recent Pour Log
+            </p>
+            <a href="/batching/production" style={{ fontSize: "0.8rem", color: "#1a56db", textDecoration: "none", fontWeight: 600 }}>View All →</a>
           </div>
           {recentBatches.length === 0 ? (
             <div style={{ padding: "2.5rem", textAlign: "center", color: "#9ca3af", fontSize: "0.875rem" }}>No production records yet.</div>

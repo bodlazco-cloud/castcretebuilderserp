@@ -12,6 +12,7 @@ import {
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { getAuthUser } from "@/lib/supabase-server";
 
 // ── Mix Design Approval Workflow ──────────────────────────────────────────────
 
@@ -360,9 +361,17 @@ export async function updateIPOStatus(
 
   // On acceptance: explode BOM → generate raw-material PR → post cost allocation
   if (d.status === "ACCEPTED") {
+    const userId = d.acceptedBy ?? (await getAuthUser())?.id;
+    if (!userId) return { success: false, error: "Not authenticated." };
     await explodeIPORequirements(d.id);
-    await generateBatchingPlantPR(d.id, d.acceptedBy ?? "system");
+    const prResult = await generateBatchingPlantPR(d.id, userId);
     await postIpoRawMaterialCost(d.id);
+
+    // Revalidate procurement pages so the generated PR appears
+    if (prResult.success) {
+      revalidatePath("/procurement/pr");
+      revalidatePath("/procurement/pr-po");
+    }
   }
 
   revalidatePath(`/batching/ipo/${d.id}`);

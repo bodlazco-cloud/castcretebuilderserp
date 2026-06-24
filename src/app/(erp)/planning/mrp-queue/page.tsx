@@ -313,10 +313,16 @@ export default async function MrpQueuePage() {
                                     <RaisePrButton forecastId={row.id} />
                                   )}
                                   {row.purchaseRequisitionId && (
-                                    <a href={`/procurement/pr/${row.purchaseRequisitionId}`}
-                                      style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600, fontSize: "0.78rem" }}>
-                                      View PR →
-                                    </a>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                                      <a href={`/procurement/pr/${row.purchaseRequisitionId}`}
+                                        style={{ color: "#057a55", textDecoration: "none", fontWeight: 600, fontSize: "0.78rem" }}>
+                                        ✓ PR Approved
+                                      </a>
+                                      <a href="/procurement/pr-po"
+                                        style={{ color: "#1a56db", textDecoration: "none", fontWeight: 600, fontSize: "0.72rem" }}>
+                                        Procurement →
+                                      </a>
+                                    </div>
                                   )}
                                   {!["PENDING_APPROVAL", "PENDING_PR"].includes(row.status) && !row.purchaseRequisitionId && (
                                     <span style={{ color: "#d1d5db" }}>—</span>
