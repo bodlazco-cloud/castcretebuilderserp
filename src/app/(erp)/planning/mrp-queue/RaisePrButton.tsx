@@ -31,20 +31,33 @@ export function RaisePrButton({ forecastId }: { forecastId: string }) {
 
   if (state === "done" && prId) {
     return (
-      <a
-        href={`/procurement/pr/${prId}`}
-        style={{
-          color: "#057a55",
-          fontWeight: 600,
-          fontSize: "0.78rem",
-          textDecoration: "none",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "0.25rem",
-        }}
-      >
-        ✓ PR Raised →
-      </a>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+        <a
+          href={`/procurement/pr/${prId}`}
+          style={{
+            color: "#057a55",
+            fontWeight: 600,
+            fontSize: "0.78rem",
+            textDecoration: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.25rem",
+          }}
+        >
+          ✓ PR Approved & PO Created
+        </a>
+        <a
+          href="/procurement/pr-po"
+          style={{
+            color: "#1a56db",
+            fontWeight: 600,
+            fontSize: "0.72rem",
+            textDecoration: "none",
+          }}
+        >
+          View in Procurement →
+        </a>
+      </div>
     );
   }
 

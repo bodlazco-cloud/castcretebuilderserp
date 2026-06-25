@@ -68,7 +68,7 @@ export async function logBatchProduction(
     ? `Production yield variance of ${yieldVariancePct.toFixed(2)}% exceeds the 2% threshold. Possible raw material theft or equipment error.`
     : undefined;
 
-  // Gap #2: Pre-flight stock check — soft warning, does not block the batch
+  // Gap #2: Pre-flight stock check — blocks production if inventory insufficient
   const bomItems = await db
     .select({
       materialId:       mixDesignBom.materialId,
@@ -99,6 +99,16 @@ export async function logBatchProduction(
         uom: item.unitOfMeasure,
       });
     }
+  }
+
+  if (stockWarnings.length > 0) {
+    const shortList = stockWarnings
+      .map((w) => `${w.materialName}: need ${w.neededQty.toFixed(2)} ${w.uom}, available ${w.availableQty.toFixed(2)} (short ${w.shortfall.toFixed(2)})`)
+      .join("; ");
+    return {
+      success: false,
+      error: `Insufficient raw material inventory to produce this batch. ${shortList}`,
+    };
   }
 
   const [log] = await db
