@@ -158,8 +158,10 @@ export default async function PRPOPage() {
                   const firstPO = linked[0];
                   return (
                     <tr key={pr.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.8rem", color: "#374151", fontWeight: 600 }}>
-                        {shortId(pr.id)}
+                      <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.8rem", fontWeight: 600 }}>
+                        <a href={`/procurement/pr/${pr.id}`} style={{ color: "#1a56db", textDecoration: "none" }}>
+                          {shortId(pr.id)}
+                        </a>
                       </td>
                       <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>{pr.projectName ?? "—"}</td>
                       <td style={{ padding: "0.65rem 1rem", color: "#6b7280", whiteSpace: "nowrap" }}>
@@ -173,9 +175,11 @@ export default async function PRPOPage() {
                       <td style={{ padding: "0.65rem 1rem" }}>
                         {firstPO ? (
                           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                            <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: (PO_STATUS_STYLE[firstPO.status] ?? PO_STATUS_STYLE.DRAFT).bg, color: (PO_STATUS_STYLE[firstPO.status] ?? PO_STATUS_STYLE.DRAFT).color, whiteSpace: "nowrap" }}>
-                              {firstPO.status.replace(/_/g, " ")}
-                            </span>
+                            <a href={`/procurement/po/${firstPO.id}`} style={{ textDecoration: "none" }}>
+                              <span style={{ display: "inline-block", padding: "0.2rem 0.55rem", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 600, background: (PO_STATUS_STYLE[firstPO.status] ?? PO_STATUS_STYLE.DRAFT).bg, color: (PO_STATUS_STYLE[firstPO.status] ?? PO_STATUS_STYLE.DRAFT).color, whiteSpace: "nowrap", cursor: "pointer" }}>
+                                {firstPO.status.replace(/_/g, " ")}
+                              </span>
+                            </a>
                             <span style={{ fontSize: "0.8rem", color: "#374151", fontWeight: 500 }}>{fmt(firstPO.totalAmount)}</span>
                             {linked.length > 1 && (
                               <span style={{ fontSize: "0.72rem", color: "#9ca3af" }}>+{linked.length - 1} more</span>
@@ -215,8 +219,10 @@ export default async function PRPOPage() {
                   const st = PO_STATUS_STYLE[po.status] ?? PO_STATUS_STYLE.DRAFT;
                   return (
                     <tr key={po.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.8rem", color: "#374151", fontWeight: 600 }}>
-                        {shortId(po.id)}
+                      <td style={{ padding: "0.65rem 1rem", fontFamily: "monospace", fontSize: "0.8rem", fontWeight: 600 }}>
+                        <a href={`/procurement/po/${po.id}`} style={{ color: "#1a56db", textDecoration: "none" }}>
+                          {shortId(po.id)}
+                        </a>
                       </td>
                       <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>{po.projectName ?? "—"}</td>
                       <td style={{ padding: "0.65rem 1rem", color: "#374151" }}>{po.supplierName ?? "—"}</td>

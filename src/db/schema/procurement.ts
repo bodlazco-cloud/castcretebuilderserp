@@ -37,7 +37,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   id:                   uuid("id").primaryKey().defaultRandom(),
   prId:                 uuid("pr_id").notNull().references(() => purchaseRequisitions.id),
   projectId:            uuid("project_id").notNull().references(() => projects.id),
-  supplierId:           uuid("supplier_id").notNull().references(() => suppliers.id),
+  supplierId:           uuid("supplier_id").references(() => suppliers.id),
   status:               poStatusEnum("status").notNull().default("DRAFT"),
   isPrepaid:            boolean("is_prepaid").notNull().default(false),
   proformaInvoiceUrl:   text("proforma_invoice_url"),

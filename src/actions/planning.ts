@@ -890,6 +890,41 @@ export async function deleteForecast(forecastId: string): Promise<ForecastUpdate
   }
 }
 
+// ─── Admin: Delete Forecast (any status) ─────────────────────────────────────
+export async function adminDeleteForecast(id: string): Promise<{ success: boolean; error?: string }> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+  const { isAdminOrBod } = await import("@/lib/supabase-server");
+  if (!(await isAdminOrBod())) return { success: false, error: "Admin/BOD only." };
+
+  await db.delete(resourceForecasts).where(eq(resourceForecasts.id, id));
+
+  revalidatePath("/planning/mrp-queue");
+  revalidatePath("/planning");
+  return { success: true };
+}
+
+// ─── Admin: Edit Forecast Quantity (any status) ──────────────────────────────
+export async function adminEditForecastQty(
+  id: string,
+  grossQty: number,
+): Promise<{ success: boolean; error?: string }> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+  const { isAdminOrBod } = await import("@/lib/supabase-server");
+  if (!(await isAdminOrBod())) return { success: false, error: "Admin/BOD only." };
+
+  if (grossQty <= 0) return { success: false, error: "Quantity must be positive." };
+
+  await db
+    .update(resourceForecasts)
+    .set({ grossQuantity: String(grossQty), updatedAt: new Date() })
+    .where(eq(resourceForecasts.id, id));
+
+  revalidatePath("/planning/mrp-queue");
+  revalidatePath("/planning");
+  return { success: true };
+}
 
 /** Retroactive: generate forecasts for an already-ACTIVE NTP (and any sibling
  *  units issued in the same NTP group) that have none. */
