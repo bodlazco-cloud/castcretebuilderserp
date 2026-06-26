@@ -623,3 +623,41 @@ export async function generateBatchingPlantPR(
   revalidatePath("/batching/ipo");
   return { success: true, prId: pr.id };
 }
+
+// ─── Admin: Revert IPO Status ────────────────────────────────────────────────
+export async function adminRevertIPOStatus(
+  id: string,
+  newStatus: "PENDING" | "ACCEPTED" | "IN_PRODUCTION" | "DELIVERED" | "BILLED",
+): Promise<{ success: boolean; error?: string }> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+  const { isAdminOrBod } = await import("@/lib/supabase-server");
+  if (!(await isAdminOrBod())) return { success: false, error: "Admin/BOD only." };
+
+  await db
+    .update(internalPurchaseOrders)
+    .set({ status: newStatus, updatedAt: new Date() })
+    .where(eq(internalPurchaseOrders.id, id));
+
+  revalidatePath(`/batching/ipo/${id}`);
+  revalidatePath("/batching/ipo");
+  revalidatePath("/batching");
+  return { success: true };
+}
+
+// ─── Admin: Delete IPO ───────────────────────────────────────────────────────
+export async function adminDeleteIPO(id: string): Promise<{ success: boolean; error?: string }> {
+  const user = await getAuthUser();
+  if (!user) return { success: false, error: "Not authenticated." };
+  const { isAdminOrBod } = await import("@/lib/supabase-server");
+  if (!(await isAdminOrBod())) return { success: false, error: "Admin/BOD only." };
+
+  // Delete linked requirements, PR flags, then the IPO itself
+  await db.delete(ipoRawMaterialRequirements).where(eq(ipoRawMaterialRequirements.ipoId, id));
+  await db.delete(batchingPlantPRFlags).where(eq(batchingPlantPRFlags.ipoId, id));
+  await db.delete(internalPurchaseOrders).where(eq(internalPurchaseOrders.id, id));
+
+  revalidatePath("/batching/ipo");
+  revalidatePath("/batching");
+  return { success: true };
+}
